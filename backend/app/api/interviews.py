@@ -8,11 +8,55 @@ from typing import List
 from datetime import datetime
 
 from app.database import get_db
-from app.models import User, Interview, InterviewQuestion, InterviewStatus
+from app.models import User, Interview, InterviewQuestion, InterviewStatus, TeamMembership, TeamRole, UserRole
 from app.schemas import InterviewCreate, InterviewResponse, QuestionResponse
-from app.api.auth import get_current_user, require_role, UserRole
+from app.api.auth import get_current_user, require_role
 
 router = APIRouter()
+
+INTERVIEW_MANAGER_ROLES = {TeamRole.OWNER, TeamRole.ADMIN, TeamRole.RECRUITER}
+
+
+def get_primary_membership(user: User, db: Session) -> TeamMembership:
+    membership = (
+        db.query(TeamMembership)
+        .filter(TeamMembership.user_id == user.id)
+        .order_by(TeamMembership.created_at.asc())
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Organization membership required")
+    return membership
+
+
+def get_interview_or_404(interview_id: int, db: Session) -> Interview:
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    return interview
+
+
+def require_interview_membership(interview: Interview, user: User, db: Session) -> TeamMembership:
+    if user.role == UserRole.ADMIN:
+        return None
+
+    membership = (
+        db.query(TeamMembership)
+        .filter(
+            TeamMembership.user_id == user.id,
+            TeamMembership.organization_id == interview.organization_id,
+        )
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return membership
+
+
+def require_interview_manager(interview: Interview, user: User, db: Session) -> None:
+    membership = require_interview_membership(interview, user, db)
+    if membership and membership.role not in INTERVIEW_MANAGER_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient organization permissions")
 
 
 @router.post("/", response_model=InterviewResponse, status_code=status.HTTP_201_CREATED)
@@ -22,11 +66,13 @@ async def create_interview(
     db: Session = Depends(get_db)
 ):
     """Create a new interview with questions"""
+    membership = get_primary_membership(current_user, db)
     
     interview = Interview(
         title=interview_data.title,
         description=interview_data.description,
         employer_id=current_user.id,
+        organization_id=membership.organization_id,
         duration_minutes=interview_data.duration_minutes,
         max_attempts=interview_data.max_attempts,
         pass_score=interview_data.pass_score
@@ -61,10 +107,11 @@ async def list_employer_interviews(
     current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
-    """List all interviews for current employer"""
+    """List all interviews for current employer organization"""
+    membership = get_primary_membership(current_user, db)
     interviews = (
         db.query(Interview)
-        .filter(Interview.employer_id == current_user.id)
+        .filter(Interview.organization_id == membership.organization_id)
         .offset(skip)
         .limit(limit)
         .all()
@@ -79,14 +126,8 @@ async def get_interview(
     db: Session = Depends(get_db)
 ):
     """Get interview details"""
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
-    
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
-    
-    # Check permissions
-    if current_user.role.value == "employer" and interview.employer_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    interview = get_interview_or_404(interview_id, db)
+    require_interview_membership(interview, current_user, db)
     
     return interview
 
@@ -103,13 +144,8 @@ async def update_interview(
     db: Session = Depends(get_db)
 ):
     """Update interview details"""
-    interview = db.query(Interview).filter(
-        Interview.id == interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
-    
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    interview = get_interview_or_404(interview_id, db)
+    require_interview_manager(interview, current_user, db)
     
     if interview.status != InterviewStatus.DRAFT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only update draft interviews")
@@ -138,13 +174,8 @@ async def activate_interview(
     db: Session = Depends(get_db)
 ):
     """Activate interview (make it available for candidates)"""
-    interview = db.query(Interview).filter(
-        Interview.id == interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
-    
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    interview = get_interview_or_404(interview_id, db)
+    require_interview_manager(interview, current_user, db)
     
     if interview.status != InterviewStatus.DRAFT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview must be in draft status")
@@ -163,13 +194,8 @@ async def complete_interview(
     db: Session = Depends(get_db)
 ):
     """Complete interview (no more candidates can join)"""
-    interview = db.query(Interview).filter(
-        Interview.id == interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
-    
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    interview = get_interview_or_404(interview_id, db)
+    require_interview_manager(interview, current_user, db)
     
     interview.status = InterviewStatus.COMPLETED
     db.commit()
@@ -185,13 +211,8 @@ async def delete_interview(
     db: Session = Depends(get_db)
 ):
     """Delete an interview"""
-    interview = db.query(Interview).filter(
-        Interview.id == interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
-    
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    interview = get_interview_or_404(interview_id, db)
+    require_interview_manager(interview, current_user, db)
     
     db.delete(interview)
     db.commit()
@@ -206,13 +227,8 @@ async def add_question(
     db: Session = Depends(get_db)
 ):
     """Add a question to an interview"""
-    interview = db.query(Interview).filter(
-        Interview.id == interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
-    
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    interview = get_interview_or_404(interview_id, db)
+    require_interview_manager(interview, current_user, db)
     
     if interview.status != InterviewStatus.DRAFT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only add questions to draft interviews")
@@ -241,10 +257,8 @@ async def list_questions(
     db: Session = Depends(get_db)
 ):
     """List all questions for an interview"""
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
-    
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    interview = get_interview_or_404(interview_id, db)
+    require_interview_membership(interview, current_user, db)
     
     questions = (
         db.query(InterviewQuestion)

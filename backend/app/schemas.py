@@ -121,6 +121,7 @@ class InterviewCreate(InterviewBase):
 class InterviewResponse(InterviewBase):
     id: int
     employer_id: int
+    organization_id: Optional[int] = None
     status: InterviewStatusEnum
     created_at: datetime
     updated_at: Optional[datetime] = None

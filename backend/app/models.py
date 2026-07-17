@@ -93,6 +93,7 @@ class Interview(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     employer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     status = Column(Enum(InterviewStatus, values_callable=enum_values), default=InterviewStatus.DRAFT)
     duration_minutes = Column(Integer, default=30)
     max_attempts = Column(Integer, default=1)
@@ -103,6 +104,7 @@ class Interview(Base):
 
     # Relationships
     employer = relationship("User", back_populates="created_interviews", foreign_keys=[employer_id])
+    organization = relationship("Organization")
     questions = relationship("InterviewQuestion", back_populates="interview", cascade="all, delete-orphan")
     invitations = relationship("Invitation", back_populates="interview", cascade="all, delete-orphan")
     responses = relationship("CandidateResponse", back_populates="interview", cascade="all, delete-orphan")

@@ -1,3 +1,7 @@
+from app.database import SessionLocal
+from app.models import TeamMembership, TeamRole, User
+
+
 def register_user(client, email="employer@example.com", role="employer"):
     response = client.post(
         "/api/auth/register",
@@ -7,6 +11,31 @@ def register_user(client, email="employer@example.com", role="employer"):
             "full_name": "Test Employer",
             "role": role,
             "company_name": "SRIS Test Co",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def create_interview(client, token, title="Customer Support Screen"):
+    response = client.post(
+        "/api/interviews/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": title,
+            "description": "First round structured interview",
+            "duration_minutes": 30,
+            "max_attempts": 1,
+            "pass_score": 70,
+            "questions": [
+                {
+                    "question_text": "How do you handle an upset customer?",
+                    "expected_answer": "Listen, empathize, clarify, resolve, and follow up.",
+                    "question_type": "text",
+                    "weight": 1,
+                    "order_index": 0,
+                }
+            ],
         },
     )
     assert response.status_code == 201, response.text
@@ -24,6 +53,15 @@ def login_tokens(client, email="employer@example.com"):
 
 def login_user(client, email="employer@example.com"):
     return login_tokens(client, email)["access_token"]
+
+
+def current_user(client, token):
+    response = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 def test_health_check(client):
@@ -113,29 +151,60 @@ def test_employer_can_create_interview(client):
     register_user(client)
     token = login_user(client)
 
-    response = client.post(
-        "/api/interviews/",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "title": "Customer Support Screen",
-            "description": "First round structured interview",
-            "duration_minutes": 30,
-            "max_attempts": 1,
-            "pass_score": 70,
-            "questions": [
-                {
-                    "question_text": "How do you handle an upset customer?",
-                    "expected_answer": "Listen, empathize, clarify, resolve, and follow up.",
-                    "question_type": "text",
-                    "weight": 1,
-                    "order_index": 0,
-                }
-            ],
-        },
-    )
-
-    assert response.status_code == 201, response.text
-    body = response.json()
+    body = create_interview(client, token)
     assert body["title"] == "Customer Support Screen"
     assert body["status"] == "draft"
+    assert body["organization_id"] is not None
     assert len(body["questions"]) == 1
+
+
+def test_employer_cannot_access_another_organization_interview(client):
+    register_user(client)
+    first_token = login_user(client)
+    interview = create_interview(client, first_token)
+
+    register_user(client, email="other-employer@example.com")
+    second_token = login_user(client, email="other-employer@example.com")
+
+    response = client.get(
+        f"/api/interviews/{interview['id']}",
+        headers={"Authorization": f"Bearer {second_token}"},
+    )
+
+    assert response.status_code == 403, response.text
+
+
+def test_same_organization_member_can_view_interview(client):
+    register_user(client)
+    owner_token = login_user(client)
+    owner_org_response = client.get(
+        "/api/users/me/organization",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert owner_org_response.status_code == 200, owner_org_response.text
+    owner_org = owner_org_response.json()
+    interview = create_interview(client, owner_token)
+
+    register_user(client, email="reviewer@example.com")
+    reviewer_token = login_user(client, email="reviewer@example.com")
+    reviewer = current_user(client, reviewer_token)
+
+    db = SessionLocal()
+    try:
+        reviewer_user = db.query(User).filter(User.id == reviewer["id"]).first()
+        db.add(TeamMembership(
+            organization_id=owner_org["id"],
+            user_id=reviewer_user.id,
+            role=TeamRole.REVIEWER,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(
+        f"/api/interviews/{interview['id']}",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] == interview["id"]
