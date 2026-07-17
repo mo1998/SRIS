@@ -3,6 +3,13 @@ import axios from 'axios'
 const API_URL = '/api'
 
 export const api = {
+  // Users and organization
+  users: {
+    getMyOrganization: () => axios.get(`${API_URL}/users/me/organization`),
+    getMyMemberships: () => axios.get(`${API_URL}/users/me/memberships`),
+    addMembership: (data: { email: string; role: string }) => axios.post(`${API_URL}/users/me/memberships`, data)
+  },
+
   // Interviews
   interviews: {
     create: (data: any) => axios.post(`${API_URL}/interviews/`, data),

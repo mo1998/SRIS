@@ -1,11 +1,18 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Button, Table, Badge } from 'react-bootstrap'
+import { Alert, Card, Row, Col, Button, Table, Badge, Form } from 'react-bootstrap'
 import { api } from '../services/api'
 import { Link } from 'react-router-dom'
-import { FiPlus, FiUsers, FiCheckCircle, FiXCircle, FiEye } from 'react-icons/fi'
+import { FiPlus, FiUsers, FiCheckCircle, FiXCircle, FiEye, FiUserPlus } from 'react-icons/fi'
 
 const EmployerDashboard: React.FC = () => {
   const [interviews, setInterviews] = useState<any[]>([])
+  const [organization, setOrganization] = useState<any>(null)
+  const [memberships, setMemberships] = useState<any[]>([])
+  const [memberEmail, setMemberEmail] = useState('')
+  const [memberRole, setMemberRole] = useState('reviewer')
+  const [teamError, setTeamError] = useState('')
+  const [teamMessage, setTeamMessage] = useState('')
+  const [addingMember, setAddingMember] = useState(false)
   const [loading, setLoading] = useState(true)
   
   useEffect(() => {
@@ -14,12 +21,37 @@ const EmployerDashboard: React.FC = () => {
   
   const loadInterviews = async () => {
     try {
-      const response = await api.interviews.list()
-      setInterviews(response.data)
+      const [interviewsResponse, organizationResponse, membershipsResponse] = await Promise.all([
+        api.interviews.list(),
+        api.users.getMyOrganization(),
+        api.users.getMyMemberships()
+      ])
+      setInterviews(interviewsResponse.data)
+      setOrganization(organizationResponse.data)
+      setMemberships(membershipsResponse.data)
     } catch (error) {
-      console.error('Failed to load interviews:', error)
+      console.error('Failed to load dashboard:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleAddMember = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setTeamError('')
+    setTeamMessage('')
+    setAddingMember(true)
+
+    try {
+      const response = await api.users.addMembership({ email: memberEmail, role: memberRole })
+      setMemberships((current) => [...current, response.data])
+      setMemberEmail('')
+      setMemberRole('reviewer')
+      setTeamMessage('Team member added')
+    } catch (err: any) {
+      setTeamError(err.response?.data?.detail || 'Failed to add team member')
+    } finally {
+      setAddingMember(false)
     }
   }
   
@@ -85,6 +117,92 @@ const EmployerDashboard: React.FC = () => {
               <Card.Text className="display-4">
                 {interviews.filter(i => i.status === 'completed').length}
               </Card.Text>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row className="mb-4">
+        <Col lg={5} className="mb-4 mb-lg-0">
+          <Card className="h-100">
+            <Card.Header>
+              <h5 className="mb-0">Organization</h5>
+            </Card.Header>
+            <Card.Body>
+              {loading ? (
+                <p>Loading...</p>
+              ) : organization ? (
+                <>
+                  <h4>{organization.name}</h4>
+                  <p className="text-muted mb-0">Team members: {memberships.length}</p>
+                </>
+              ) : (
+                <p className="text-muted mb-0">No organization found for this account.</p>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col lg={7}>
+          <Card className="h-100">
+            <Card.Header>
+              <h5 className="mb-0">Team Access</h5>
+            </Card.Header>
+            <Card.Body>
+              {teamError && <Alert variant="danger">{teamError}</Alert>}
+              {teamMessage && <Alert variant="success">{teamMessage}</Alert>}
+
+              <Form onSubmit={handleAddMember} className="mb-3">
+                <Row className="g-2 align-items-end">
+                  <Col md={6}>
+                    <Form.Label>Email</Form.Label>
+                    <Form.Control
+                      type="email"
+                      value={memberEmail}
+                      onChange={(event) => setMemberEmail(event.target.value)}
+                      placeholder="teammate@example.com"
+                      required
+                    />
+                  </Col>
+                  <Col md={4}>
+                    <Form.Label>Role</Form.Label>
+                    <Form.Select value={memberRole} onChange={(event) => setMemberRole(event.target.value)}>
+                      <option value="reviewer">Reviewer</option>
+                      <option value="recruiter">Recruiter</option>
+                      <option value="admin">Admin</option>
+                    </Form.Select>
+                  </Col>
+                  <Col md={2}>
+                    <Button type="submit" variant="outline-primary" className="w-100" disabled={addingMember}>
+                      <FiUserPlus className="me-1" />
+                      Add
+                    </Button>
+                  </Col>
+                </Row>
+              </Form>
+
+              {loading ? (
+                <p>Loading...</p>
+              ) : memberships.length === 0 ? (
+                <p className="text-muted mb-0">No team memberships found.</p>
+              ) : (
+                <Table size="sm" responsive className="mb-0">
+                  <thead>
+                    <tr>
+                      <th>User ID</th>
+                      <th>Role</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memberships.map((membership) => (
+                      <tr key={membership.id}>
+                        <td>{membership.user_id}</td>
+                        <td><Badge bg="secondary">{membership.role}</Badge></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
             </Card.Body>
           </Card>
         </Col>
