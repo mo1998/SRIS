@@ -41,6 +41,47 @@ def test_register_and_login_employer(client):
     assert token
 
 
+def test_employer_registration_creates_owner_organization(client):
+    register_user(client)
+    token = login_user(client)
+
+    organization_response = client.get(
+        "/api/users/me/organization",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert organization_response.status_code == 200, organization_response.text
+    organization = organization_response.json()
+    assert organization["name"] == "SRIS Test Co"
+
+    memberships_response = client.get(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert memberships_response.status_code == 200, memberships_response.text
+    memberships = memberships_response.json()
+    assert len(memberships) == 1
+    assert memberships[0]["role"] == "owner"
+    assert memberships[0]["organization_id"] == organization["id"]
+
+
+def test_employee_registration_does_not_create_organization(client):
+    register_user(client, email="employee@example.com", role="employee")
+    token = login_user(client, email="employee@example.com")
+
+    organization_response = client.get(
+        "/api/users/me/organization",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert organization_response.status_code == 404, organization_response.text
+
+    memberships_response = client.get(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert memberships_response.status_code == 200, memberships_response.text
+    assert memberships_response.json() == []
+
+
 def test_current_user_and_refresh_token(client):
     register_user(client)
     tokens = login_tokens(client)

@@ -7,11 +7,44 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.database import get_db
-from app.models import User
-from app.schemas import UserResponse
+from app.models import TeamMembership, User
+from app.schemas import OrganizationResponse, TeamMembershipResponse, UserResponse
 from app.api.auth import get_current_user, require_role, UserRole
 
 router = APIRouter()
+
+
+@router.get("/me/organization", response_model=OrganizationResponse)
+async def get_my_organization(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get the current user's primary organization"""
+    membership = (
+        db.query(TeamMembership)
+        .filter(TeamMembership.user_id == current_user.id)
+        .order_by(TeamMembership.created_at.asc())
+        .first()
+    )
+
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+
+    return membership.organization
+
+
+@router.get("/me/memberships", response_model=List[TeamMembershipResponse])
+async def get_my_memberships(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List organization memberships for the current user"""
+    return (
+        db.query(TeamMembership)
+        .filter(TeamMembership.user_id == current_user.id)
+        .order_by(TeamMembership.created_at.asc())
+        .all()
+    )
 
 
 @router.get("/", response_model=List[UserResponse])
