@@ -1,7 +1,3 @@
-from app.database import SessionLocal
-from app.models import TeamMembership, TeamRole, User
-
-
 def register_user(client, email="employer@example.com", role="employer"):
     response = client.post(
         "/api/auth/register",
@@ -177,29 +173,17 @@ def test_employer_cannot_access_another_organization_interview(client):
 def test_same_organization_member_can_view_interview(client):
     register_user(client)
     owner_token = login_user(client)
-    owner_org_response = client.get(
-        "/api/users/me/organization",
-        headers={"Authorization": f"Bearer {owner_token}"},
-    )
-    assert owner_org_response.status_code == 200, owner_org_response.text
-    owner_org = owner_org_response.json()
     interview = create_interview(client, owner_token)
 
-    register_user(client, email="reviewer@example.com")
+    register_user(client, email="reviewer@example.com", role="employee")
     reviewer_token = login_user(client, email="reviewer@example.com")
-    reviewer = current_user(client, reviewer_token)
-
-    db = SessionLocal()
-    try:
-        reviewer_user = db.query(User).filter(User.id == reviewer["id"]).first()
-        db.add(TeamMembership(
-            organization_id=owner_org["id"],
-            user_id=reviewer_user.id,
-            role=TeamRole.REVIEWER,
-        ))
-        db.commit()
-    finally:
-        db.close()
+    add_member_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "reviewer@example.com", "role": "reviewer"},
+    )
+    assert add_member_response.status_code == 201, add_member_response.text
+    assert add_member_response.json()["role"] == "reviewer"
 
     response = client.get(
         f"/api/interviews/{interview['id']}",
@@ -208,3 +192,47 @@ def test_same_organization_member_can_view_interview(client):
 
     assert response.status_code == 200, response.text
     assert response.json()["id"] == interview["id"]
+
+
+def test_non_admin_member_cannot_add_organization_members(client):
+    register_user(client)
+    owner_token = login_user(client)
+
+    register_user(client, email="reviewer@example.com", role="employee")
+    reviewer_token = login_user(client, email="reviewer@example.com")
+    add_reviewer_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "reviewer@example.com", "role": "reviewer"},
+    )
+    assert add_reviewer_response.status_code == 201, add_reviewer_response.text
+
+    register_user(client, email="candidate@example.com", role="employee")
+    response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+        json={"email": "candidate@example.com", "role": "reviewer"},
+    )
+
+    assert response.status_code == 403, response.text
+
+
+def test_duplicate_organization_membership_is_rejected(client):
+    register_user(client)
+    owner_token = login_user(client)
+    register_user(client, email="reviewer@example.com", role="employee")
+
+    first_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "reviewer@example.com", "role": "reviewer"},
+    )
+    assert first_response.status_code == 201, first_response.text
+
+    duplicate_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "reviewer@example.com", "role": "reviewer"},
+    )
+
+    assert duplicate_response.status_code == 400, duplicate_response.text
