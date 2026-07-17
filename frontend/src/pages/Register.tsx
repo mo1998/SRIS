@@ -4,13 +4,15 @@ import { useAuth } from '../store/authStore'
 import { Link, useNavigate } from 'react-router-dom'
 import { FiUserPlus } from 'react-icons/fi'
 
+type RegisterRole = 'employer' | 'employee'
+
 const Register: React.FC = () => {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     confirmPassword: '',
     full_name: '',
-    role: 'employee' as 'employer' | 'employee',
+    role: 'employee' as RegisterRole,
     company_name: ''
   })
   const [error, setError] = useState('')
@@ -81,7 +83,7 @@ const Register: React.FC = () => {
               <Form.Label>Role</Form.Label>
               <Form.Select
                 value={formData.role}
-                onChange={(e) => setFormData({...formData, role: e.target.value})}
+                onChange={(e) => setFormData({...formData, role: e.target.value as RegisterRole})}
               >
                 <option value="employee">Employee/Candidate</option>
                 <option value="employer">Employer</option>

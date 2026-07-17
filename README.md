@@ -105,7 +105,8 @@ SRIS/
 ### Prerequisites
 
 **For Local Development:**
-- Python 3.10+
+- Conda
+- Python 3.11 through the `sris` Conda environment
 - Node.js 18+
 - PostgreSQL 14+
 - Redis (optional)
@@ -115,6 +116,35 @@ SRIS/
 - Docker Compose V2+
 - 4GB+ RAM
 - 20GB+ disk space
+
+---
+
+### Local Development Workflow
+
+Use the dedicated Conda environment for backend work:
+
+```bash
+conda activate sris
+cd backend
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+Run frontend checks from the repository root:
+
+```bash
+npm install --prefix frontend
+npm run test:run --prefix frontend
+npm run build --prefix frontend
+```
+
+Validate Docker Compose configuration without starting services:
+
+```bash
+docker compose config
+```
+
+Optional ML and media dependencies live in `backend/requirements-ml.txt`. Install them only when implementing approved local AI/media features. Model weights must not be downloaded or run without explicit approval.
 
 ---
 

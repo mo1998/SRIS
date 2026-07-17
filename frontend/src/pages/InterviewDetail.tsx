@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Card, Row, Col, Button, Table, Badge, Modal, Form, Alert, Tabs, Tab } from 'react-bootstrap'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../services/api'
-import { FiMail, FiDownload, FiEye, FiActivate } from 'react-icons/fi'
+import { FiMail, FiDownload, FiEye, FiActivity } from 'react-icons/fi'
 
 const InterviewDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -142,7 +142,7 @@ const InterviewDetail: React.FC = () => {
         <div className="d-flex gap-2">
           {interview.status === 'draft' && (
             <Button variant="success" onClick={handleActivate}>
-              <FiActivate className="me-2" />
+              <FiActivity className="me-2" />
               Activate Interview
             </Button>
           )}
