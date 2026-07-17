@@ -44,6 +44,11 @@ class TeamMembershipResponse(BaseModel):
         from_attributes = True
 
 
+class TeamMembershipCreate(BaseModel):
+    email: EmailStr
+    role: TeamRoleEnum = TeamRoleEnum.reviewer
+
+
 class UserBase(BaseModel):
     email: EmailStr
     full_name: str
