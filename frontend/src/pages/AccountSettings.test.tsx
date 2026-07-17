@@ -6,6 +6,7 @@ import AccountSettings from './AccountSettings'
 const apiMock = vi.hoisted(() => ({
   users: {
     updateMe: vi.fn(),
+    changePassword: vi.fn(),
   },
 }))
 
@@ -31,6 +32,7 @@ vi.mock('../store/authStore', () => ({
 describe('AccountSettings', () => {
   beforeEach(() => {
     apiMock.users.updateMe.mockReset()
+    apiMock.users.changePassword.mockReset()
     authMock.updateUser.mockReset()
   })
 
@@ -67,5 +69,36 @@ describe('AccountSettings', () => {
       role: 'employer',
       phone: '+15551234567',
     })
+  })
+
+  it('submits password changes', async () => {
+    apiMock.users.changePassword.mockResolvedValue({ data: null })
+
+    render(<AccountSettings />)
+
+    await userEvent.type(screen.getByLabelText(/^current password$/i), 'strong-password')
+    await userEvent.type(screen.getByLabelText(/^new password$/i), 'new-strong-password')
+    await userEvent.type(screen.getByLabelText(/^confirm new password$/i), 'new-strong-password')
+    await userEvent.click(screen.getByRole('button', { name: /update password/i }))
+
+    await waitFor(() => {
+      expect(apiMock.users.changePassword).toHaveBeenCalledWith({
+        current_password: 'strong-password',
+        new_password: 'new-strong-password',
+      })
+    })
+    expect(await screen.findByText('Password updated')).toBeInTheDocument()
+  })
+
+  it('does not submit mismatched new passwords', async () => {
+    render(<AccountSettings />)
+
+    await userEvent.type(screen.getByLabelText(/^current password$/i), 'strong-password')
+    await userEvent.type(screen.getByLabelText(/^new password$/i), 'new-strong-password')
+    await userEvent.type(screen.getByLabelText(/^confirm new password$/i), 'different-password')
+    await userEvent.click(screen.getByRole('button', { name: /update password/i }))
+
+    expect(await screen.findByText('Passwords do not match')).toBeInTheDocument()
+    expect(apiMock.users.changePassword).not.toHaveBeenCalled()
   })
 })
