@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Alert, Button, Card, Col, Form, Row } from 'react-bootstrap'
 import { api } from '../services/api'
 import { useAuth } from '../store/authStore'
-import { FiSave, FiUser } from 'react-icons/fi'
+import { FiLock, FiSave, FiUser } from 'react-icons/fi'
 
 const AccountSettings: React.FC = () => {
   const { user, updateUser } = useAuth()
@@ -11,6 +11,12 @@ const AccountSettings: React.FC = () => {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
 
   useEffect(() => {
     setFullName(user?.full_name || '')
@@ -37,10 +43,38 @@ const AccountSettings: React.FC = () => {
     }
   }
 
+  const handlePasswordSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setPasswordError('')
+    setPasswordMessage('')
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match')
+      return
+    }
+
+    setChangingPassword(true)
+
+    try {
+      await api.users.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      })
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setPasswordMessage('Password updated')
+    } catch (err: any) {
+      setPasswordError(err.response?.data?.detail || 'Failed to update password')
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
   return (
     <Row className="justify-content-center">
       <Col lg={7} xl={6}>
-        <Card>
+        <Card className="mb-4">
           <Card.Header>
             <h1 className="h4 mb-0">
               <FiUser className="me-2" />
@@ -83,6 +117,58 @@ const AccountSettings: React.FC = () => {
               <Button type="submit" disabled={saving}>
                 <FiSave className="me-2" />
                 {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </Form>
+          </Card.Body>
+        </Card>
+
+        <Card>
+          <Card.Header>
+            <h2 className="h5 mb-0">
+              <FiLock className="me-2" />
+              Change Password
+            </h2>
+          </Card.Header>
+          <Card.Body>
+            {passwordError && <Alert variant="danger">{passwordError}</Alert>}
+            {passwordMessage && <Alert variant="success">{passwordMessage}</Alert>}
+
+            <Form onSubmit={handlePasswordSubmit}>
+              <Form.Group className="mb-3" controlId="account-current-password">
+                <Form.Label>Current Password</Form.Label>
+                <Form.Control
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  required
+                />
+              </Form.Group>
+
+              <Form.Group className="mb-3" controlId="account-new-password">
+                <Form.Label>New Password</Form.Label>
+                <Form.Control
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  minLength={8}
+                  required
+                />
+              </Form.Group>
+
+              <Form.Group className="mb-4" controlId="account-confirm-password">
+                <Form.Label>Confirm New Password</Form.Label>
+                <Form.Control
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  minLength={8}
+                  required
+                />
+              </Form.Group>
+
+              <Button type="submit" variant="outline-primary" disabled={changingPassword}>
+                <FiLock className="me-2" />
+                {changingPassword ? 'Updating...' : 'Update Password'}
               </Button>
             </Form>
           </Card.Body>

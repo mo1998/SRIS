@@ -8,8 +8,8 @@ from typing import List
 
 from app.database import get_db
 from app.models import TeamMembership, TeamRole, User
-from app.schemas import OrganizationResponse, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
-from app.api.auth import get_current_user, require_role, UserRole
+from app.schemas import OrganizationResponse, PasswordChange, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
+from app.api.auth import get_current_user, get_password_hash, require_role, UserRole, verify_password
 
 router = APIRouter()
 
@@ -87,6 +87,20 @@ async def update_current_user(
     db.refresh(current_user)
 
     return current_user
+
+
+@router.post("/me/password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_current_user_password(
+    password_data: PasswordChange,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Change the current user's password"""
+    if not verify_password(password_data.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+
+    current_user.hashed_password = get_password_hash(password_data.new_password)
+    db.commit()
 
 
 @router.post("/me/memberships", response_model=TeamMembershipResponse, status_code=status.HTTP_201_CREATED)

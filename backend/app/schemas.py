@@ -66,6 +66,11 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
 
 
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+
+
 class UserResponse(UserBase):
     id: int
     is_active: bool

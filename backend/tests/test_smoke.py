@@ -166,6 +166,43 @@ def test_current_user_can_update_profile(client):
     assert me_response.json()["full_name"] == "Updated Employer"
 
 
+def test_current_user_can_change_password(client):
+    register_user(client)
+    token = login_user(client)
+
+    response = client.post(
+        "/api/users/me/password",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"current_password": "strong-password", "new_password": "new-strong-password"},
+    )
+    assert response.status_code == 204, response.text
+
+    old_login_response = client.post(
+        "/api/auth/login",
+        data={"username": "employer@example.com", "password": "strong-password"},
+    )
+    assert old_login_response.status_code == 401, old_login_response.text
+
+    new_login_response = client.post(
+        "/api/auth/login",
+        data={"username": "employer@example.com", "password": "new-strong-password"},
+    )
+    assert new_login_response.status_code == 200, new_login_response.text
+
+
+def test_current_user_password_change_rejects_wrong_current_password(client):
+    register_user(client)
+    token = login_user(client)
+
+    response = client.post(
+        "/api/users/me/password",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"current_password": "wrong-password", "new_password": "new-strong-password"},
+    )
+
+    assert response.status_code == 400, response.text
+
+
 def test_employer_can_create_interview(client):
     register_user(client)
     token = login_user(client)

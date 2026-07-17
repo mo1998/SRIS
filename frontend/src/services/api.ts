@@ -6,6 +6,7 @@ export const api = {
   // Users and organization
   users: {
     updateMe: (data: { full_name?: string; phone?: string }) => axios.patch(`${API_URL}/users/me`, data),
+    changePassword: (data: { current_password: string; new_password: string }) => axios.post(`${API_URL}/users/me/password`, data),
     getMyOrganization: () => axios.get(`${API_URL}/users/me/organization`),
     getMyMemberships: () => axios.get(`${API_URL}/users/me/memberships`),
     addMembership: (data: { email: string; role: string }) => axios.post(`${API_URL}/users/me/memberships`, data)
