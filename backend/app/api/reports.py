@@ -21,7 +21,7 @@ router = APIRouter()
 @router.get("/interview/{interview_id}", response_model=InterviewReport)
 async def get_interview_report(
     interview_id: int,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Get ranked candidate report for an interview (employer view)"""
@@ -77,7 +77,7 @@ async def get_candidate_report(
 @router.get("/interview/{interview_id}/pdf")
 async def download_interview_report_pdf(
     interview_id: int,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Download interview report as PDF"""

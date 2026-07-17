@@ -28,7 +28,7 @@ def generate_unique_token() -> str:
 async def create_invitation(
     invitation_data: InvitationCreate,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Create an invitation for a candidate"""
@@ -89,7 +89,7 @@ async def create_invitation(
 async def create_bulk_invitations(
     invitations: List[InvitationCreate],
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Create multiple invitations at once"""
@@ -159,7 +159,7 @@ async def create_bulk_invitations(
 @router.get("/{interview_id}", response_model=List[InvitationResponse])
 async def list_interview_invitations(
     interview_id: int,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """List all invitations for an interview"""
@@ -209,7 +209,7 @@ async def verify_invitation_token(
 async def resend_invitation(
     invitation_id: int,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Resend an invitation email"""

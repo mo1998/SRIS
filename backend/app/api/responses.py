@@ -245,7 +245,7 @@ async def complete_interview_response(
 @router.get("/interview/{interview_id}", response_model=List[CandidateResponseSummary])
 async def list_interview_responses(
     interview_id: int,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """List all responses for an interview (employer only)"""

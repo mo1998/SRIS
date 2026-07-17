@@ -42,6 +42,13 @@ def create_refresh_token(data: dict) -> str:
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
+def get_token_subject(payload: dict) -> int:
+    subject = payload.get("sub")
+    if subject is None:
+        raise ValueError("Missing token subject")
+    return int(subject)
+
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     """Get current authenticated user"""
     credentials_exception = HTTPException(
@@ -51,11 +58,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     )
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        user_id: int = payload.get("sub")
+        user_id = get_token_subject(payload)
         token_type: str = payload.get("type")
-        if user_id is None or token_type != "access":
+        if token_type != "access":
             raise credentials_exception
-    except JWTError:
+    except (JWTError, ValueError):
         raise credentials_exception
     
     user = db.query(User).filter(User.id == user_id).first()
@@ -122,8 +129,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
             detail="Account is deactivated"
         )
     
-    access_token = create_access_token(data={"sub": user.id, "role": user.role.value})
-    refresh_token = create_refresh_token(data={"sub": user.id})
+    access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
     
     return {
         "access_token": access_token,
@@ -143,19 +150,19 @@ async def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
     """Refresh access token"""
     try:
         payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        user_id: int = payload.get("sub")
+        user_id = get_token_subject(payload)
         token_type: str = payload.get("type")
-        if user_id is None or token_type != "refresh":
+        if token_type != "refresh":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
-    except JWTError:
+    except (JWTError, ValueError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     
-    new_access_token = create_access_token(data={"sub": user.id, "role": user.role.value})
-    new_refresh_token = create_refresh_token(data={"sub": user.id})
+    new_access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
+    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
     
     return {
         "access_token": new_access_token,

@@ -18,7 +18,7 @@ router = APIRouter()
 @router.post("/", response_model=InterviewResponse, status_code=status.HTTP_201_CREATED)
 async def create_interview(
     interview_data: InterviewCreate,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Create a new interview with questions"""
@@ -58,7 +58,7 @@ async def create_interview(
 async def list_employer_interviews(
     skip: int = 0,
     limit: int = 100,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """List all interviews for current employer"""
@@ -99,7 +99,7 @@ async def update_interview(
     duration_minutes: int = None,
     max_attempts: int = None,
     pass_score: float = None,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Update interview details"""
@@ -134,7 +134,7 @@ async def update_interview(
 @router.post("/{interview_id}/activate", response_model=InterviewResponse)
 async def activate_interview(
     interview_id: int,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Activate interview (make it available for candidates)"""
@@ -159,7 +159,7 @@ async def activate_interview(
 @router.post("/{interview_id}/complete", response_model=InterviewResponse)
 async def complete_interview(
     interview_id: int,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Complete interview (no more candidates can join)"""
@@ -181,7 +181,7 @@ async def complete_interview(
 @router.delete("/{interview_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_interview(
     interview_id: int,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Delete an interview"""
@@ -202,7 +202,7 @@ async def delete_interview(
 async def add_question(
     interview_id: int,
     question_data: QuestionResponse,
-    current_user: User = Depends(require_role(UserRole.employer)),
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
     """Add a question to an interview"""

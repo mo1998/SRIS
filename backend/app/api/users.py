@@ -18,7 +18,7 @@ router = APIRouter()
 async def list_users(
     skip: int = 0,
     limit: int = 100,
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
     db: Session = Depends(get_db)
 ):
     """List all users (admin only)"""
