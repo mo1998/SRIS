@@ -5,6 +5,7 @@ const API_URL = '/api'
 export const api = {
   // Users and organization
   users: {
+    updateMe: (data: { full_name?: string; phone?: string }) => axios.patch(`${API_URL}/users/me`, data),
     getMyOrganization: () => axios.get(`${API_URL}/users/me/organization`),
     getMyMemberships: () => axios.get(`${API_URL}/users/me/memberships`),
     addMembership: (data: { email: string; role: string }) => axios.post(`${API_URL}/users/me/memberships`, data)

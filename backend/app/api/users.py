@@ -8,7 +8,7 @@ from typing import List
 
 from app.database import get_db
 from app.models import TeamMembership, TeamRole, User
-from app.schemas import OrganizationResponse, TeamMembershipCreate, TeamMembershipResponse, UserResponse
+from app.schemas import OrganizationResponse, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
 from app.api.auth import get_current_user, require_role, UserRole
 
 router = APIRouter()
@@ -69,6 +69,24 @@ async def get_my_memberships(
         .order_by(TeamMembership.created_at.asc())
         .all()
     )
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_current_user(
+    user_data: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update the current user's profile"""
+    if user_data.full_name is not None:
+        current_user.full_name = user_data.full_name
+    if user_data.phone is not None:
+        current_user.phone = user_data.phone
+
+    db.commit()
+    db.refresh(current_user)
+
+    return current_user
 
 
 @router.post("/me/memberships", response_model=TeamMembershipResponse, status_code=status.HTTP_201_CREATED)

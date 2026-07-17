@@ -10,6 +10,7 @@ import InterviewDetail from './pages/InterviewDetail'
 import CandidateReport from './pages/CandidateReport'
 import InterviewRoom from './pages/InterviewRoom'
 import MyResults from './pages/MyResults'
+import AccountSettings from './pages/AccountSettings'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; roles?: string[] }> = ({ children, roles }) => {
   const { isAuthenticated, isLoading, user } = useAuth()
@@ -78,6 +79,12 @@ const AppRoutes: React.FC = () => {
           <Route path="/employer/candidate/:responseId" element={
             <ProtectedRoute roles={['employer']}>
               <CandidateReport />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/account/settings" element={
+            <ProtectedRoute>
+              <AccountSettings />
             </ProtectedRoute>
           } />
           

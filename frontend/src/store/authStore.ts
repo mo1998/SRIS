@@ -8,6 +8,7 @@ interface User {
   full_name: string
   role: 'employer' | 'employee' | 'admin'
   company_name?: string
+  phone?: string
 }
 
 interface AuthState {
@@ -16,6 +17,7 @@ interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
   initializeAuth: () => Promise<void>
+  updateUser: (user: User) => void
   login: (email: string, password: string) => Promise<void>
   register: (data: any) => Promise<void>
   logout: () => void
@@ -61,6 +63,10 @@ export const useAuth = create<AuthState>((set) => ({
       clearTokens()
       set({ user: null, token: null, isAuthenticated: false, isLoading: false })
     }
+  },
+
+  updateUser: (user: User) => {
+    set({ user })
   },
   
   login: async (email: string, password: string) => {
