@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import axios from 'axios'
+import { useEffect } from 'react'
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
 interface User {
   id: number
@@ -13,15 +14,54 @@ interface AuthState {
   user: User | null
   token: string | null
   isAuthenticated: boolean
+  isLoading: boolean
+  initializeAuth: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   register: (data: any) => Promise<void>
   logout: () => void
 }
 
+type RetryRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean }
+
+const getStoredToken = () => localStorage.getItem('token')
+const getStoredRefreshToken = () => localStorage.getItem('refreshToken')
+
+const storeTokens = (accessToken: string, refreshToken: string) => {
+  localStorage.setItem('token', accessToken)
+  localStorage.setItem('refreshToken', refreshToken)
+}
+
+const clearTokens = () => {
+  localStorage.removeItem('token')
+  localStorage.removeItem('refreshToken')
+}
+
 export const useAuth = create<AuthState>((set) => ({
   user: null,
-  token: localStorage.getItem('token'),
-  isAuthenticated: !!localStorage.getItem('token'),
+  token: getStoredToken(),
+  isAuthenticated: false,
+  isLoading: !!getStoredToken(),
+
+  initializeAuth: async () => {
+    const token = getStoredToken()
+    if (!token) {
+      set({ user: null, token: null, isAuthenticated: false, isLoading: false })
+      return
+    }
+
+    try {
+      const response = await axios.get('/api/auth/me')
+      set({
+        user: response.data,
+        token,
+        isAuthenticated: true,
+        isLoading: false
+      })
+    } catch {
+      clearTokens()
+      set({ user: null, token: null, isAuthenticated: false, isLoading: false })
+    }
+  },
   
   login: async (email: string, password: string) => {
     const formData = new FormData()
@@ -31,8 +71,7 @@ export const useAuth = create<AuthState>((set) => ({
     const response = await axios.post('/api/auth/login', formData)
     const { access_token, refresh_token } = response.data
     
-    localStorage.setItem('token', access_token)
-    localStorage.setItem('refreshToken', refresh_token)
+    storeTokens(access_token, refresh_token)
     
     // Get user info
     const userResponse = await axios.get('/api/auth/me', {
@@ -42,7 +81,8 @@ export const useAuth = create<AuthState>((set) => ({
     set({
       user: userResponse.data,
       token: access_token,
-      isAuthenticated: true
+      isAuthenticated: true,
+      isLoading: false
     })
   },
   
@@ -58,27 +98,26 @@ export const useAuth = create<AuthState>((set) => ({
     const loginResponse = await axios.post('/api/auth/login', formData)
     const { access_token, refresh_token } = loginResponse.data
     
-    localStorage.setItem('token', access_token)
-    localStorage.setItem('refreshToken', refresh_token)
+    storeTokens(access_token, refresh_token)
     
     set({
       user: user,
       token: access_token,
-      isAuthenticated: true
+      isAuthenticated: true,
+      isLoading: false
     })
   },
   
   logout: () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('refreshToken')
-    set({ user: null, token: null, isAuthenticated: false })
+    clearTokens()
+    set({ user: null, token: null, isAuthenticated: false, isLoading: false })
   }
 }))
 
 // Axios interceptor for auth
 axios.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -87,6 +126,42 @@ axios.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
+axios.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as RetryRequestConfig | undefined
+    const refreshToken = getStoredRefreshToken()
+    const isRefreshRequest = originalRequest?.url?.includes('/api/auth/refresh')
+
+    if (error.response?.status !== 401 || !originalRequest || originalRequest._retry || !refreshToken || isRefreshRequest) {
+      return Promise.reject(error)
+    }
+
+    originalRequest._retry = true
+
+    try {
+      const response = await axios.post('/api/auth/refresh', null, {
+        params: { refresh_token: refreshToken }
+      })
+      const { access_token, refresh_token } = response.data
+      storeTokens(access_token, refresh_token)
+      useAuth.setState({ token: access_token, isAuthenticated: true })
+      originalRequest.headers.Authorization = `Bearer ${access_token}`
+      return axios(originalRequest)
+    } catch (refreshError) {
+      clearTokens()
+      useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+      return Promise.reject(refreshError)
+    }
+  }
+)
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  const initializeAuth = useAuth((state) => state.initializeAuth)
+
+  useEffect(() => {
+    initializeAuth()
+  }, [initializeAuth])
+
   return children
 }

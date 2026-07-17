@@ -12,7 +12,11 @@ import InterviewRoom from './pages/InterviewRoom'
 import MyResults from './pages/MyResults'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; roles?: string[] }> = ({ children, roles }) => {
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, isLoading, user } = useAuth()
+
+  if (isLoading) {
+    return <div>Loading...</div>
+  }
   
   if (!isAuthenticated) {
     return <Navigate to="/login" />
@@ -26,7 +30,16 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; roles?: string[] }> 
 }
 
 const AppRoutes: React.FC = () => {
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, isLoading, user } = useAuth()
+
+  if (isLoading) {
+    return (
+      <Router>
+        <Navbar />
+        <div className="container mt-4">Loading...</div>
+      </Router>
+    )
+  }
   
   return (
     <Router>
