@@ -1,0 +1,20 @@
+# Optional AI/ML dependencies.
+# Install only when implementing local AI/media features. These packages do not
+# include model weights, but several are large and may need native libraries.
+
+openai==1.10.0
+opencv-python==4.9.0.80
+mediapipe==0.10.9
+deepface==0.0.90
+tensorflow==2.15.0
+noisereduce==3.0.0
+numpy==1.26.3
+scipy==1.12.0
+
+# Audio Processing
+pyaudio==0.2.14
+librosa==0.10.1
+soundfile==0.12.1
+
+# WebRTC
+aiortc==1.7.0
