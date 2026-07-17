@@ -1,0 +1,37 @@
+# Git
+.git/
+.gitignore
+
+# Docker
+docker-compose*.yml
+**/Dockerfile
+**/.dockerignore
+**/nginx.conf
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Backups
+backups/
+*.sql
+*.sql.gz
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+LICENSE
+
+# Scripts
+deploy.sh
+backup.sh

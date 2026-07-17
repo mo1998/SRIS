@@ -1,0 +1,49 @@
+# Core Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy==2.0.25
+alembic==1.13.1
+psycopg2-binary==2.9.9
+redis==5.0.1
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
+
+# AI/ML
+openai==1.10.0
+opencv-python==4.9.0.80
+mediapipe==0.10.9
+deepface==0.0.90
+tensorflow==2.15.0
+noisereduce==3.0.0
+numpy==1.26.3
+scipy==1.12.0
+
+# Audio Processing
+pyaudio==0.2.14
+librosa==0.10.1
+soundfile==0.12.1
+
+# WebRTC
+aiortc==1.7.0
+
+# Email
+fastapi-mail==1.4.1
+aiosmtplib==3.0.1
+
+# Reporting
+reportlab==4.0.9
+fpdf2==2.7.7
+
+# Utilities
+python-dotenv==1.0.0
+httpx==0.26.0
+pillow==10.2.0
+datetime
