@@ -61,6 +61,11 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
 
 
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = Field(None, min_length=1)
+    phone: Optional[str] = None
+
+
 class UserResponse(UserBase):
     id: int
     is_active: bool

@@ -50,6 +50,9 @@ const Navbar: React.FC = () => {
                   <NavDropdown.Item>{user?.email}</NavDropdown.Item>
                   <NavDropdown.Item>{user?.role}</NavDropdown.Item>
                   <NavDropdown.Divider />
+                  <NavDropdown.Item as={Link} to="/account/settings">
+                    Account Settings
+                  </NavDropdown.Item>
                   <NavDropdown.Item onClick={handleLogout}>
                     <FiLogOut className="me-1" /> Logout
                   </NavDropdown.Item>

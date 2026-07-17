@@ -89,4 +89,23 @@ describe('auth store', () => {
       headers: { Authorization: 'Bearer new-access-token' },
     })
   })
+
+  it('updates the current user in auth state', async () => {
+    const { useAuth } = await importAuthStore()
+
+    act(() => {
+      useAuth.getState().updateUser({
+        id: 1,
+        email: 'employer@example.com',
+        full_name: 'Updated Employer',
+        role: 'employer',
+        phone: '+15551234567',
+      })
+    })
+
+    expect(useAuth.getState().user).toMatchObject({
+      full_name: 'Updated Employer',
+      phone: '+15551234567',
+    })
+  })
 })

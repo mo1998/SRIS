@@ -143,6 +143,29 @@ def test_current_user_and_refresh_token(client):
     assert refreshed_me_response.status_code == 200, refreshed_me_response.text
 
 
+def test_current_user_can_update_profile(client):
+    register_user(client)
+    token = login_user(client)
+
+    response = client.patch(
+        "/api/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"full_name": "Updated Employer", "phone": "+15551234567"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["full_name"] == "Updated Employer"
+    assert body["phone"] == "+15551234567"
+
+    me_response = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert me_response.status_code == 200, me_response.text
+    assert me_response.json()["full_name"] == "Updated Employer"
+
+
 def test_employer_can_create_interview(client):
     register_user(client)
     token = login_user(client)
