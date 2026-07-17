@@ -2,17 +2,28 @@
 Database Models
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, Enum, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
 from app.database import Base
 
 
+def enum_values(enum_class):
+    return [item.value for item in enum_class]
+
+
 class UserRole(enum.Enum):
     EMPLOYER = "employer"
     EMPLOYEE = "employee"
     ADMIN = "admin"
+
+
+class TeamRole(enum.Enum):
+    OWNER = "owner"
+    ADMIN = "admin"
+    RECRUITER = "recruiter"
+    REVIEWER = "reviewer"
 
 
 class InterviewStatus(enum.Enum):
@@ -30,6 +41,17 @@ class InvitationStatus(enum.Enum):
     EXPIRED = "expired"
 
 
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    memberships = relationship("TeamMembership", back_populates="organization", cascade="all, delete-orphan")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -37,7 +59,7 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.EMPLOYEE)
+    role = Column(Enum(UserRole, values_callable=enum_values), default=UserRole.EMPLOYEE)
     company_name = Column(String(255), nullable=True)  # For employers
     phone = Column(String(50), nullable=True)
     is_active = Column(Boolean, default=True)
@@ -47,6 +69,21 @@ class User(Base):
     # Relationships
     created_interviews = relationship("Interview", back_populates="employer", foreign_keys="Interview.employer_id")
     responses = relationship("CandidateResponse", back_populates="candidate")
+    team_memberships = relationship("TeamMembership", back_populates="user", cascade="all, delete-orphan")
+
+
+class TeamMembership(Base):
+    __tablename__ = "team_memberships"
+    __table_args__ = (UniqueConstraint("organization_id", "user_id", name="uq_team_membership_org_user"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    role = Column(Enum(TeamRole, values_callable=enum_values), default=TeamRole.REVIEWER, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="memberships")
+    user = relationship("User", back_populates="team_memberships")
 
 
 class Interview(Base):
@@ -56,7 +93,7 @@ class Interview(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     employer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    status = Column(Enum(InterviewStatus), default=InterviewStatus.DRAFT)
+    status = Column(Enum(InterviewStatus, values_callable=enum_values), default=InterviewStatus.DRAFT)
     duration_minutes = Column(Integer, default=30)
     max_attempts = Column(Integer, default=1)
     pass_score = Column(Float, default=70.0)  # Minimum score to pass
@@ -96,7 +133,7 @@ class Invitation(Base):
     candidate_email = Column(String(255), nullable=False)
     candidate_name = Column(String(255), nullable=False)
     unique_token = Column(String(255), unique=True, index=True, nullable=False)
-    status = Column(Enum(InvitationStatus), default=InvitationStatus.PENDING)
+    status = Column(Enum(InvitationStatus, values_callable=enum_values), default=InvitationStatus.PENDING)
     sent_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

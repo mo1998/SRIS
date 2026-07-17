@@ -10,7 +10,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.database import get_db
-from app.models import User, UserRole
+from app.models import Organization, TeamMembership, TeamRole, User, UserRole
 from app.schemas import UserCreate, UserResponse, Token
 from app.config import settings
 
@@ -105,6 +105,20 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     )
     
     db.add(new_user)
+    db.flush()
+
+    if new_user.role == UserRole.EMPLOYER:
+        organization = Organization(
+            name=user_data.company_name or f"{user_data.full_name}'s Organization"
+        )
+        db.add(organization)
+        db.flush()
+        db.add(TeamMembership(
+            organization_id=organization.id,
+            user_id=new_user.id,
+            role=TeamRole.OWNER
+        ))
+
     db.commit()
     db.refresh(new_user)
     

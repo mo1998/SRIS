@@ -15,6 +15,35 @@ class UserRoleEnum(str, Enum):
     admin = "admin"
 
 
+class TeamRoleEnum(str, Enum):
+    owner = "owner"
+    admin = "admin"
+    recruiter = "recruiter"
+    reviewer = "reviewer"
+
+
+class OrganizationResponse(BaseModel):
+    id: int
+    name: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TeamMembershipResponse(BaseModel):
+    id: int
+    organization_id: int
+    user_id: int
+    role: TeamRoleEnum
+    created_at: datetime
+    organization: Optional[OrganizationResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
 class UserBase(BaseModel):
     email: EmailStr
     full_name: str
