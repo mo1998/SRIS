@@ -13,6 +13,10 @@ const InterviewDetail: React.FC = () => {
   const [inviteData, setInviteData] = useState({ candidate_email: '', candidate_name: '' })
   const [bulkInvites, setBulkInvites] = useState('')
   const [bulkInviteErrors, setBulkInviteErrors] = useState<string[]>([])
+  const [invitationMessage, setInvitationMessage] = useState('')
+  const [emailPreview, setEmailPreview] = useState<any>(null)
+  const [previewError, setPreviewError] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [inviteTab, setInviteTab] = useState('single')
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [isEditingQuestions, setIsEditingQuestions] = useState(false)
@@ -198,10 +202,12 @@ const InterviewDetail: React.FC = () => {
     try {
       await api.invitations.create({
         interview_id: parseInt(id!),
-        ...inviteData
+        ...inviteData,
+        custom_message: invitationMessage.trim() || undefined,
       })
       setShowInviteModal(false)
       setInviteData({ candidate_email: '', candidate_name: '' })
+      setInvitationMessage('')
       loadData()
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to send invitation')
@@ -216,7 +222,7 @@ const InterviewDetail: React.FC = () => {
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)
-    const parsedInvitations: Array<{ interview_id: number; candidate_email: string; candidate_name: string }> = []
+    const parsedInvitations: Array<{ interview_id: number; candidate_email: string; candidate_name: string; custom_message?: string }> = []
     const validationErrors: string[] = []
     const seenEmails = new Set<string>()
 
@@ -247,7 +253,12 @@ const InterviewDetail: React.FC = () => {
       }
 
       if (!rowHasErrors) {
-        parsedInvitations.push({ interview_id: parseInt(id!), candidate_email: email, candidate_name: name })
+        parsedInvitations.push({
+          interview_id: parseInt(id!),
+          candidate_email: email,
+          candidate_name: name,
+          custom_message: invitationMessage.trim() || undefined,
+        })
       }
     })
 
@@ -263,6 +274,7 @@ const InterviewDetail: React.FC = () => {
     try {
       await api.invitations.createBulk(parsedInvitations)
       setBulkInvites('')
+      setInvitationMessage('')
       setInviteTab('list')
       loadData()
     } catch (err: any) {
@@ -291,6 +303,31 @@ const InterviewDetail: React.FC = () => {
       loadData()
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to revoke invitation')
+    }
+  }
+
+  const handlePreviewEmail = async () => {
+    setPreviewError('')
+    setPreviewLoading(true)
+
+    try {
+      const response = await api.invitations.preview(parseInt(id!), {
+        candidate_name: inviteData.candidate_name || 'Candidate Name',
+        custom_message: invitationMessage.trim() || undefined,
+      })
+      setEmailPreview(response.data)
+    } catch (err: any) {
+      setPreviewError(err.response?.data?.detail || 'Failed to load email preview')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const handleInviteTabSelect = (tabKey: string | null) => {
+    const nextTab = tabKey || 'single'
+    setInviteTab(nextTab)
+    if (nextTab === 'preview') {
+      handlePreviewEmail()
     }
   }
   
@@ -696,10 +733,10 @@ const InterviewDetail: React.FC = () => {
           <Modal.Title>Invite Candidates</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <Tabs activeKey={inviteTab} onSelect={(k) => setInviteTab(k || 'single')}>
+          <Tabs activeKey={inviteTab} onSelect={handleInviteTabSelect}>
             <Tab eventKey="single" title="Single Invite">
               <Form className="mt-3">
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-3" controlId="single-invite-candidate-name">
                   <Form.Label>Candidate Name</Form.Label>
                   <Form.Control
                     type="text"
@@ -707,12 +744,25 @@ const InterviewDetail: React.FC = () => {
                     onChange={(e) => setInviteData({...inviteData, candidate_name: e.target.value})}
                   />
                 </Form.Group>
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-3" controlId="single-invite-candidate-email">
                   <Form.Label>Candidate Email</Form.Label>
                   <Form.Control
                     type="email"
                     value={inviteData.candidate_email}
                     onChange={(e) => setInviteData({...inviteData, candidate_email: e.target.value})}
+                  />
+                </Form.Group>
+                <Form.Group className="mb-3" controlId="single-invite-message">
+                  <Form.Label>Single Email Message</Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    rows={3}
+                    value={invitationMessage}
+                    onChange={(e) => {
+                      setInvitationMessage(e.target.value)
+                      setEmailPreview(null)
+                    }}
+                    maxLength={1000}
                   />
                 </Form.Group>
                 <Button variant="primary" onClick={handleInvite}>
@@ -744,10 +794,37 @@ const InterviewDetail: React.FC = () => {
                     </ul>
                   </Alert>
                 )}
+                <Form.Group className="mb-3" controlId="bulk-invite-message">
+                  <Form.Label>Bulk Email Message</Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    rows={3}
+                    value={invitationMessage}
+                    onChange={(e) => {
+                      setInvitationMessage(e.target.value)
+                      setEmailPreview(null)
+                    }}
+                    maxLength={1000}
+                  />
+                </Form.Group>
                 <Button variant="primary" onClick={handleBulkInvite}>
                   Send All Invitations
                 </Button>
               </Form>
+            </Tab>
+            <Tab eventKey="preview" title="Email Preview">
+              <div className="mt-3">
+                {previewError && <Alert variant="danger">{previewError}</Alert>}
+                <Button variant="outline-primary" size="sm" onClick={handlePreviewEmail} disabled={previewLoading} className="mb-3">
+                  {previewLoading ? 'Loading Preview...' : 'Refresh Preview'}
+                </Button>
+                {emailPreview && (
+                  <>
+                    <p><strong>Subject:</strong> {emailPreview.subject}</p>
+                    <div className="border rounded bg-light p-3" data-testid="email-preview" dangerouslySetInnerHTML={{ __html: emailPreview.html_body }} />
+                  </>
+                )}
+              </div>
             </Tab>
             <Tab eventKey="list" title="Sent Invitations">
               <Table size="sm" className="mt-3">

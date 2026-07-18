@@ -594,6 +594,26 @@ def test_bulk_invitations_reject_mixed_interview_ids(client, monkeypatch):
     assert response.json()["detail"] == "All bulk invitations must target the same interview"
 
 
+def test_invitation_email_preview_uses_interview_and_custom_message(client):
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token, title="Preview Screen")
+
+    response = client.post(
+        f"/api/invitations/preview/{interview['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"candidate_name": "Candidate Preview", "custom_message": "Please use a quiet room."},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["subject"] == "Interview Invitation - Preview Screen"
+    assert body["interview_link"].endswith("/interview/sample-token")
+    assert "Candidate Preview" in body["html_body"]
+    assert "Please use a quiet room." in body["html_body"]
+    assert "Preview Screen" in body["html_body"]
+
+
 def test_invitation_can_be_revoked(client, monkeypatch):
     async def noop_send_invitation_email(**kwargs):
         return None

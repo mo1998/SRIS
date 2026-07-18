@@ -6,6 +6,7 @@ from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from app.config import settings
 from datetime import datetime
 from typing import Optional
+from html import escape
 
 
 # Email configuration
@@ -20,40 +21,51 @@ conf = ConnectionConfig(
 )
 
 
-async def send_invitation_email(
-    to_email: str,
+def render_invitation_email(
     candidate_name: str,
     interview_title: str,
     interview_link: str,
-    expires_at: datetime
-):
-    """Send interview invitation email"""
-    
+    expires_at: datetime,
+    custom_message: Optional[str] = None,
+) -> tuple[str, str]:
+    """Render the invitation email subject and HTML body."""
+    safe_candidate_name = escape(candidate_name)
+    safe_interview_title = escape(interview_title)
+    safe_interview_link = escape(interview_link)
+    formatted_expiry = escape(expires_at.strftime('%B %d, %Y at %I:%M %p'))
+    safe_custom_message = escape(custom_message).replace('\n', '<br>') if custom_message else None
+    custom_message_html = f"""
+            <div style="background-color: #eef6ff; padding: 16px; border-left: 4px solid #3498db; margin: 20px 0;">
+                <p style="margin: 0; color: #2c3e50;">{safe_custom_message}</p>
+            </div>
+    """ if safe_custom_message else ""
+
     html_content = f"""
     <html>
     <body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4;">
         <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
             <h1 style="color: #2c3e50; margin-bottom: 20px;">Interview Invitation</h1>
-            <p>Dear {candidate_name},</p>
-            <p>You have been invited to participate in a remote interview for the position related to: <strong>{interview_title}</strong></p>
+            <p>Dear {safe_candidate_name},</p>
+            <p>You have been invited to participate in a remote interview for the position related to: <strong>{safe_interview_title}</strong></p>
+            {custom_message_html}
             
             <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
                 <h3 style="color: #2c3e50; margin-top: 0;">Interview Details</h3>
-                <p><strong>Interview:</strong> {interview_title}</p>
-                <p><strong>Valid Until:</strong> {expires_at.strftime('%B %d, %Y at %I:%M %p')}</p>
+                <p><strong>Interview:</strong> {safe_interview_title}</p>
+                <p><strong>Valid Until:</strong> {formatted_expiry}</p>
             </div>
             
             <p style="margin: 20px 0;">Click the button below to start your interview:</p>
             
             <div style="text-align: center; margin: 30px 0;">
-                <a href="{interview_link}" 
+                <a href="{safe_interview_link}"
                    style="background-color: #3498db; color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; font-size: 16px; font-weight: bold;">
                     Start Interview
                 </a>
             </div>
             
             <p style="color: #7f8c8d; font-size: 14px;">Or copy and paste this link into your browser:</p>
-            <p style="color: #3498db; word-break: break-all; font-size: 12px;">{interview_link}</p>
+            <p style="color: #3498db; word-break: break-all; font-size: 12px;">{safe_interview_link}</p>
             
             <hr style="border: none; border-top: 1px solid #ecf0f1; margin: 30px 0;">
             <p style="color: #7f8c8d; font-size: 12px;">
@@ -73,9 +85,29 @@ async def send_invitation_email(
     </body>
     </html>
     """
+
+    return f"Interview Invitation - {interview_title}", html_content
+
+
+async def send_invitation_email(
+    to_email: str,
+    candidate_name: str,
+    interview_title: str,
+    interview_link: str,
+    expires_at: datetime,
+    custom_message: Optional[str] = None,
+):
+    """Send interview invitation email"""
+    subject, html_content = render_invitation_email(
+        candidate_name=candidate_name,
+        interview_title=interview_title,
+        interview_link=interview_link,
+        expires_at=expires_at,
+        custom_message=custom_message,
+    )
     
     message = MessageSchema(
-        subject=f"Interview Invitation - {interview_title}",
+        subject=subject,
         recipients=[to_email],
         body=html_content,
         subtype="html"

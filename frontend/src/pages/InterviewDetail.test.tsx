@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -15,6 +15,7 @@ const apiMock = vi.hoisted(() => ({
   invitations: {
     list: vi.fn(),
     createBulk: vi.fn(),
+    preview: vi.fn(),
     resend: vi.fn(),
     revoke: vi.fn(),
   },
@@ -48,6 +49,7 @@ describe('InterviewDetail', () => {
     apiMock.responses.list.mockReset()
     apiMock.invitations.list.mockReset()
     apiMock.invitations.createBulk.mockReset()
+    apiMock.invitations.preview.mockReset()
     apiMock.invitations.resend.mockReset()
     apiMock.invitations.revoke.mockReset()
     apiMock.interviews.get.mockResolvedValue({
@@ -284,5 +286,33 @@ describe('InterviewDetail', () => {
         { interview_id: 1, candidate_email: 'two@example.com', candidate_name: 'Two Candidate' },
       ])
     })
+  })
+
+  it('previews the invitation email with a custom message', async () => {
+    apiMock.invitations.preview.mockResolvedValue({
+      data: {
+        subject: 'Interview Invitation - Support Screen',
+        html_body: '<p>Dear Candidate Preview,</p><p>Please use a quiet room.</p>',
+        interview_link: 'http://localhost:3000/interview/sample-token',
+        expires_at: '2026-07-25T00:00:00Z',
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Candidate One')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /invite candidates/i }))
+    await userEvent.type(screen.getByLabelText(/candidate name/i), 'Candidate Preview')
+    await userEvent.type(screen.getByLabelText(/single email message/i), 'Please use a quiet room.')
+    await userEvent.click(screen.getByRole('tab', { name: /email preview/i }))
+
+    await waitFor(() => {
+      expect(apiMock.invitations.preview).toHaveBeenCalledWith(1, {
+        candidate_name: 'Candidate Preview',
+        custom_message: 'Please use a quiet room.',
+      })
+    })
+    expect(await screen.findByText(/interview invitation - support screen/i)).toBeInTheDocument()
+    expect(within(screen.getByTestId('email-preview')).getByText(/please use a quiet room/i)).toBeInTheDocument()
   })
 })
