@@ -538,6 +538,125 @@ def test_cross_organization_employer_cannot_manage_invitations(client, monkeypat
     assert list_response.status_code == 403, list_response.text
 
 
+def start_candidate_response(client, interview_id, email="candidate@example.com", name="Candidate One"):
+    response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview_id,
+            "candidate_email": email,
+            "candidate_name": name,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_same_organization_member_can_list_interview_responses(client):
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+    candidate_response = start_candidate_response(client, interview["id"])
+
+    register_user(client, email="reviewer@example.com", role="employee")
+    reviewer_token = login_user(client, email="reviewer@example.com")
+    add_member_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "reviewer@example.com", "role": "reviewer"},
+    )
+    assert add_member_response.status_code == 201, add_member_response.text
+
+    list_response = client.get(
+        f"/api/responses/interview/{interview['id']}",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+    assert list_response.status_code == 200, list_response.text
+    assert list_response.json()[0]["id"] == candidate_response["id"]
+
+
+def test_cross_organization_employer_cannot_access_responses(client):
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+    candidate_response = start_candidate_response(client, interview["id"])
+
+    register_user(client, email="other-employer@example.com")
+    other_token = login_user(client, email="other-employer@example.com")
+
+    list_response = client.get(
+        f"/api/responses/interview/{interview['id']}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert list_response.status_code == 403, list_response.text
+
+    detail_response = client.get(
+        f"/api/responses/{candidate_response['id']}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert detail_response.status_code == 403, detail_response.text
+
+
+def test_candidate_can_access_own_response_details(client):
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+    candidate_response = start_candidate_response(client, interview["id"], email="candidate@example.com")
+    register_user(client, email="candidate@example.com", role="employee")
+    candidate_token = login_user(client, email="candidate@example.com")
+
+    detail_response = client.get(
+        f"/api/responses/{candidate_response['id']}",
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    assert detail_response.json()["candidate_email"] == "candidate@example.com"
+
+
+def test_organization_member_can_view_interview_report_and_cross_org_cannot(client):
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+
+    register_user(client, email="reviewer@example.com", role="employee")
+    reviewer_token = login_user(client, email="reviewer@example.com")
+    add_member_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "reviewer@example.com", "role": "reviewer"},
+    )
+    assert add_member_response.status_code == 201, add_member_response.text
+
+    reviewer_report_response = client.get(
+        f"/api/reports/interview/{interview['id']}",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+    assert reviewer_report_response.status_code == 200, reviewer_report_response.text
+    assert reviewer_report_response.json()["interview_id"] == interview["id"]
+
+    register_user(client, email="other-employer@example.com")
+    other_token = login_user(client, email="other-employer@example.com")
+    other_report_response = client.get(
+        f"/api/reports/interview/{interview['id']}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert other_report_response.status_code == 403, other_report_response.text
+
+
 def seed_template(client):
     from app.database import SessionLocal
     from app.models import InterviewTemplate, TemplateQuestion, TemplateRubricCriterion
