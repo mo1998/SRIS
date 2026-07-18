@@ -179,13 +179,16 @@ async def evaluate_candidate_response(response_id: int, db: Session):
     if response.candidate_email:
         from app.services.email_service import send_completion_email
         interview_title = interview.title if interview else "Interview"
-        await send_completion_email(
-            to_email=response.candidate_email,
-            candidate_name=response.candidate_name,
-            interview_title=interview_title,
-            score=response.total_score or 0.0,
-            passed=response.passed or False
-        )
+        try:
+            await send_completion_email(
+                to_email=response.candidate_email,
+                candidate_name=response.candidate_name,
+                interview_title=interview_title,
+                score=response.total_score or 0.0,
+                passed=response.passed or False
+            )
+        except Exception as exc:
+            print(f"Completion email failed: {exc}")
 
 
 def generate_candidate_report(response_id: int, db: Session) -> Dict:

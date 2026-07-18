@@ -42,21 +42,23 @@ export const api = {
   // Responses
   responses: {
     start: (data: any) => axios.post(`${API_URL}/responses/`, data),
-    submitAnswer: (responseId: number, questionId: number, answerText: string, audioFile?: File, timeTaken?: number) => {
+    submitAnswer: (responseId: number, questionId: number, answerText: string, audioFile?: File, timeTaken?: number, onUploadProgress?: (progressEvent: any) => void) => {
       const formData = new FormData()
-      formData.append('answer_text', answerText)
       if (audioFile) {
         formData.append('audio_file', audioFile)
       }
-      if (timeTaken) {
-        formData.append('time_taken_seconds', timeTaken.toString())
-      }
-      return axios.post(`${API_URL}/responses/${responseId}/answer?question_id=${questionId}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      return axios.post(`${API_URL}/responses/${responseId}/answer`, audioFile ? formData : null, {
+        ...(audioFile ? { headers: { 'Content-Type': 'multipart/form-data' } } : {}),
+        params: {
+          question_id: questionId,
+          answer_text: answerText,
+          ...(timeTaken ? { time_taken_seconds: timeTaken } : {})
+        },
+        onUploadProgress
       })
     },
-    submitQuality: (responseId: number, data: any) => axios.post(`${API_URL}/responses/${responseId}/quality`, data),
-    submitEmotion: (responseId: number, data: any) => axios.post(`${API_URL}/responses/${responseId}/emotion`, data),
+    submitQuality: (responseId: number, data: any) => axios.post(`${API_URL}/responses/${responseId}/quality`, null, { params: data }),
+    submitEmotion: (responseId: number, data: any) => axios.post(`${API_URL}/responses/${responseId}/emotion`, null, { params: data }),
     complete: (responseId: number) => axios.post(`${API_URL}/responses/${responseId}/complete`),
     list: (interviewId: number) => axios.get(`${API_URL}/responses/interview/${interviewId}`),
     get: (responseId: number) => axios.get(`${API_URL}/responses/${responseId}`)

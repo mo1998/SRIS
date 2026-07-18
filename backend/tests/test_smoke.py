@@ -624,11 +624,11 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     async def noop_send_invitation_email(**kwargs):
         return None
 
-    async def noop_send_completion_email(**kwargs):
-        return None
+    async def failing_send_completion_email(**kwargs):
+        raise RuntimeError("mail transport unavailable")
 
     monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
-    monkeypatch.setattr("app.services.email_service.send_completion_email", noop_send_completion_email)
+    monkeypatch.setattr("app.services.email_service.send_completion_email", failing_send_completion_email)
 
     register_user(client)
     owner_token = login_user(client)
