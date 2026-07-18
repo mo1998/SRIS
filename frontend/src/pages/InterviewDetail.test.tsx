@@ -14,6 +14,7 @@ const apiMock = vi.hoisted(() => ({
   },
   invitations: {
     list: vi.fn(),
+    createBulk: vi.fn(),
     resend: vi.fn(),
     revoke: vi.fn(),
   },
@@ -46,6 +47,7 @@ describe('InterviewDetail', () => {
     apiMock.interviews.update.mockReset()
     apiMock.responses.list.mockReset()
     apiMock.invitations.list.mockReset()
+    apiMock.invitations.createBulk.mockReset()
     apiMock.invitations.resend.mockReset()
     apiMock.invitations.revoke.mockReset()
     apiMock.interviews.get.mockResolvedValue({
@@ -247,6 +249,40 @@ describe('InterviewDetail', () => {
     await userEvent.click(screen.getAllByRole('button', { name: /revoke/i })[0])
     await waitFor(() => {
       expect(apiMock.invitations.revoke).toHaveBeenCalledWith(50)
+    })
+  })
+
+  it('validates bulk invite rows before submitting', async () => {
+    renderPage()
+
+    expect(await screen.findByText('Candidate One')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /invite candidates/i }))
+    await userEvent.click(screen.getByRole('tab', { name: /bulk invite/i }))
+    await userEvent.type(screen.getByLabelText(/enter candidates/i), 'bad-email, Missing Email\nvalid@example.com,\ndupe@example.com, First Dupe\ndupe@example.com, Second Dupe')
+    await userEvent.click(screen.getByRole('button', { name: /send all invitations/i }))
+
+    expect(await screen.findByText('Row 1: email is invalid')).toBeInTheDocument()
+    expect(screen.getByText('Row 2: name is required')).toBeInTheDocument()
+    expect(screen.getByText('Row 4: duplicate email')).toBeInTheDocument()
+    expect(apiMock.invitations.createBulk).not.toHaveBeenCalled()
+  })
+
+  it('submits parsed bulk invite rows', async () => {
+    apiMock.invitations.createBulk.mockResolvedValue({ data: [] })
+
+    renderPage()
+
+    expect(await screen.findByText('Candidate One')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /invite candidates/i }))
+    await userEvent.click(screen.getByRole('tab', { name: /bulk invite/i }))
+    await userEvent.type(screen.getByLabelText(/enter candidates/i), 'one@example.com, One Candidate\ntwo@example.com, Two Candidate')
+    await userEvent.click(screen.getByRole('button', { name: /send all invitations/i }))
+
+    await waitFor(() => {
+      expect(apiMock.invitations.createBulk).toHaveBeenCalledWith([
+        { interview_id: 1, candidate_email: 'one@example.com', candidate_name: 'One Candidate' },
+        { interview_id: 1, candidate_email: 'two@example.com', candidate_name: 'Two Candidate' },
+      ])
     })
   })
 })
