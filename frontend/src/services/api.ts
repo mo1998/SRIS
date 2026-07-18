@@ -32,6 +32,7 @@ export const api = {
   invitations: {
     create: (data: any) => axios.post(`${API_URL}/invitations/`, data),
     createBulk: (data: any[]) => axios.post(`${API_URL}/invitations/bulk`, data),
+    preview: (interviewId: number, data: { candidate_name?: string; custom_message?: string }) => axios.post(`${API_URL}/invitations/preview/${interviewId}`, data),
     list: (interviewId: number) => axios.get(`${API_URL}/invitations/${interviewId}`),
     verify: (token: string) => axios.get(`${API_URL}/invitations/verify/${token}`),
     resend: (invitationId: number) => axios.post(`${API_URL}/invitations/${invitationId}/resend`),

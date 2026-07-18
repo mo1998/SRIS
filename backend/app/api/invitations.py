@@ -11,10 +11,10 @@ import os
 
 from app.database import get_db
 from app.models import User, Interview, Invitation, InvitationStatus, InterviewStatus, TeamMembership, TeamRole, UserRole
-from app.schemas import InvitationCreate, InvitationResponse
+from app.schemas import InvitationCreate, InvitationResponse, InvitationEmailPreview, InvitationPreviewRequest
 from app.api.auth import get_current_user
 from app.config import settings
-from app.services.email_service import send_invitation_email
+from app.services.email_service import render_invitation_email, send_invitation_email
 
 router = APIRouter()
 
@@ -106,7 +106,8 @@ async def create_invitation(
         candidate_name=invitation_data.candidate_name,
         interview_title=interview.title,
         interview_link=interview_link,
-        expires_at=expires_at
+        expires_at=expires_at,
+        custom_message=invitation_data.custom_message,
     )
     
     return invitation
@@ -171,7 +172,8 @@ async def create_bulk_invitations(
             candidate_name=inv_data.candidate_name,
             interview_title=interview.title,
             interview_link=interview_link,
-            expires_at=expires_at
+            expires_at=expires_at,
+            custom_message=inv_data.custom_message,
         )
     
     db.commit()
@@ -180,6 +182,35 @@ async def create_bulk_invitations(
         db.refresh(inv)
     
     return created_invitations
+
+
+@router.post("/preview/{interview_id}", response_model=InvitationEmailPreview)
+async def preview_invitation_email(
+    interview_id: int,
+    preview_data: InvitationPreviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Preview the invitation email that will be sent for an interview"""
+    interview = get_interview_or_404(interview_id, db)
+    require_invitation_manager(interview, current_user, db)
+
+    expires_at = datetime.utcnow() + timedelta(days=7)
+    interview_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/interview/sample-token"
+    subject, html_body = render_invitation_email(
+        candidate_name=preview_data.candidate_name,
+        interview_title=interview.title,
+        interview_link=interview_link,
+        expires_at=expires_at,
+        custom_message=preview_data.custom_message,
+    )
+
+    return {
+        "subject": subject,
+        "html_body": html_body,
+        "interview_link": interview_link,
+        "expires_at": expires_at,
+    }
 
 
 @router.get("/verify/{token}", response_model=InvitationResponse)
@@ -295,7 +326,7 @@ async def resend_invitation(
         candidate_name=invitation.candidate_name,
         interview_title=interview.title,
         interview_link=interview_link,
-        expires_at=invitation.expires_at
+        expires_at=invitation.expires_at,
     )
     
     return {"message": "Invitation resent successfully"}

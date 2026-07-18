@@ -233,6 +233,19 @@ class InvitationCreate(BaseModel):
     interview_id: int
     candidate_email: EmailStr
     candidate_name: str
+    custom_message: Optional[str] = Field(None, max_length=1000)
+
+
+class InvitationPreviewRequest(BaseModel):
+    candidate_name: str = "Candidate Name"
+    custom_message: Optional[str] = Field(None, max_length=1000)
+
+
+class InvitationEmailPreview(BaseModel):
+    subject: str
+    html_body: str
+    interview_link: str
+    expires_at: datetime
 
 
 class InvitationResponse(BaseModel):
