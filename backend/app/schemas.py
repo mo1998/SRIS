@@ -108,14 +108,35 @@ class QuestionBase(BaseModel):
     order_index: int = 0
 
 
-class QuestionCreate(QuestionBase):
+class RubricCriterionBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    weight: float = 1.0
+    order_index: int = 0
+
+
+class RubricCriterionCreate(RubricCriterionBase):
     pass
+
+
+class RubricCriterionResponse(RubricCriterionBase):
+    id: int
+    question_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class QuestionCreate(QuestionBase):
+    rubric_criteria: List[RubricCriterionCreate] = []
 
 
 class QuestionResponse(QuestionBase):
     id: int
     interview_id: int
     created_at: datetime
+    rubric_criteria: List[RubricCriterionResponse] = []
 
     class Config:
         from_attributes = True

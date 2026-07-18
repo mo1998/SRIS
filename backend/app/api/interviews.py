@@ -8,7 +8,7 @@ from typing import List
 from datetime import datetime
 
 from app.database import get_db
-from app.models import User, Interview, InterviewQuestion, InterviewStatus, InterviewTemplate, TeamMembership, TeamRole, UserRole
+from app.models import User, Interview, InterviewQuestion, InterviewStatus, InterviewTemplate, RubricCriterion, TeamMembership, TeamRole, UserRole
 from app.schemas import InterviewCreate, InterviewFromTemplateCreate, InterviewResponse, InterviewTemplateResponse, QuestionResponse
 from app.api.auth import get_current_user, require_role
 
@@ -62,7 +62,7 @@ def require_interview_manager(interview: Interview, user: User, db: Session) -> 
 def add_questions_to_interview(interview_id: int, questions: List, db: Session) -> None:
     for idx, q_data in enumerate(questions):
         order_index = q_data.order_index if q_data.order_index else idx
-        db.add(InterviewQuestion(
+        question = InterviewQuestion(
             interview_id=interview_id,
             question_text=q_data.question_text,
             expected_answer=q_data.expected_answer,
@@ -70,7 +70,19 @@ def add_questions_to_interview(interview_id: int, questions: List, db: Session) 
             options=q_data.options,
             weight=q_data.weight,
             order_index=order_index,
-        ))
+        )
+        db.add(question)
+        db.flush()
+
+        for criterion_idx, criterion_data in enumerate(getattr(q_data, "rubric_criteria", [])):
+            criterion_order = criterion_data.order_index if criterion_data.order_index else criterion_idx
+            db.add(RubricCriterion(
+                question_id=question.id,
+                name=criterion_data.name,
+                description=criterion_data.description,
+                weight=criterion_data.weight,
+                order_index=criterion_order,
+            ))
 
 
 @router.post("/", response_model=InterviewResponse, status_code=status.HTTP_201_CREATED)
