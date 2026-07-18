@@ -571,6 +571,29 @@ def test_bulk_invitations_are_marked_sent(client, monkeypatch):
     assert all(invitation["sent_at"] for invitation in invitations)
 
 
+def test_bulk_invitations_reject_mixed_interview_ids(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    first_interview = create_interview(client, owner_token, title="First Screen")
+    second_interview = create_interview(client, owner_token, title="Second Screen")
+
+    response = client.post(
+        "/api/invitations/bulk",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json=[
+            {"interview_id": first_interview["id"], "candidate_email": "one@example.com", "candidate_name": "One"},
+            {"interview_id": second_interview["id"], "candidate_email": "two@example.com", "candidate_name": "Two"},
+        ],
+    )
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == "All bulk invitations must target the same interview"
+
+
 def test_invitation_can_be_revoked(client, monkeypatch):
     async def noop_send_invitation_email(**kwargs):
         return None

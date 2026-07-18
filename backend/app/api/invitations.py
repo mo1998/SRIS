@@ -125,6 +125,9 @@ async def create_bulk_invitations(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No invitations provided")
     
     interview_id = invitations[0].interview_id
+    if any(invitation.interview_id != interview_id for invitation in invitations):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="All bulk invitations must target the same interview")
+
     interview = get_interview_or_404(interview_id, db)
     require_invitation_manager(interview, current_user, db)
     
