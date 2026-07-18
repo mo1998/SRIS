@@ -31,7 +31,13 @@ class Settings(BaseSettings):
     MAIL_TLS: bool = True
     MAIL_SSL: bool = False
     
-    # OpenAI (for answer evaluation)
+    # Evaluation
+    EVALUATION_PROVIDER: str = os.getenv("EVALUATION_PROVIDER", "local_vllm")
+    LOCAL_LLM_BASE_URL: str = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:8100/v1")
+    LOCAL_LLM_MODEL: str = os.getenv("LOCAL_LLM_MODEL", "qwen3-8b-awq")
+    LOCAL_LLM_TIMEOUT_SECONDS: float = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "5"))
+
+    # OpenAI (legacy; local providers are preferred)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     
     # File Uploads
