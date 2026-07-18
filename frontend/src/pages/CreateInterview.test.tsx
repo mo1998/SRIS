@@ -79,6 +79,9 @@ describe('CreateInterview', () => {
 
     await userEvent.type(screen.getByLabelText(/interview title/i), 'Manual Screen')
     await userEvent.type(screen.getByLabelText(/question text/i), 'Why are you interested?')
+    await userEvent.click(screen.getByRole('button', { name: /add criterion/i }))
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'Clarity')
+    await userEvent.type(screen.getByLabelText(/^description$/i), 'Explains the motivation clearly')
     await userEvent.click(screen.getByRole('button', { name: /^create interview$/i }))
 
     await waitFor(() => {
@@ -87,6 +90,11 @@ describe('CreateInterview', () => {
         questions: [expect.objectContaining({
           question_text: 'Why are you interested?',
           order_index: 0,
+          rubric_criteria: [expect.objectContaining({
+            name: 'Clarity',
+            description: 'Explains the motivation clearly',
+            order_index: 0,
+          })],
         })],
       }))
     })
