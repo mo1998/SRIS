@@ -128,6 +128,15 @@ class RubricCriterionResponse(RubricCriterionBase):
         from_attributes = True
 
 
+class TemplateRubricCriterionResponse(RubricCriterionBase):
+    id: int
+    template_question_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class QuestionCreate(QuestionBase):
     rubric_criteria: List[RubricCriterionCreate] = []
 
@@ -180,6 +189,7 @@ class TemplateQuestionResponse(QuestionBase):
     id: int
     template_id: int
     created_at: datetime
+    rubric_criteria: List[TemplateRubricCriterionResponse] = []
 
     class Config:
         from_attributes = True
