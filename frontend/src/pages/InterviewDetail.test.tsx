@@ -14,6 +14,8 @@ const apiMock = vi.hoisted(() => ({
   },
   invitations: {
     list: vi.fn(),
+    resend: vi.fn(),
+    revoke: vi.fn(),
   },
   reports: {
     downloadInterviewPdf: vi.fn(),
@@ -44,6 +46,8 @@ describe('InterviewDetail', () => {
     apiMock.interviews.update.mockReset()
     apiMock.responses.list.mockReset()
     apiMock.invitations.list.mockReset()
+    apiMock.invitations.resend.mockReset()
+    apiMock.invitations.revoke.mockReset()
     apiMock.interviews.get.mockResolvedValue({
       data: {
         id: 1,
@@ -72,7 +76,18 @@ describe('InterviewDetail', () => {
       },
     })
     apiMock.responses.list.mockResolvedValue({ data: [] })
-    apiMock.invitations.list.mockResolvedValue({ data: [] })
+    apiMock.invitations.list.mockResolvedValue({
+      data: [
+        {
+          id: 50,
+          candidate_name: 'Candidate One',
+          candidate_email: 'candidate@example.com',
+          status: 'sent',
+          sent_at: '2026-07-18T00:00:00Z',
+        },
+      ],
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
   it('shows rubric criteria for interview questions', async () => {
@@ -215,5 +230,23 @@ describe('InterviewDetail', () => {
     expect(await screen.findByText('Empty Draft')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /activate interview/i })).toBeDisabled()
     expect(screen.getByText(/add at least one question before activating/i)).toBeInTheDocument()
+  })
+
+  it('resends and revokes invitations from the invitation table', async () => {
+    apiMock.invitations.resend.mockResolvedValue({ data: { message: 'Invitation resent successfully' } })
+    apiMock.invitations.revoke.mockResolvedValue({ data: { id: 50, status: 'revoked' } })
+
+    renderPage()
+
+    expect(await screen.findByText('Candidate One')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /resend/i }))
+    await waitFor(() => {
+      expect(apiMock.invitations.resend).toHaveBeenCalledWith(50)
+    })
+
+    await userEvent.click(screen.getAllByRole('button', { name: /revoke/i })[0])
+    await waitFor(() => {
+      expect(apiMock.invitations.revoke).toHaveBeenCalledWith(50)
+    })
   })
 })
