@@ -484,6 +484,8 @@ def test_same_organization_recruiter_can_manage_invitations(client, monkeypatch)
     )
     assert create_response.status_code == 201, create_response.text
     invitation = create_response.json()
+    assert invitation["status"] == "sent"
+    assert invitation["sent_at"] is not None
 
     verify_response = client.get(f"/api/invitations/verify/{invitation['unique_token']}")
     assert verify_response.status_code == 200, verify_response.text
@@ -494,6 +496,7 @@ def test_same_organization_recruiter_can_manage_invitations(client, monkeypatch)
     )
     assert list_response.status_code == 200, list_response.text
     assert len(list_response.json()) == 1
+    assert list_response.json()[0]["status"] == "sent"
 
     resend_response = client.post(
         f"/api/invitations/{invitation['id']}/resend",
@@ -536,6 +539,36 @@ def test_cross_organization_employer_cannot_manage_invitations(client, monkeypat
         headers={"Authorization": f"Bearer {other_token}"},
     )
     assert list_response.status_code == 403, list_response.text
+
+
+def test_bulk_invitations_are_marked_sent(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    response = client.post(
+        "/api/invitations/bulk",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json=[
+            {"interview_id": interview["id"], "candidate_email": "one@example.com", "candidate_name": "One"},
+            {"interview_id": interview["id"], "candidate_email": "two@example.com", "candidate_name": "Two"},
+        ],
+    )
+    assert response.status_code == 201, response.text
+    invitations = response.json()
+    assert len(invitations) == 2
+    assert {invitation["status"] for invitation in invitations} == {"sent"}
+    assert all(invitation["sent_at"] for invitation in invitations)
 
 
 def start_candidate_response(client, interview_id, email="candidate@example.com", name="Candidate One"):

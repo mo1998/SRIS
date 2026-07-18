@@ -82,13 +82,15 @@ async def create_invitation(
     # Create invitation
     token = generate_unique_token()
     expires_at = datetime.utcnow() + timedelta(days=7)  # Valid for 7 days
+    sent_at = datetime.utcnow()
     
     invitation = Invitation(
         interview_id=invitation_data.interview_id,
         candidate_email=invitation_data.candidate_email,
         candidate_name=invitation_data.candidate_name,
         unique_token=token,
-        status=InvitationStatus.PENDING,
+        status=InvitationStatus.SENT,
+        sent_at=sent_at,
         expires_at=expires_at
     )
     
@@ -131,6 +133,7 @@ async def create_bulk_invitations(
     
     created_invitations = []
     expires_at = datetime.utcnow() + timedelta(days=7)
+    sent_at = datetime.utcnow()
     
     for inv_data in invitations:
         # Check if invitation already exists
@@ -149,7 +152,8 @@ async def create_bulk_invitations(
             candidate_email=inv_data.candidate_email,
             candidate_name=inv_data.candidate_name,
             unique_token=token,
-            status=InvitationStatus.PENDING,
+            status=InvitationStatus.SENT,
+            sent_at=sent_at,
             expires_at=expires_at
         )
         
