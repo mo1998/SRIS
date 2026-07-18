@@ -133,6 +133,14 @@ class InterviewCreate(InterviewBase):
     questions: List[QuestionCreate] = []
 
 
+class InterviewFromTemplateCreate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    max_attempts: int = 1
+    pass_score: Optional[float] = None
+
+
 class InterviewResponse(InterviewBase):
     id: int
     employer_id: int
@@ -142,6 +150,30 @@ class InterviewResponse(InterviewBase):
     updated_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
     questions: List[QuestionResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class TemplateQuestionResponse(QuestionBase):
+    id: int
+    template_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class InterviewTemplateResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    role_category: str
+    duration_minutes: int
+    pass_score: float
+    is_active: bool
+    created_at: datetime
+    questions: List[TemplateQuestionResponse] = []
 
     class Config:
         from_attributes = True

@@ -296,3 +296,81 @@ def test_duplicate_organization_membership_is_rejected(client):
     )
 
     assert duplicate_response.status_code == 400, duplicate_response.text
+
+
+def seed_template(client):
+    from app.database import SessionLocal
+    from app.models import InterviewTemplate, TemplateQuestion
+
+    db = SessionLocal()
+    try:
+        template = InterviewTemplate(
+            name="Customer Support Screen",
+            description="First-round support screen",
+            role_category="customer_support",
+            duration_minutes=25,
+            pass_score=70,
+            is_active=True,
+        )
+        db.add(template)
+        db.flush()
+        db.add(TemplateQuestion(
+            template_id=template.id,
+            question_text="How do you handle an upset customer?",
+            expected_answer="Listen, empathize, clarify, resolve, and follow up.",
+            question_type="text",
+            weight=1.5,
+            order_index=0,
+        ))
+        db.add(TemplateQuestion(
+            template_id=template.id,
+            question_text="Describe a time you improved a customer experience.",
+            expected_answer="Gives a specific example with action and outcome.",
+            question_type="text",
+            weight=1.0,
+            order_index=1,
+        ))
+        db.commit()
+        db.refresh(template)
+        return template.id
+    finally:
+        db.close()
+
+
+def test_list_and_get_interview_templates(client):
+    template_id = seed_template(client)
+
+    list_response = client.get("/api/interviews/templates")
+    assert list_response.status_code == 200, list_response.text
+    templates = list_response.json()
+    assert len(templates) == 1
+    assert templates[0]["name"] == "Customer Support Screen"
+    assert len(templates[0]["questions"]) == 2
+
+    detail_response = client.get(f"/api/interviews/templates/{template_id}")
+    assert detail_response.status_code == 200, detail_response.text
+    template = detail_response.json()
+    assert template["id"] == template_id
+    assert [question["order_index"] for question in template["questions"]] == [0, 1]
+
+
+def test_create_interview_from_template(client):
+    template_id = seed_template(client)
+    register_user(client)
+    token = login_user(client)
+
+    response = client.post(
+        f"/api/interviews/templates/{template_id}/interviews",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "Support Agent Screen", "max_attempts": 2},
+    )
+
+    assert response.status_code == 201, response.text
+    interview = response.json()
+    assert interview["title"] == "Support Agent Screen"
+    assert interview["duration_minutes"] == 25
+    assert interview["pass_score"] == 70
+    assert interview["max_attempts"] == 2
+    assert interview["organization_id"] is not None
+    assert len(interview["questions"]) == 2
+    assert interview["questions"][0]["weight"] == 1.5
