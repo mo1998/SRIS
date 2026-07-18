@@ -337,6 +337,34 @@ def test_employer_cannot_update_active_interview(client):
     assert update_response.status_code == 400, update_response.text
 
 
+def test_employer_cannot_activate_interview_without_questions(client):
+    register_user(client)
+    token = login_user(client)
+
+    response = client.post(
+        "/api/interviews/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Empty Draft",
+            "description": "Missing questions",
+            "duration_minutes": 30,
+            "max_attempts": 1,
+            "pass_score": 70,
+            "questions": [],
+        },
+    )
+    assert response.status_code == 201, response.text
+    interview = response.json()
+
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert activate_response.status_code == 400, activate_response.text
+    assert activate_response.json()["detail"] == "Interview must have at least one question before activation"
+
+
 def test_employer_cannot_access_another_organization_interview(client):
     register_user(client)
     first_token = login_user(client)

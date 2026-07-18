@@ -261,6 +261,9 @@ async def activate_interview(
     
     if interview.status != InterviewStatus.DRAFT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview must be in draft status")
+
+    if not interview.questions:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview must have at least one question before activation")
     
     interview.status = InterviewStatus.ACTIVE
     db.commit()
