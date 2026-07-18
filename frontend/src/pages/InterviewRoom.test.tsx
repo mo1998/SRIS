@@ -200,6 +200,100 @@ describe('InterviewRoom token verification', () => {
     expect(screen.getByText(/draft saved locally/i)).toBeInTheDocument()
   })
 
+  it('completes the interview with a typed answer', async () => {
+    apiMock.invitations.verify.mockResolvedValue({
+      data: {
+        id: 12,
+        interview_id: 4,
+        candidate_email: 'candidate@example.com',
+        candidate_name: 'Candidate One',
+        status: 'sent',
+        expires_at: '2026-07-25T00:00:00Z',
+        interview: {
+          id: 4,
+          title: 'Support Screen',
+          description: 'Structured support interview',
+          duration_minutes: 30,
+          max_attempts: 1,
+          questions: [
+            { id: 20, question_text: 'How do you handle an upset customer?', question_type: 'text', weight: 1, order_index: 0 },
+          ],
+        },
+      },
+    })
+    apiMock.responses.start.mockResolvedValue({ data: { id: 99 } })
+    apiMock.responses.submitAnswer.mockResolvedValue({ data: { question_id: 20 } })
+    apiMock.responses.complete.mockResolvedValue({ data: { id: 99, status: 'completed' } })
+
+    renderPage()
+
+    expect(await screen.findByText(/invitation verified/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /continue to setup/i }))
+    await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
+    await userEvent.click(screen.getByLabelText(/i consent to participate/i))
+    getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /start interview/i }))
+    await userEvent.type(await screen.findByLabelText(/your answer/i), 'I would listen and follow up.')
+    await userEvent.click(screen.getByRole('button', { name: /submit & complete/i }))
+
+    await waitFor(() => {
+      expect(apiMock.responses.submitAnswer).toHaveBeenCalledWith(99, 20, 'I would listen and follow up.', undefined, undefined, expect.any(Function))
+    })
+    expect(apiMock.responses.submitQuality).not.toHaveBeenCalled()
+    expect(apiMock.responses.submitEmotion).not.toHaveBeenCalled()
+    expect(apiMock.responses.complete).toHaveBeenCalledWith(99)
+    expect(await screen.findByText(/interview completed/i)).toBeInTheDocument()
+  })
+
+  it('keeps typed answers available for retry after submit failure', async () => {
+    apiMock.invitations.verify.mockResolvedValue({
+      data: {
+        id: 12,
+        interview_id: 4,
+        candidate_email: 'candidate@example.com',
+        candidate_name: 'Candidate One',
+        status: 'sent',
+        expires_at: '2026-07-25T00:00:00Z',
+        interview: {
+          id: 4,
+          title: 'Support Screen',
+          description: 'Structured support interview',
+          duration_minutes: 30,
+          max_attempts: 1,
+          questions: [
+            { id: 20, question_text: 'How do you handle an upset customer?', question_type: 'text', weight: 1, order_index: 0 },
+          ],
+        },
+      },
+    })
+    apiMock.responses.start.mockResolvedValue({ data: { id: 99 } })
+    apiMock.responses.submitAnswer.mockRejectedValueOnce({ response: { data: { detail: 'Network retry needed' } } })
+    apiMock.responses.submitAnswer.mockResolvedValueOnce({ data: { question_id: 20 } })
+    apiMock.responses.complete.mockResolvedValue({ data: { id: 99, status: 'completed' } })
+
+    renderPage()
+
+    expect(await screen.findByText(/invitation verified/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /continue to setup/i }))
+    await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
+    await userEvent.click(screen.getByLabelText(/i consent to participate/i))
+    getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /start interview/i }))
+    await userEvent.type(await screen.findByLabelText(/your answer/i), 'Retryable answer')
+    await userEvent.click(screen.getByRole('button', { name: /submit & complete/i }))
+
+    expect(await screen.findByText(/network retry needed/i)).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Retryable answer')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /retry submission/i }))
+
+    await waitFor(() => {
+      expect(apiMock.responses.submitAnswer).toHaveBeenCalledTimes(2)
+    })
+    expect(await screen.findByText(/interview completed/i)).toBeInTheDocument()
+  })
+
   it('keeps start disabled when device checks fail', async () => {
     apiMock.invitations.verify.mockResolvedValue({
       data: {

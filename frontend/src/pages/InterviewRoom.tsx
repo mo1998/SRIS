@@ -29,20 +29,11 @@ const InterviewRoom: React.FC = () => {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [restoredDraft, setRestoredDraft] = useState(false)
-  
-  // Quality metrics
-  const [qualityMetrics, setQualityMetrics] = useState({
-    voice: 0,
-    background: 0,
-    face: 0,
-    lighting: 0
-  })
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [answerError, setAnswerError] = useState('')
   const [isMicOn, setIsMicOn] = useState(true)
   const [isCameraOn, setIsCameraOn] = useState(true)
-  
-  // Emotion detection
-  const [currentEmotion, setCurrentEmotion] = useState('neutral')
-  const [emotionTimeline, setEmotionTimeline] = useState<any[]>([])
   
   useEffect(() => {
     verifyInvitation()
@@ -145,7 +136,7 @@ const InterviewRoom: React.FC = () => {
   }
   
   const submitAnswer = async () => {
-    if (!responseId) return
+    if (!responseId || isSubmittingAnswer) return
     
     const currentQuestion = questions[currentQuestionIndex]
     const draftKey = getDraftKey(currentQuestion?.id)
@@ -155,13 +146,26 @@ const InterviewRoom: React.FC = () => {
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       audioBlob = new File([blob], `answer_${currentQuestion.id}.webm`)
     }
+
+    setError('')
+    setAnswerError('')
+    setUploadProgress(audioBlob ? 0 : 100)
+    setIsSubmittingAnswer(true)
     
     try {
       await api.responses.submitAnswer(
         responseId,
         currentQuestion.id,
         answerText,
-        audioBlob
+        audioBlob,
+        undefined,
+        (progressEvent: any) => {
+          if (!progressEvent.total) {
+            setUploadProgress(100)
+            return
+          }
+          setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total))
+        }
       )
 
       if (draftKey) {
@@ -177,7 +181,9 @@ const InterviewRoom: React.FC = () => {
         await completeInterview()
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to submit answer')
+      setAnswerError(err.response?.data?.detail || 'Failed to submit answer. Your answer is still saved locally; try again.')
+    } finally {
+      setIsSubmittingAnswer(false)
     }
   }
   
@@ -185,52 +191,12 @@ const InterviewRoom: React.FC = () => {
     if (!responseId) return
     
     try {
-      // Submit quality metrics
-      await api.responses.submitQuality(responseId, {
-        voice_quality: qualityMetrics.voice,
-        background_quality: qualityMetrics.background,
-        face_visibility: qualityMetrics.face,
-        lighting: qualityMetrics.lighting,
-        recommendations: []
-      })
-      
-      // Submit emotion data
-      await api.responses.submitEmotion(responseId, {
-        emotion: currentEmotion,
-        confidence: qualityMetrics.face,
-        timeline: emotionTimeline
-      })
-      
-      // Complete
       await api.responses.complete(responseId)
       setStep('complete')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to complete interview')
     }
   }
-  
-  // Simulate quality checks (in production, use real AI models)
-  useEffect(() => {
-    if (step !== 'interview') return
-    
-    const interval = setInterval(() => {
-      // Simulated quality metrics
-      setQualityMetrics({
-        voice: 85 + Math.random() * 10,
-        background: 80 + Math.random() * 15,
-        face: 90 + Math.random() * 10,
-        lighting: 75 + Math.random() * 20
-      })
-      
-      // Simulated emotions
-      const emotions = ['confident', 'neutral', 'happy', 'nervous', 'focused']
-      const newEmotion = emotions[Math.floor(Math.random() * emotions.length)]
-      setCurrentEmotion(newEmotion)
-      setEmotionTimeline(prev => [...prev, { emotion: newEmotion, timestamp: Date.now() / 1000 }])
-    }, 5000)
-    
-    return () => clearInterval(interval)
-  }, [step])
 
   const getDraftKey = (questionId?: number) => questionId && token ? `sris-answer-draft:${token}:${questionId}` : null
 
@@ -281,12 +247,6 @@ const InterviewRoom: React.FC = () => {
 
     return () => window.clearInterval(interval)
   }, [step, remainingSeconds])
-  
-  const getQualityColor = (score: number) => {
-    if (score >= 80) return 'success'
-    if (score >= 60) return 'warning'
-    return 'danger'
-  }
   
   if (loading) {
     return <Container className="mt-5"><p>Loading interview...</p></Container>
@@ -443,19 +403,21 @@ const InterviewRoom: React.FC = () => {
   
   return (
     <Container fluid className="mt-3">
-      <Row>
-        <Col md={8}>
+      <Row className="gy-3">
+        <Col lg={8}>
           <Card className="mb-4">
             <Card.Header>
-              <div className="d-flex justify-content-between align-items-center">
+              <div className="d-flex flex-column flex-md-row gap-2 justify-content-between align-items-md-center">
                 <div>
                   <h5 className="mb-1">Question {currentQuestionIndex + 1} of {questions.length}</h5>
                   <small className="text-muted">Time remaining: {formatTime(remainingSeconds)}</small>
                 </div>
-                <ProgressBar now={progress} label={`${Math.round(progress)}%`} style={{ width: '220px' }} />
+                <ProgressBar className="w-100" now={progress} label={`${Math.round(progress)}%`} style={{ maxWidth: '220px' }} />
               </div>
             </Card.Header>
             <Card.Body>
+              {error && <Alert variant="danger">{error}</Alert>}
+              {answerError && <Alert variant="danger">{answerError}</Alert>}
               {remainingSeconds === 0 && (
                 <Alert variant="warning">Time is up. Submit your current answer to complete the interview.</Alert>
               )}
@@ -480,13 +442,24 @@ const InterviewRoom: React.FC = () => {
                 <Button
                   variant={isRecording ? 'danger' : 'outline-primary'}
                   onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isSubmittingAnswer}
                 >
                   {isRecording ? <FiMicOff className="me-2" /> : <FiMic className="me-2" />}
                   {isRecording ? 'Stop Recording' : 'Record Audio'}
                 </Button>
               </div>
+              {audioChunks.length > 0 && <Alert variant="info">Audio recording is ready and will upload with this answer.</Alert>}
+              {isSubmittingAnswer && (
+                <div className="mb-3">
+                  <div className="d-flex justify-content-between mb-1">
+                    <small>Submitting answer</small>
+                    <small>{uploadProgress}%</small>
+                  </div>
+                  <ProgressBar now={uploadProgress} />
+                </div>
+              )}
               
-              <div className="d-flex justify-content-between">
+              <div className="d-flex flex-column flex-sm-row gap-2 justify-content-between">
                 <Button
                   variant="secondary"
                   disabled={currentQuestionIndex === 0}
@@ -494,13 +467,13 @@ const InterviewRoom: React.FC = () => {
                 >
                   Previous
                 </Button>
-                <Button variant="primary" onClick={submitAnswer}>
+                <Button variant="primary" onClick={submitAnswer} disabled={isSubmittingAnswer || (!answerText.trim() && audioChunks.length === 0)}>
                   {currentQuestionIndex < questions.length - 1 ? (
                     <>
-                      Next <FiArrowRight className="ms-2" />
+                      {answerError ? 'Retry Submission' : 'Next'} <FiArrowRight className="ms-2" />
                     </>
                   ) : (
-                    'Submit & Complete'
+                    answerError ? 'Retry Submission' : 'Submit & Complete'
                   )}
                 </Button>
               </div>
@@ -508,7 +481,7 @@ const InterviewRoom: React.FC = () => {
           </Card>
         </Col>
         
-        <Col md={4}>
+        <Col lg={4}>
           <Card className="mb-4">
             <Card.Header>
               <h6 className="mb-0">Video & Audio</h6>
@@ -543,53 +516,13 @@ const InterviewRoom: React.FC = () => {
             </Card.Body>
           </Card>
           
-          <Card className="mb-4">
-            <Card.Header>
-              <h6 className="mb-0">Quality Metrics</h6>
-            </Card.Header>
-            <Card.Body>
-              <div className="mb-3">
-                <div className="d-flex justify-content-between mb-1">
-                  <small>Voice Quality</small>
-                  <small>{qualityMetrics.voice.toFixed(1)}%</small>
-                </div>
-                <ProgressBar now={qualityMetrics.voice} variant={getQualityColor(qualityMetrics.voice)} />
-              </div>
-              
-              <div className="mb-3">
-                <div className="d-flex justify-content-between mb-1">
-                  <small>Background</small>
-                  <small>{qualityMetrics.background.toFixed(1)}%</small>
-                </div>
-                <ProgressBar now={qualityMetrics.background} variant={getQualityColor(qualityMetrics.background)} />
-              </div>
-              
-              <div className="mb-3">
-                <div className="d-flex justify-content-between mb-1">
-                  <small>Face Visibility</small>
-                  <small>{qualityMetrics.face.toFixed(1)}%</small>
-                </div>
-                <ProgressBar now={qualityMetrics.face} variant={getQualityColor(qualityMetrics.face)} />
-              </div>
-              
-              <div className="mb-3">
-                <div className="d-flex justify-content-between mb-1">
-                  <small>Lighting</small>
-                  <small>{qualityMetrics.lighting.toFixed(1)}%</small>
-                </div>
-                <ProgressBar now={qualityMetrics.lighting} variant={getQualityColor(qualityMetrics.lighting)} />
-              </div>
-            </Card.Body>
-          </Card>
-          
           <Card>
             <Card.Header>
-              <h6 className="mb-0">Detected Emotion</h6>
+              <h6 className="mb-0">Device Status</h6>
             </Card.Header>
-            <Card.Body className="text-center">
-              <h4 className={`text-${currentEmotion === 'confident' || currentEmotion === 'happy' ? 'success' : currentEmotion === 'nervous' ? 'warning' : 'primary'}`}>
-                {currentEmotion.charAt(0).toUpperCase() + currentEmotion.slice(1)}
-              </h4>
+            <Card.Body>
+              <p className="mb-2"><strong>Camera:</strong> {isCameraOn ? 'Available' : 'Unavailable'}</p>
+              <p className="mb-0"><strong>Microphone:</strong> {isMicOn ? 'Available' : 'Unavailable'}</p>
             </Card.Body>
           </Card>
         </Col>
