@@ -39,6 +39,8 @@ const renderPage = (token = 'valid-token') => render(
 )
 
 describe('InterviewRoom token verification', () => {
+  const getUserMediaMock = vi.fn()
+
   beforeEach(() => {
     apiMock.invitations.verify.mockReset()
     apiMock.interviews.get.mockReset()
@@ -48,6 +50,11 @@ describe('InterviewRoom token verification', () => {
     apiMock.responses.submitQuality.mockReset()
     apiMock.responses.submitEmotion.mockReset()
     apiMock.responses.complete.mockReset()
+    getUserMediaMock.mockReset()
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: getUserMediaMock },
+    })
   })
 
   it('shows a public verified invitation screen from the token response', async () => {
@@ -92,10 +99,15 @@ describe('InterviewRoom token verification', () => {
     expect(screen.getByRole('button', { name: /start interview/i })).toBeDisabled()
 
     await userEvent.click(screen.getByLabelText(/i consent to participate/i))
+    expect(screen.getByRole('button', { name: /start interview/i })).toBeDisabled()
+
+    getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    expect(await screen.findByText(/camera and microphone are available/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /start interview/i })).toBeEnabled()
   })
 
-  it('starts the interview only after consent is acknowledged', async () => {
+  it('starts the interview only after consent and device checks pass', async () => {
     apiMock.invitations.verify.mockResolvedValue({
       data: {
         id: 12,
@@ -124,6 +136,9 @@ describe('InterviewRoom token verification', () => {
     await userEvent.click(screen.getByRole('button', { name: /continue to setup/i }))
     await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
     await userEvent.click(screen.getByLabelText(/i consent to participate/i))
+    getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    expect(await screen.findByText(/camera and microphone are available/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /start interview/i }))
 
     await waitFor(() => {
@@ -135,6 +150,43 @@ describe('InterviewRoom token verification', () => {
       })
     })
     expect(await screen.findByText(/question 1 of 1/i)).toBeInTheDocument()
+  })
+
+  it('keeps start disabled when device checks fail', async () => {
+    apiMock.invitations.verify.mockResolvedValue({
+      data: {
+        id: 12,
+        interview_id: 4,
+        candidate_email: 'candidate@example.com',
+        candidate_name: 'Candidate One',
+        status: 'sent',
+        expires_at: '2026-07-25T00:00:00Z',
+        interview: {
+          id: 4,
+          title: 'Support Screen',
+          description: 'Structured support interview',
+          duration_minutes: 30,
+          max_attempts: 1,
+          questions: [
+            { id: 20, question_text: 'How do you handle an upset customer?', question_type: 'text', weight: 1, order_index: 0 },
+          ],
+        },
+      },
+    })
+    getUserMediaMock.mockRejectedValue(new Error('Permission denied'))
+
+    renderPage()
+
+    expect(await screen.findByText(/invitation verified/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /continue to setup/i }))
+    await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
+    await userEvent.click(screen.getByLabelText(/i consent to participate/i))
+    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+
+    expect(await screen.findByText(/device check failed/i)).toBeInTheDocument()
+    expect(screen.getByText(/permission denied/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /start interview/i })).toBeDisabled()
+    expect(apiMock.responses.start).not.toHaveBeenCalled()
   })
 
   it('shows token verification errors without loading the interview room', async () => {
