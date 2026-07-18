@@ -15,6 +15,9 @@ export const api = {
   // Interviews
   interviews: {
     create: (data: any) => axios.post(`${API_URL}/interviews/`, data),
+    listTemplates: () => axios.get(`${API_URL}/interviews/templates`),
+    getTemplate: (id: number) => axios.get(`${API_URL}/interviews/templates/${id}`),
+    createFromTemplate: (id: number, data: any) => axios.post(`${API_URL}/interviews/templates/${id}/interviews`, data),
     list: () => axios.get(`${API_URL}/interviews/`),
     get: (id: number) => axios.get(`${API_URL}/interviews/${id}`),
     update: (id: number, data: any) => axios.put(`${API_URL}/interviews/${id}`, data),
