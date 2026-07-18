@@ -263,6 +263,34 @@ class InvitationResponse(BaseModel):
         from_attributes = True
 
 
+class PublicInterviewQuestionResponse(BaseModel):
+    id: int
+    question_text: str
+    question_type: str
+    options: Optional[str] = None
+    weight: float
+    order_index: int
+
+    class Config:
+        from_attributes = True
+
+
+class PublicInterviewResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    duration_minutes: int
+    max_attempts: int
+    questions: List[PublicInterviewQuestionResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class InvitationVerificationResponse(InvitationResponse):
+    interview: PublicInterviewResponse
+
+
 # Candidate response schemas
 class QuestionAnswerSchema(BaseModel):
     question_id: int

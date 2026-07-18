@@ -21,7 +21,7 @@ const InterviewRoom: React.FC = () => {
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [step, setStep] = useState<'setup' | 'interview' | 'complete'>('setup')
+  const [step, setStep] = useState<'verification' | 'setup' | 'interview' | 'complete'>('verification')
   
   // Quality metrics
   const [qualityMetrics, setQualityMetrics] = useState({
@@ -44,13 +44,10 @@ const InterviewRoom: React.FC = () => {
   const verifyInvitation = async () => {
     try {
       const invResponse = await api.invitations.verify(token!)
-      setInvitation(invResponse.data)
-      
-      const interviewResponse = await api.interviews.get(invResponse.data.interview_id)
-      setInterview(interviewResponse.data)
-      
-      const questionsResponse = await api.interviews.getQuestions(invResponse.data.interview_id)
-      setQuestions(questionsResponse.data)
+      const verifiedInvitation = invResponse.data
+      setInvitation(verifiedInvitation)
+      setInterview(verifiedInvitation.interview)
+      setQuestions(verifiedInvitation.interview?.questions || [])
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Invalid invitation')
     } finally {
@@ -204,6 +201,48 @@ const InterviewRoom: React.FC = () => {
       <Container className="mt-5">
         <Alert variant="danger">{error}</Alert>
         <Button onClick={() => navigate('/login')}>Go to Login</Button>
+      </Container>
+    )
+  }
+
+  if (step === 'verification') {
+    return (
+      <Container className="mt-5">
+        <Card className="max-w-2xl mx-auto">
+          <Card.Body>
+            <div className="text-center mb-4">
+              <FiCheck className="text-success mb-3" size={56} />
+              <h1>Invitation Verified</h1>
+              <p className="text-muted mb-0">Review the interview details before continuing.</p>
+            </div>
+
+            <Card className="mb-4 bg-light">
+              <Card.Body>
+                <h5 className="mb-3">{interview?.title}</h5>
+                {interview?.description && <p>{interview.description}</p>}
+                <Row>
+                  <Col sm={6}>
+                    <p className="mb-1"><strong>Candidate:</strong> {invitation?.candidate_name}</p>
+                    <p className="mb-1"><strong>Email:</strong> {invitation?.candidate_email}</p>
+                  </Col>
+                  <Col sm={6}>
+                    <p className="mb-1"><strong>Duration:</strong> {interview?.duration_minutes} minutes</p>
+                    <p className="mb-1"><strong>Questions:</strong> {questions.length}</p>
+                    {invitation?.expires_at && (
+                      <p className="mb-1"><strong>Expires:</strong> {new Date(invitation.expires_at).toLocaleDateString()}</p>
+                    )}
+                  </Col>
+                </Row>
+              </Card.Body>
+            </Card>
+
+            <div className="d-flex justify-content-center">
+              <Button variant="primary" size="lg" onClick={() => setStep('setup')}>
+                Continue to Setup
+              </Button>
+            </div>
+          </Card.Body>
+        </Card>
       </Container>
     )
   }

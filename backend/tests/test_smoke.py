@@ -489,6 +489,12 @@ def test_same_organization_recruiter_can_manage_invitations(client, monkeypatch)
 
     verify_response = client.get(f"/api/invitations/verify/{invitation['unique_token']}")
     assert verify_response.status_code == 200, verify_response.text
+    verified = verify_response.json()
+    assert verified["candidate_email"] == "candidate@example.com"
+    assert verified["interview"]["title"] == "Customer Support Screen"
+    assert verified["interview"]["duration_minutes"] == 30
+    assert verified["interview"]["questions"][0]["question_text"] == "How do you handle an upset customer?"
+    assert "expected_answer" not in verified["interview"]["questions"][0]
 
     list_response = client.get(
         f"/api/invitations/{interview['id']}",
