@@ -712,7 +712,8 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert complete_response.status_code == 200, complete_response.text
     completed_response = complete_response.json()
     assert completed_response["status"] == "completed"
-    assert completed_response["total_score"] is not None
+    assert completed_response["total_score"] > 0
+    assert completed_response["passed"] is True
 
     completed_invitation_response = client.get(
         f"/api/invitations/{interview['id']}",
