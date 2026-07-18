@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 from app.database import get_db
-from app.models import User, Interview, CandidateResponse
+from app.models import User, Interview, CandidateResponse, TeamMembership, UserRole
 from app.schemas import InterviewReport, CandidateReport
 from app.api.auth import get_current_user, require_role, UserRole
 from app.services.evaluation_service import generate_employer_report, generate_candidate_report
@@ -18,21 +18,46 @@ from app.services.evaluation_service import generate_employer_report, generate_c
 router = APIRouter()
 
 
+def require_interview_membership(interview: Interview, user: User, db: Session) -> None:
+    if user.role == UserRole.ADMIN:
+        return
+
+    membership = (
+        db.query(TeamMembership)
+        .filter(
+            TeamMembership.user_id == user.id,
+            TeamMembership.organization_id == interview.organization_id,
+        )
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+
+def require_candidate_report_access(response: CandidateResponse, user: User, db: Session) -> None:
+    if user.email == response.candidate_email:
+        return
+
+    interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+
+    require_interview_membership(interview, user, db)
+
+
 @router.get("/interview/{interview_id}", response_model=InterviewReport)
 async def get_interview_report(
     interview_id: int,
-    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get ranked candidate report for an interview (employer view)"""
-    
-    interview = db.query(Interview).filter(
-        Interview.id == interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
     
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+
+    require_interview_membership(interview, current_user, db)
     
     report = generate_employer_report(interview_id, db)
     
@@ -55,16 +80,7 @@ async def get_candidate_report(
     if not response:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
     
-    # Check permissions: employer who owns the interview or the candidate themselves
-    interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
-    
-    if current_user.role.value == "employer" and interview.employer_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    
-    if current_user.role.value == "employee" and current_user.email != response.candidate_email:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    require_candidate_report_access(response, current_user, db)
     
     report = generate_candidate_report(response_id, db)
     
@@ -77,18 +93,16 @@ async def get_candidate_report(
 @router.get("/interview/{interview_id}/pdf")
 async def download_interview_report_pdf(
     interview_id: int,
-    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Download interview report as PDF"""
-    
-    interview = db.query(Interview).filter(
-        Interview.id == interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
     
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+
+    require_interview_membership(interview, current_user, db)
     
     from app.services.report_service import generate_interview_pdf
     
@@ -117,16 +131,7 @@ async def download_candidate_report_pdf(
     if not response:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
     
-    # Check permissions
-    interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
-    
-    if current_user.role.value == "employer" and interview.employer_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    
-    if current_user.role.value == "employee" and current_user.email != response.candidate_email:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    require_candidate_report_access(response, current_user, db)
     
     from app.services.report_service import generate_candidate_pdf
     

@@ -10,11 +10,38 @@ import os
 import uuid
 
 from app.database import get_db
-from app.models import User, Interview, InterviewQuestion, InterviewStatus, Invitation, InvitationStatus, CandidateResponse, QuestionAnswer
+from app.models import User, Interview, InterviewQuestion, InterviewStatus, Invitation, InvitationStatus, CandidateResponse, QuestionAnswer, TeamMembership, UserRole
 from app.schemas import CandidateResponseCreate, CandidateResponseSummary, QuestionAnswerSchema, QualityCheckResult
-from app.api.auth import get_current_user, require_role, UserRole
+from app.api.auth import get_current_user, require_role
 
 router = APIRouter()
+
+
+def require_interview_membership(interview: Interview, user: User, db: Session) -> None:
+    if user.role == UserRole.ADMIN:
+        return
+
+    membership = (
+        db.query(TeamMembership)
+        .filter(
+            TeamMembership.user_id == user.id,
+            TeamMembership.organization_id == interview.organization_id,
+        )
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+
+def require_response_access(response: CandidateResponse, user: User, db: Session) -> None:
+    if user.email == response.candidate_email:
+        return
+
+    interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+
+    require_interview_membership(interview, user, db)
 
 
 @router.post("/", response_model=CandidateResponseSummary, status_code=status.HTTP_201_CREATED)
@@ -245,18 +272,16 @@ async def complete_interview_response(
 @router.get("/interview/{interview_id}", response_model=List[CandidateResponseSummary])
 async def list_interview_responses(
     interview_id: int,
-    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """List all responses for an interview (employer only)"""
-    
-    interview = db.query(Interview).filter(
-        Interview.id == interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
     
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+
+    require_interview_membership(interview, current_user, db)
     
     responses = (
         db.query(CandidateResponse)
@@ -270,6 +295,7 @@ async def list_interview_responses(
 @router.get("/{response_id}", response_model=CandidateResponseSummary)
 async def get_response_details(
     response_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get detailed response information"""
@@ -278,5 +304,7 @@ async def get_response_details(
     
     if not candidate_response:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+
+    require_response_access(candidate_response, current_user, db)
     
     return candidate_response
