@@ -24,6 +24,8 @@ const InterviewRoom: React.FC = () => {
   const [step, setStep] = useState<'verification' | 'setup' | 'interview' | 'complete'>('verification')
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false)
   const [participationConsented, setParticipationConsented] = useState(false)
+  const [deviceCheckStatus, setDeviceCheckStatus] = useState<'idle' | 'checking' | 'passed' | 'failed'>('idle')
+  const [deviceCheckError, setDeviceCheckError] = useState('')
   
   // Quality metrics
   const [qualityMetrics, setQualityMetrics] = useState({
@@ -63,6 +65,11 @@ const InterviewRoom: React.FC = () => {
       return
     }
 
+    if (deviceCheckStatus !== 'passed') {
+      setError('Please complete the camera and microphone check before starting.')
+      return
+    }
+
     try {
       const response = await api.responses.start({
         interview_id: invitation.interview_id,
@@ -75,6 +82,29 @@ const InterviewRoom: React.FC = () => {
       setStep('interview')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to start interview')
+    }
+  }
+
+  const checkDevices = async () => {
+    setError('')
+    setDeviceCheckError('')
+    setDeviceCheckStatus('checking')
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera and microphone access is not available in this browser.')
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+      stream.getTracks().forEach((track) => track.stop())
+      setIsMicOn(true)
+      setIsCameraOn(true)
+      setDeviceCheckStatus('passed')
+    } catch (err: any) {
+      setIsMicOn(false)
+      setIsCameraOn(false)
+      setDeviceCheckStatus('failed')
+      setDeviceCheckError(err.message || 'Allow camera and microphone access to continue.')
     }
   }
   
@@ -299,6 +329,23 @@ const InterviewRoom: React.FC = () => {
                 />
               </Card.Body>
             </Card>
+
+            <Card className="mb-4 text-start">
+              <Card.Body>
+                <h5>Device Setup</h5>
+                <p className="text-muted">
+                  Check your camera and microphone before the interview starts. You can still answer with text if you choose not to record audio.
+                </p>
+                <div className="d-flex flex-wrap gap-2 align-items-center mb-3">
+                  <Button type="button" variant="outline-primary" onClick={checkDevices} disabled={deviceCheckStatus === 'checking'}>
+                    {deviceCheckStatus === 'checking' ? 'Checking Devices...' : 'Check Camera and Microphone'}
+                  </Button>
+                  {deviceCheckStatus === 'passed' && <span className="text-success">Camera and microphone are available.</span>}
+                  {deviceCheckStatus === 'failed' && <span className="text-danger">Device check failed.</span>}
+                </div>
+                {deviceCheckError && <Alert variant="warning" className="mb-0">{deviceCheckError}</Alert>}
+              </Card.Body>
+            </Card>
             
             <Row className="mb-4">
               <Col>
@@ -307,7 +354,7 @@ const InterviewRoom: React.FC = () => {
               </Col>
             </Row>
             
-            <Button variant="primary" size="lg" onClick={startInterview} disabled={!privacyAcknowledged || !participationConsented}>
+            <Button variant="primary" size="lg" onClick={startInterview} disabled={!privacyAcknowledged || !participationConsented || deviceCheckStatus !== 'passed'}>
               Start Interview
             </Button>
           </Card.Body>
