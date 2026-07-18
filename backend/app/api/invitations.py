@@ -11,7 +11,7 @@ import os
 
 from app.database import get_db
 from app.models import User, Interview, Invitation, InvitationStatus, InterviewStatus, TeamMembership, TeamRole, UserRole
-from app.schemas import InvitationCreate, InvitationResponse, InvitationEmailPreview, InvitationPreviewRequest
+from app.schemas import InvitationCreate, InvitationResponse, InvitationEmailPreview, InvitationPreviewRequest, InvitationVerificationResponse
 from app.api.auth import get_current_user
 from app.config import settings
 from app.services.email_service import render_invitation_email, send_invitation_email
@@ -213,7 +213,7 @@ async def preview_invitation_email(
     }
 
 
-@router.get("/verify/{token}", response_model=InvitationResponse)
+@router.get("/verify/{token}", response_model=InvitationVerificationResponse)
 async def verify_invitation_token(
     token: str,
     db: Session = Depends(get_db)
@@ -238,7 +238,18 @@ async def verify_invitation_token(
     if not interview or interview.status != InterviewStatus.ACTIVE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview is no longer active")
     
-    return invitation
+    return {
+        "id": invitation.id,
+        "interview_id": invitation.interview_id,
+        "candidate_email": invitation.candidate_email,
+        "candidate_name": invitation.candidate_name,
+        "unique_token": invitation.unique_token,
+        "status": invitation.status,
+        "sent_at": invitation.sent_at,
+        "expires_at": invitation.expires_at,
+        "created_at": invitation.created_at,
+        "interview": interview,
+    }
 
 
 @router.get("/{interview_id}", response_model=List[InvitationResponse])
