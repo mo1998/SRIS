@@ -35,6 +35,15 @@ const supportTemplate = {
       expected_answer: 'Listen and resolve.',
       weight: 1.5,
       order_index: 0,
+      rubric_criteria: [
+        {
+          id: 1,
+          name: 'Clarity',
+          description: 'Answer is clear and direct.',
+          weight: 1,
+          order_index: 0,
+        },
+      ],
     },
   ],
 }
@@ -57,6 +66,8 @@ describe('CreateInterview', () => {
 
     await userEvent.selectOptions(await screen.findByLabelText(/template/i), '1')
     expect(await screen.findByText('How do you handle an upset customer?')).toBeInTheDocument()
+    expect(screen.getByText(/clarity/i)).toBeInTheDocument()
+    expect(screen.getByText(/answer is clear and direct/i)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /create from template/i }))
 

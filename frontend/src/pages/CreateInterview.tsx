@@ -231,6 +231,18 @@ const CreateInterview: React.FC = () => {
                     <strong>{question.question_text}</strong>
                     <br />
                     <small className="text-muted">Weight: {question.weight}x</small>
+                    {(question.rubric_criteria || []).length > 0 && (
+                      <ul className="mt-1">
+                        {question.rubric_criteria.map((criterion: any) => (
+                          <li key={criterion.id}>
+                            <small>
+                              <strong>{criterion.name}</strong>
+                              {criterion.description ? `: ${criterion.description}` : ''}
+                            </small>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </li>
                 ))}
               </ol>
