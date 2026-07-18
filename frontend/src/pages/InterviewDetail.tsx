@@ -189,6 +189,22 @@ const InterviewDetail: React.FC = () => {
                   <strong>Q{idx + 1}:</strong> {q.question_text}
                   <br />
                   <small className="text-muted">Weight: {q.weight}x</small>
+                  {(q.rubric_criteria || []).length > 0 && (
+                    <div className="mt-2 ms-3">
+                      <small className="text-muted d-block mb-1">Rubric criteria</small>
+                      <ul className="mb-0">
+                        {q.rubric_criteria.map((criterion: any) => (
+                          <li key={criterion.id}>
+                            <small>
+                              <strong>{criterion.name}</strong>
+                              {criterion.description ? `: ${criterion.description}` : ''}
+                              {criterion.weight ? ` (${criterion.weight}x)` : ''}
+                            </small>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               ))}
             </Card.Body>
