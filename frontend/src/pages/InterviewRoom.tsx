@@ -22,6 +22,8 @@ const InterviewRoom: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [step, setStep] = useState<'verification' | 'setup' | 'interview' | 'complete'>('verification')
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false)
+  const [participationConsented, setParticipationConsented] = useState(false)
   
   // Quality metrics
   const [qualityMetrics, setQualityMetrics] = useState({
@@ -56,6 +58,11 @@ const InterviewRoom: React.FC = () => {
   }
   
   const startInterview = async () => {
+    if (!privacyAcknowledged || !participationConsented) {
+      setError('Please review and accept the candidate consent before starting.')
+      return
+    }
+
     try {
       const response = await api.responses.start({
         interview_id: invitation.interview_id,
@@ -254,6 +261,7 @@ const InterviewRoom: React.FC = () => {
           <Card.Body className="text-center">
             <h1 className="mb-4">{interview?.title}</h1>
             <p className="lead">{interview?.description}</p>
+            {error && <Alert variant="danger">{error}</Alert>}
             
             <Card className="mb-4 bg-light">
               <Card.Body>
@@ -267,6 +275,30 @@ const InterviewRoom: React.FC = () => {
                 </ul>
               </Card.Body>
             </Card>
+
+            <Card className="mb-4 text-start">
+              <Card.Body>
+                <h5>Privacy and Consent</h5>
+                <p className="text-muted">
+                  Your answers, optional audio, and interview metadata may be stored and reviewed by the employer for this hiring process.
+                </p>
+                <Form.Check
+                  id="privacy-acknowledgement"
+                  className="mb-2"
+                  type="checkbox"
+                  label="I understand how my interview data will be used."
+                  checked={privacyAcknowledged}
+                  onChange={(event) => setPrivacyAcknowledged(event.target.checked)}
+                />
+                <Form.Check
+                  id="participation-consent"
+                  type="checkbox"
+                  label="I consent to participate in this remote interview."
+                  checked={participationConsented}
+                  onChange={(event) => setParticipationConsented(event.target.checked)}
+                />
+              </Card.Body>
+            </Card>
             
             <Row className="mb-4">
               <Col>
@@ -275,7 +307,7 @@ const InterviewRoom: React.FC = () => {
               </Col>
             </Row>
             
-            <Button variant="primary" size="lg" onClick={startInterview}>
+            <Button variant="primary" size="lg" onClick={startInterview} disabled={!privacyAcknowledged || !participationConsented}>
               Start Interview
             </Button>
           </Card.Body>
