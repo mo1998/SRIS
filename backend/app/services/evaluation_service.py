@@ -1,69 +1,107 @@
 """
-Evaluation service - AI-powered answer scoring and candidate evaluation
+Evaluation service - deterministic answer scoring and candidate evaluation
 """
 
+from dataclasses import dataclass
 import json
-from typing import List, Dict
+import re
+from typing import Dict, List, Protocol
 from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.models import CandidateResponse, QuestionAnswer, InterviewQuestion, Interview
-from app.config import settings
 
 
-async def evaluate_answer_similarity(answer_text: str, expected_answer: str) -> float:
-    """
-    Evaluate answer similarity using OpenAI or fallback to basic string matching
-    Returns a score between 0 and 100
-    """
-    if not answer_text or not expected_answer:
-        return 0.0
-    
-    if settings.OPENAI_API_KEY:
-        try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-            
-            response = await client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are an interview evaluator. Compare the candidate's answer to the expected answer.
-                        Consider: key points covered, accuracy, completeness, and clarity.
-                        Return ONLY a JSON object with "score" (0-100) and "feedback" (brief explanation)."""
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""Expected Answer: {expected_answer}
-                        
-                        Candidate's Answer: {answer_text}
-                        
-                        Evaluate the candidate's answer."""
-                    }
-                ],
-                temperature=0.3,
-                max_tokens=200
+STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "have", "how", "in", "is", "it", "of",
+    "on", "or", "that", "the", "their", "this", "to", "up", "uses", "with", "you", "your",
+}
+
+
+@dataclass(frozen=True)
+class EvaluationResult:
+    score: float
+    feedback: str
+    evidence: Dict[str, object]
+
+
+class EvaluationProvider(Protocol):
+    name: str
+    version: str
+
+    async def evaluate_answer(self, answer_text: str, expected_answer: str) -> EvaluationResult:
+        ...
+
+
+class BaselineEvaluationProvider:
+    name = "deterministic_baseline"
+    version = "1.0.0"
+
+    async def evaluate_answer(self, answer_text: str, expected_answer: str) -> EvaluationResult:
+        answer_tokens = normalize_tokens(answer_text)
+        expected_tokens = normalize_tokens(expected_answer)
+
+        if not answer_tokens:
+            return EvaluationResult(
+                score=0.0,
+                feedback="No answer provided. Evidence: empty candidate response.",
+                evidence={"matched_keywords": [], "missing_keywords": expected_tokens, "keyword_coverage": 0.0, "length_score": 0.0},
             )
-            
-            result = json.loads(response.choices[0].message.content)
-            return min(100.0, max(0.0, float(result.get("score", 50.0)))), result.get("feedback", "")
-            
-        except Exception as e:
-            print(f"OpenAI evaluation failed: {e}")
-    
-    # Fallback: Basic keyword matching
-    expected_words = set(expected_answer.lower().split())
-    answer_words = set(answer_text.lower().split())
-    common_words = expected_words.intersection(answer_words)
-    
-    if len(expected_words) == 0:
-        return 50.0, "No expected answer provided"
-    
-    similarity = (len(common_words) / len(expected_words)) * 100
-    feedback = f"Matched {len(common_words)} out of {len(expected_words)} key concepts"
-    
-    return min(100.0, similarity), feedback
+
+        if not expected_tokens:
+            length_score = score_answer_length(answer_tokens, minimum_tokens=8)
+            return EvaluationResult(
+                score=round(length_score * 0.7, 1),
+                feedback="No expected answer was configured; scored using answer completeness only.",
+                evidence={"matched_keywords": [], "missing_keywords": [], "keyword_coverage": None, "length_score": round(length_score, 1)},
+            )
+
+        expected_set = set(expected_tokens)
+        answer_set = set(answer_tokens)
+        matched_keywords = sorted(expected_set.intersection(answer_set))
+        missing_keywords = sorted(expected_set.difference(answer_set))
+        keyword_coverage = len(matched_keywords) / len(expected_set)
+        length_score = score_answer_length(answer_tokens, minimum_tokens=max(8, int(len(expected_tokens) * 0.75))) / 100
+        final_score = round(((keyword_coverage * 0.8) + (length_score * 0.2)) * 100, 1)
+        feedback = (
+            f"{self.name} v{self.version}: matched {len(matched_keywords)} of {len(expected_set)} expected key concepts "
+            f"({', '.join(matched_keywords) if matched_keywords else 'none'})."
+        )
+        if missing_keywords:
+            feedback += f" Missing concepts: {', '.join(missing_keywords[:6])}."
+
+        return EvaluationResult(
+            score=min(100.0, max(0.0, final_score)),
+            feedback=feedback,
+            evidence={
+                "provider": self.name,
+                "provider_version": self.version,
+                "matched_keywords": matched_keywords,
+                "missing_keywords": missing_keywords,
+                "keyword_coverage": round(keyword_coverage * 100, 1),
+                "length_score": round(length_score * 100, 1),
+            },
+        )
+
+
+def normalize_tokens(text: str) -> List[str]:
+    tokens = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return [token for token in tokens if token not in STOPWORDS and len(token) > 1]
+
+
+def score_answer_length(answer_tokens: List[str], minimum_tokens: int) -> float:
+    if minimum_tokens <= 0:
+        return 100.0
+    return min(100.0, (len(answer_tokens) / minimum_tokens) * 100)
+
+
+baseline_provider = BaselineEvaluationProvider()
+
+
+async def evaluate_answer_similarity(answer_text: str, expected_answer: str) -> tuple[float, str]:
+    """Evaluate an answer using the deterministic local baseline provider."""
+    result = await baseline_provider.evaluate_answer(answer_text, expected_answer)
+    return result.score, result.feedback
 
 
 async def calculate_emotion_score(emotion_timeline: str) -> float:
@@ -123,9 +161,9 @@ async def evaluate_candidate_response(response_id: int, db: Session):
         
         # Score the answer
         if answer.answer_text and question.expected_answer:
-            score, feedback = await evaluate_answer_similarity(answer.answer_text, question.expected_answer)
-            answer.score = score
-            answer.feedback = feedback
+            result = await baseline_provider.evaluate_answer(answer.answer_text, question.expected_answer)
+            answer.score = result.score
+            answer.feedback = result.feedback
         else:
             answer.score = 0.0
             answer.feedback = "No answer provided"
