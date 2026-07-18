@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import InterviewDetail from './InterviewDetail'
@@ -6,6 +7,7 @@ import InterviewDetail from './InterviewDetail'
 const apiMock = vi.hoisted(() => ({
   interviews: {
     get: vi.fn(),
+    update: vi.fn(),
   },
   responses: {
     list: vi.fn(),
@@ -39,6 +41,7 @@ const renderPage = () => render(
 describe('InterviewDetail', () => {
   beforeEach(() => {
     apiMock.interviews.get.mockReset()
+    apiMock.interviews.update.mockReset()
     apiMock.responses.list.mockReset()
     apiMock.invitations.list.mockReset()
     apiMock.interviews.get.mockResolvedValue({
@@ -80,5 +83,47 @@ describe('InterviewDetail', () => {
     expect(screen.getByText(/rubric criteria/i)).toBeInTheDocument()
     expect(screen.getByText(/clarity/i)).toBeInTheDocument()
     expect(screen.getByText(/answer is clear and direct/i)).toBeInTheDocument()
+  })
+
+  it('updates draft interview details', async () => {
+    apiMock.interviews.update.mockResolvedValue({
+      data: {
+        id: 1,
+        title: 'Updated Support Screen',
+        description: 'Updated description',
+        status: 'draft',
+        duration_minutes: 45,
+        max_attempts: 2,
+        pass_score: 75,
+        created_at: '2026-07-18T00:00:00Z',
+        questions: [],
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Support Screen')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+    const titleInput = screen.getByLabelText(/title/i)
+    await userEvent.clear(titleInput)
+    await userEvent.type(titleInput, 'Updated Support Screen')
+    await userEvent.clear(screen.getByLabelText(/duration/i))
+    await userEvent.type(screen.getByLabelText(/duration/i), '45')
+    await userEvent.clear(screen.getByLabelText(/max attempts/i))
+    await userEvent.type(screen.getByLabelText(/max attempts/i), '2')
+    await userEvent.clear(screen.getByLabelText(/pass score/i))
+    await userEvent.type(screen.getByLabelText(/pass score/i), '75')
+    await userEvent.click(screen.getByRole('button', { name: /save details/i }))
+
+    await waitFor(() => {
+      expect(apiMock.interviews.update).toHaveBeenCalledWith(1, expect.objectContaining({
+        title: 'Updated Support Screen',
+        duration_minutes: 45,
+        max_attempts: 2,
+        pass_score: 75,
+      }))
+    })
+    expect(await screen.findByText('Updated Support Screen')).toBeInTheDocument()
   })
 })

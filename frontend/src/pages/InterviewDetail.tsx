@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Card, Row, Col, Button, Table, Badge, Modal, Form, Alert, Tabs, Tab } from 'react-bootstrap'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../services/api'
-import { FiMail, FiDownload, FiEye, FiActivity } from 'react-icons/fi'
+import { FiMail, FiDownload, FiEye, FiActivity, FiEdit } from 'react-icons/fi'
 
 const InterviewDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -13,6 +13,14 @@ const InterviewDetail: React.FC = () => {
   const [inviteData, setInviteData] = useState({ candidate_email: '', candidate_name: '' })
   const [bulkInvites, setBulkInvites] = useState('')
   const [inviteTab, setInviteTab] = useState('single')
+  const [isEditingDetails, setIsEditingDetails] = useState(false)
+  const [editData, setEditData] = useState({
+    title: '',
+    description: '',
+    duration_minutes: 30,
+    max_attempts: 1,
+    pass_score: 70,
+  })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   
@@ -28,6 +36,13 @@ const InterviewDetail: React.FC = () => {
         api.invitations.list(parseInt(id!))
       ])
       setInterview(interviewRes.data)
+      setEditData({
+        title: interviewRes.data.title || '',
+        description: interviewRes.data.description || '',
+        duration_minutes: interviewRes.data.duration_minutes || 30,
+        max_attempts: interviewRes.data.max_attempts || 1,
+        pass_score: interviewRes.data.pass_score || 70,
+      })
       setResponses(responsesRes.data)
       setInvitations(invitationsRes.data)
     } catch (error) {
@@ -60,6 +75,26 @@ const InterviewDetail: React.FC = () => {
       loadData()
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to complete')
+    }
+  }
+
+  const handleUpdateDetails = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setError('')
+
+    try {
+      const response = await api.interviews.update(parseInt(id!), editData)
+      setInterview(response.data)
+      setEditData({
+        title: response.data.title || '',
+        description: response.data.description || '',
+        duration_minutes: response.data.duration_minutes || 30,
+        max_attempts: response.data.max_attempts || 1,
+        pass_score: response.data.pass_score || 70,
+      })
+      setIsEditingDetails(false)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to update interview')
     }
   }
   
@@ -168,14 +203,87 @@ const InterviewDetail: React.FC = () => {
         <Col md={4}>
           <Card className="mb-4">
             <Card.Header>
-              <h5 className="mb-0">Interview Details</h5>
+              <div className="d-flex justify-content-between align-items-center">
+                <h5 className="mb-0">Interview Details</h5>
+                {interview.status === 'draft' && (
+                  <Button
+                    variant="outline-primary"
+                    size="sm"
+                    onClick={() => setIsEditingDetails((current) => !current)}
+                  >
+                    <FiEdit className="me-1" />
+                    {isEditingDetails ? 'Cancel' : 'Edit'}
+                  </Button>
+                )}
+              </div>
             </Card.Header>
             <Card.Body>
-              <p><strong>Description:</strong> {interview.description || 'N/A'}</p>
-              <p><strong>Duration:</strong> {interview.duration_minutes} minutes</p>
-              <p><strong>Max Attempts:</strong> {interview.max_attempts}</p>
-              <p><strong>Pass Score:</strong> {interview.pass_score}%</p>
-              <p><strong>Created:</strong> {new Date(interview.created_at).toLocaleDateString()}</p>
+              {isEditingDetails ? (
+                <Form onSubmit={handleUpdateDetails}>
+                  <Form.Group className="mb-3" controlId="edit-interview-title">
+                    <Form.Label>Title</Form.Label>
+                    <Form.Control
+                      value={editData.title}
+                      onChange={(event) => setEditData({ ...editData, title: event.target.value })}
+                      required
+                    />
+                  </Form.Group>
+                  <Form.Group className="mb-3" controlId="edit-interview-description">
+                    <Form.Label>Description</Form.Label>
+                    <Form.Control
+                      as="textarea"
+                      rows={3}
+                      value={editData.description}
+                      onChange={(event) => setEditData({ ...editData, description: event.target.value })}
+                    />
+                  </Form.Group>
+                  <Row>
+                    <Col sm={6}>
+                      <Form.Group className="mb-3" controlId="edit-interview-duration">
+                        <Form.Label>Duration</Form.Label>
+                        <Form.Control
+                          type="number"
+                          value={editData.duration_minutes}
+                          onChange={(event) => setEditData({ ...editData, duration_minutes: parseInt(event.target.value) })}
+                          min={5}
+                          max={120}
+                        />
+                      </Form.Group>
+                    </Col>
+                    <Col sm={6}>
+                      <Form.Group className="mb-3" controlId="edit-interview-attempts">
+                        <Form.Label>Max Attempts</Form.Label>
+                        <Form.Control
+                          type="number"
+                          value={editData.max_attempts}
+                          onChange={(event) => setEditData({ ...editData, max_attempts: parseInt(event.target.value) })}
+                          min={1}
+                          max={10}
+                        />
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  <Form.Group className="mb-3" controlId="edit-interview-pass-score">
+                    <Form.Label>Pass Score</Form.Label>
+                    <Form.Control
+                      type="number"
+                      value={editData.pass_score}
+                      onChange={(event) => setEditData({ ...editData, pass_score: parseFloat(event.target.value) })}
+                      min={0}
+                      max={100}
+                    />
+                  </Form.Group>
+                  <Button type="submit" size="sm">Save Details</Button>
+                </Form>
+              ) : (
+                <>
+                  <p><strong>Description:</strong> {interview.description || 'N/A'}</p>
+                  <p><strong>Duration:</strong> {interview.duration_minutes} minutes</p>
+                  <p><strong>Max Attempts:</strong> {interview.max_attempts}</p>
+                  <p><strong>Pass Score:</strong> {interview.pass_score}%</p>
+                  <p><strong>Created:</strong> {new Date(interview.created_at).toLocaleDateString()}</p>
+                </>
+              )}
             </Card.Body>
           </Card>
           
