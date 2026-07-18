@@ -191,6 +191,9 @@ async def verify_invitation_token(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid invitation token")
     
     # Check expiration
+    if invitation.status == InvitationStatus.REVOKED:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Invitation has been revoked")
+
     if invitation.expires_at and datetime.utcnow() > invitation.expires_at:
         invitation.status = InvitationStatus.EXPIRED
         db.commit()
@@ -223,6 +226,33 @@ async def list_interview_invitations(
     return invitations
 
 
+@router.post("/{invitation_id}/revoke", response_model=InvitationResponse)
+async def revoke_invitation(
+    invitation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Revoke an invitation so the candidate can no longer use it"""
+    invitation = db.query(Invitation).filter(Invitation.id == invitation_id).first()
+
+    if not invitation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+    interview = get_interview_or_404(invitation.interview_id, db)
+    require_invitation_manager(interview, current_user, db)
+
+    if invitation.status == InvitationStatus.COMPLETED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot revoke a completed invitation")
+
+    invitation.status = InvitationStatus.REVOKED
+    invitation.expires_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(invitation)
+
+    return invitation
+
+
 @router.post("/{invitation_id}/resend", status_code=status.HTTP_200_OK)
 async def resend_invitation(
     invitation_id: int,
@@ -241,6 +271,9 @@ async def resend_invitation(
     
     if invitation.status == InvitationStatus.COMPLETED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Candidate has already completed the interview")
+
+    if invitation.status == InvitationStatus.REVOKED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot resend a revoked invitation")
     
     # Generate new token and extend expiry
     invitation.unique_token = generate_unique_token()

@@ -571,6 +571,64 @@ def test_bulk_invitations_are_marked_sent(client, monkeypatch):
     assert all(invitation["sent_at"] for invitation in invitations)
 
 
+def test_invitation_can_be_revoked(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    create_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": "candidate@example.com",
+            "candidate_name": "Candidate One",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    invitation = create_response.json()
+
+    revoke_response = client.post(
+        f"/api/invitations/{invitation['id']}/revoke",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert revoke_response.status_code == 200, revoke_response.text
+    revoked = revoke_response.json()
+    assert revoked["status"] == "revoked"
+    assert revoked["expires_at"] is not None
+
+    verify_response = client.get(f"/api/invitations/verify/{invitation['unique_token']}")
+    assert verify_response.status_code == 410, verify_response.text
+    assert verify_response.json()["detail"] == "Invitation has been revoked"
+
+    start_response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": "candidate@example.com",
+            "candidate_name": "Candidate One",
+            "invitation_token": invitation["unique_token"],
+        },
+    )
+    assert start_response.status_code == 410, start_response.text
+
+    resend_response = client.post(
+        f"/api/invitations/{invitation['id']}/resend",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert resend_response.status_code == 400, resend_response.text
+
+
 def start_candidate_response(client, interview_id, email="candidate@example.com", name="Candidate One"):
     response = client.post(
         "/api/responses/",
