@@ -26,6 +26,9 @@ const InterviewRoom: React.FC = () => {
   const [participationConsented, setParticipationConsented] = useState(false)
   const [deviceCheckStatus, setDeviceCheckStatus] = useState<'idle' | 'checking' | 'passed' | 'failed'>('idle')
   const [deviceCheckError, setDeviceCheckError] = useState('')
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const [restoredDraft, setRestoredDraft] = useState(false)
   
   // Quality metrics
   const [qualityMetrics, setQualityMetrics] = useState({
@@ -79,6 +82,7 @@ const InterviewRoom: React.FC = () => {
       })
       
       setResponseId(response.data.id)
+      setRemainingSeconds((interview?.duration_minutes || 0) * 60)
       setStep('interview')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to start interview')
@@ -144,6 +148,7 @@ const InterviewRoom: React.FC = () => {
     if (!responseId) return
     
     const currentQuestion = questions[currentQuestionIndex]
+    const draftKey = getDraftKey(currentQuestion?.id)
     let audioBlob: File | undefined
     
     if (audioChunks.length > 0) {
@@ -158,6 +163,10 @@ const InterviewRoom: React.FC = () => {
         answerText,
         audioBlob
       )
+
+      if (draftKey) {
+        localStorage.removeItem(draftKey)
+      }
       
       setAnswerText('')
       setAudioChunks([])
@@ -222,6 +231,56 @@ const InterviewRoom: React.FC = () => {
     
     return () => clearInterval(interval)
   }, [step])
+
+  const getDraftKey = (questionId?: number) => questionId && token ? `sris-answer-draft:${token}:${questionId}` : null
+
+  const formatTime = (seconds: number | null) => {
+    if (seconds === null) return '--:--'
+    const minutes = Math.floor(seconds / 60)
+    const remaining = seconds % 60
+    return `${minutes}:${remaining.toString().padStart(2, '0')}`
+  }
+
+  const currentQuestion = questions[currentQuestionIndex]
+  const currentDraftKey = getDraftKey(currentQuestion?.id)
+  const progress = questions.length ? ((currentQuestionIndex + 1) / questions.length) * 100 : 0
+
+  useEffect(() => {
+    if (step !== 'interview' || !currentDraftKey) return
+
+    const savedAnswer = localStorage.getItem(currentDraftKey)
+    setAnswerText(savedAnswer || '')
+    setRestoredDraft(Boolean(savedAnswer))
+    setLastSavedAt(savedAnswer ? new Date() : null)
+  }, [step, currentDraftKey])
+
+  useEffect(() => {
+    if (step !== 'interview' || !currentDraftKey) return
+
+    const timeout = window.setTimeout(() => {
+      if (answerText.trim()) {
+        localStorage.setItem(currentDraftKey, answerText)
+        setLastSavedAt(new Date())
+      } else {
+        localStorage.removeItem(currentDraftKey)
+        setLastSavedAt(null)
+      }
+      setRestoredDraft(false)
+    }, 500)
+
+    return () => window.clearTimeout(timeout)
+  }, [answerText, step, currentDraftKey])
+
+  useEffect(() => {
+    if (step !== 'interview' || remainingSeconds === null) return
+    if (remainingSeconds <= 0) return
+
+    const interval = window.setInterval(() => {
+      setRemainingSeconds((current) => current === null ? current : Math.max(current - 1, 0))
+    }, 1000)
+
+    return () => window.clearInterval(interval)
+  }, [step, remainingSeconds])
   
   const getQualityColor = (score: number) => {
     if (score >= 80) return 'success'
@@ -382,9 +441,6 @@ const InterviewRoom: React.FC = () => {
     )
   }
   
-  const currentQuestion = questions[currentQuestionIndex]
-  const progress = ((currentQuestionIndex + 1) / questions.length) * 100
-  
   return (
     <Container fluid className="mt-3">
       <Row>
@@ -392,14 +448,21 @@ const InterviewRoom: React.FC = () => {
           <Card className="mb-4">
             <Card.Header>
               <div className="d-flex justify-content-between align-items-center">
-                <h5 className="mb-0">Question {currentQuestionIndex + 1} of {questions.length}</h5>
-                <ProgressBar now={progress} style={{ width: '200px' }} />
+                <div>
+                  <h5 className="mb-1">Question {currentQuestionIndex + 1} of {questions.length}</h5>
+                  <small className="text-muted">Time remaining: {formatTime(remainingSeconds)}</small>
+                </div>
+                <ProgressBar now={progress} label={`${Math.round(progress)}%`} style={{ width: '220px' }} />
               </div>
             </Card.Header>
             <Card.Body>
+              {remainingSeconds === 0 && (
+                <Alert variant="warning">Time is up. Submit your current answer to complete the interview.</Alert>
+              )}
+              {restoredDraft && <Alert variant="info">Your saved draft was restored on this question.</Alert>}
               <h4 className="mb-4">{currentQuestion?.question_text}</h4>
               
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="candidate-answer-text">
                 <Form.Label>Your Answer</Form.Label>
                 <Form.Control
                   as="textarea"
@@ -408,6 +471,9 @@ const InterviewRoom: React.FC = () => {
                   onChange={(e) => setAnswerText(e.target.value)}
                   placeholder="Type your answer here or record audio..."
                 />
+                <Form.Text className="text-muted">
+                  {lastSavedAt ? `Draft saved locally at ${lastSavedAt.toLocaleTimeString()}` : 'Your typed answer is saved locally while you work.'}
+                </Form.Text>
               </Form.Group>
               
               <div className="d-flex gap-2 mb-3">

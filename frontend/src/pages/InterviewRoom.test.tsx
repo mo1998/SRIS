@@ -150,6 +150,54 @@ describe('InterviewRoom token verification', () => {
       })
     })
     expect(await screen.findByText(/question 1 of 1/i)).toBeInTheDocument()
+    expect(screen.getByText(/time remaining: 30:00/i)).toBeInTheDocument()
+  })
+
+  it('restores and autosaves typed answer drafts', async () => {
+    apiMock.invitations.verify.mockResolvedValue({
+      data: {
+        id: 12,
+        interview_id: 4,
+        candidate_email: 'candidate@example.com',
+        candidate_name: 'Candidate One',
+        status: 'sent',
+        expires_at: '2026-07-25T00:00:00Z',
+        interview: {
+          id: 4,
+          title: 'Support Screen',
+          description: 'Structured support interview',
+          duration_minutes: 30,
+          max_attempts: 1,
+          questions: [
+            { id: 20, question_text: 'How do you handle an upset customer?', question_type: 'text', weight: 1, order_index: 0 },
+          ],
+        },
+      },
+    })
+    apiMock.responses.start.mockResolvedValue({ data: { id: 99 } })
+    localStorage.setItem('sris-answer-draft:valid-token:20', 'Previously saved answer')
+
+    renderPage()
+
+    expect(await screen.findByText(/invitation verified/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /continue to setup/i }))
+    await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
+    await userEvent.click(screen.getByLabelText(/i consent to participate/i))
+    getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /start interview/i }))
+
+    expect(await screen.findByDisplayValue('Previously saved answer')).toBeInTheDocument()
+    expect(screen.getByText(/your saved draft was restored/i)).toBeInTheDocument()
+
+    const answerInput = screen.getByLabelText(/your answer/i)
+    await userEvent.clear(answerInput)
+    await userEvent.type(answerInput, 'Updated local draft')
+
+    await waitFor(() => {
+      expect(localStorage.getItem('sris-answer-draft:valid-token:20')).toBe('Updated local draft')
+    })
+    expect(screen.getByText(/draft saved locally/i)).toBeInTheDocument()
   })
 
   it('keeps start disabled when device checks fail', async () => {
