@@ -139,6 +139,21 @@ class TemplateQuestion(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     template = relationship("InterviewTemplate", back_populates="questions")
+    rubric_criteria = relationship("TemplateRubricCriterion", back_populates="template_question", cascade="all, delete-orphan")
+
+
+class TemplateRubricCriterion(Base):
+    __tablename__ = "template_rubric_criteria"
+
+    id = Column(Integer, primary_key=True, index=True)
+    template_question_id = Column(Integer, ForeignKey("template_questions.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    weight = Column(Float, default=1.0)
+    order_index = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    template_question = relationship("TemplateQuestion", back_populates="rubric_criteria")
 
 
 class InterviewQuestion(Base):

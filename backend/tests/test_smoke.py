@@ -354,7 +354,7 @@ def test_duplicate_organization_membership_is_rejected(client):
 
 def seed_template(client):
     from app.database import SessionLocal
-    from app.models import InterviewTemplate, TemplateQuestion
+    from app.models import InterviewTemplate, TemplateQuestion, TemplateRubricCriterion
 
     db = SessionLocal()
     try:
@@ -368,12 +368,21 @@ def seed_template(client):
         )
         db.add(template)
         db.flush()
-        db.add(TemplateQuestion(
+        first_question = TemplateQuestion(
             template_id=template.id,
             question_text="How do you handle an upset customer?",
             expected_answer="Listen, empathize, clarify, resolve, and follow up.",
             question_type="text",
             weight=1.5,
+            order_index=0,
+        )
+        db.add(first_question)
+        db.flush()
+        db.add(TemplateRubricCriterion(
+            template_question_id=first_question.id,
+            name="Clarity",
+            description="Answer is clear and direct.",
+            weight=1.0,
             order_index=0,
         ))
         db.add(TemplateQuestion(
@@ -400,6 +409,7 @@ def test_list_and_get_interview_templates(client):
     assert len(templates) == 1
     assert templates[0]["name"] == "Customer Support Screen"
     assert len(templates[0]["questions"]) == 2
+    assert templates[0]["questions"][0]["rubric_criteria"][0]["name"] == "Clarity"
 
     detail_response = client.get(f"/api/interviews/templates/{template_id}")
     assert detail_response.status_code == 200, detail_response.text
@@ -428,3 +438,4 @@ def test_create_interview_from_template(client):
     assert interview["organization_id"] is not None
     assert len(interview["questions"]) == 2
     assert interview["questions"][0]["weight"] == 1.5
+    assert interview["questions"][0]["rubric_criteria"][0]["name"] == "Clarity"
