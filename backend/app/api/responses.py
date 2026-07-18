@@ -73,6 +73,9 @@ async def start_interview_response(
         
         if invitation.status == InvitationStatus.COMPLETED:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This invitation has already been used")
+
+        if invitation.status == InvitationStatus.REVOKED:
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Invitation has been revoked")
         
         if invitation.expires_at and datetime.utcnow() > invitation.expires_at:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail="Invitation has expired")

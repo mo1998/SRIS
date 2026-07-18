@@ -39,6 +39,7 @@ class InvitationStatus(enum.Enum):
     ACCEPTED = "accepted"
     COMPLETED = "completed"
     EXPIRED = "expired"
+    REVOKED = "revoked"
 
 
 class Organization(Base):

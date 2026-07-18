@@ -226,6 +226,7 @@ class InvitationStatusEnum(str, Enum):
     accepted = "accepted"
     completed = "completed"
     expired = "expired"
+    revoked = "revoked"
 
 
 class InvitationCreate(BaseModel):
