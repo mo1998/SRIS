@@ -17,7 +17,7 @@ const CreateInterview: React.FC = () => {
     pass_score: 70.0
   })
   const [questions, setQuestions] = useState<any[]>([
-    { question_text: '', expected_answer: '', question_type: 'text', weight: 1.0, order_index: 0 }
+    { question_text: '', expected_answer: '', question_type: 'text', weight: 1.0, order_index: 0, rubric_criteria: [] }
   ])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -69,7 +69,8 @@ const CreateInterview: React.FC = () => {
       expected_answer: '', 
       question_type: 'text', 
       weight: 1.0,
-      order_index: questions.length 
+      order_index: questions.length,
+      rubric_criteria: []
     }])
   }
   
@@ -84,6 +85,36 @@ const CreateInterview: React.FC = () => {
     updated[index] = { ...updated[index], [field]: value }
     setQuestions(updated)
   }
+
+  const addRubricCriterion = (questionIndex: number) => {
+    const updated = [...questions]
+    const currentCriteria = updated[questionIndex].rubric_criteria || []
+    updated[questionIndex] = {
+      ...updated[questionIndex],
+      rubric_criteria: [
+        ...currentCriteria,
+        { name: '', description: '', weight: 1.0, order_index: currentCriteria.length }
+      ]
+    }
+    setQuestions(updated)
+  }
+
+  const updateRubricCriterion = (questionIndex: number, criterionIndex: number, field: string, value: any) => {
+    const updated = [...questions]
+    const currentCriteria = [...(updated[questionIndex].rubric_criteria || [])]
+    currentCriteria[criterionIndex] = { ...currentCriteria[criterionIndex], [field]: value }
+    updated[questionIndex] = { ...updated[questionIndex], rubric_criteria: currentCriteria }
+    setQuestions(updated)
+  }
+
+  const removeRubricCriterion = (questionIndex: number, criterionIndex: number) => {
+    const updated = [...questions]
+    updated[questionIndex] = {
+      ...updated[questionIndex],
+      rubric_criteria: (updated[questionIndex].rubric_criteria || []).filter((_: any, index: number) => index !== criterionIndex)
+    }
+    setQuestions(updated)
+  }
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -93,7 +124,16 @@ const CreateInterview: React.FC = () => {
     try {
       const interviewData = {
         ...formData,
-        questions: questions.map((q, idx) => ({ ...q, order_index: idx }))
+        questions: questions.map((q, idx) => ({
+          ...q,
+          order_index: idx,
+          rubric_criteria: (q.rubric_criteria || [])
+            .filter((criterion: any) => criterion.name.trim())
+            .map((criterion: any, criterionIndex: number) => ({
+              ...criterion,
+              order_index: criterionIndex,
+            }))
+        }))
       }
       
       const response = await api.interviews.create(interviewData)
@@ -336,6 +376,78 @@ const CreateInterview: React.FC = () => {
                   </Form.Group>
                 </Col>
               </Row>
+
+              <div className="border-top pt-3 mt-2">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h6 className="mb-0">Rubric Criteria</h6>
+                  <Button
+                    type="button"
+                    variant="outline-secondary"
+                    size="sm"
+                    onClick={() => addRubricCriterion(index)}
+                  >
+                    <FiPlus className="me-1" />
+                    Add Criterion
+                  </Button>
+                </div>
+
+                {(question.rubric_criteria || []).length === 0 ? (
+                  <p className="text-muted mb-0">No rubric criteria added yet.</p>
+                ) : (
+                  question.rubric_criteria.map((criterion: any, criterionIndex: number) => (
+                    <Card key={criterionIndex} className="mb-3 bg-light">
+                      <Card.Body>
+                        <div className="d-flex justify-content-between align-items-start gap-2 mb-3">
+                          <strong>Criterion {criterionIndex + 1}</strong>
+                          <Button
+                            type="button"
+                            variant="outline-danger"
+                            size="sm"
+                            onClick={() => removeRubricCriterion(index, criterionIndex)}
+                          >
+                            <FiTrash2 />
+                          </Button>
+                        </div>
+                        <Row>
+                          <Col md={8}>
+                            <Form.Group className="mb-3" controlId={`rubric-name-${index}-${criterionIndex}`}>
+                              <Form.Label>Name</Form.Label>
+                              <Form.Control
+                                value={criterion.name}
+                                onChange={(event) => updateRubricCriterion(index, criterionIndex, 'name', event.target.value)}
+                                placeholder="Clarity, completeness, examples..."
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={4}>
+                            <Form.Group className="mb-3" controlId={`rubric-weight-${index}-${criterionIndex}`}>
+                              <Form.Label>Weight</Form.Label>
+                              <Form.Control
+                                type="number"
+                                value={criterion.weight}
+                                onChange={(event) => updateRubricCriterion(index, criterionIndex, 'weight', parseFloat(event.target.value))}
+                                min={0.5}
+                                max={5}
+                                step={0.5}
+                              />
+                            </Form.Group>
+                          </Col>
+                        </Row>
+                        <Form.Group controlId={`rubric-description-${index}-${criterionIndex}`}>
+                          <Form.Label>Description</Form.Label>
+                          <Form.Control
+                            as="textarea"
+                            rows={2}
+                            value={criterion.description}
+                            onChange={(event) => updateRubricCriterion(index, criterionIndex, 'description', event.target.value)}
+                            placeholder="What should a strong answer demonstrate?"
+                          />
+                        </Form.Group>
+                      </Card.Body>
+                    </Card>
+                  ))
+                )}
+              </div>
             </Card.Body>
           </Card>
         ))}
