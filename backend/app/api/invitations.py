@@ -10,13 +10,15 @@ import uuid
 import os
 
 from app.database import get_db
-from app.models import User, Interview, Invitation, InvitationStatus, InterviewStatus
+from app.models import User, Interview, Invitation, InvitationStatus, InterviewStatus, TeamMembership, TeamRole, UserRole
 from app.schemas import InvitationCreate, InvitationResponse
-from app.api.auth import get_current_user, require_role, UserRole
+from app.api.auth import get_current_user
 from app.config import settings
 from app.services.email_service import send_invitation_email
 
 router = APIRouter()
+
+INVITATION_MANAGER_ROLES = {TeamRole.OWNER, TeamRole.ADMIN, TeamRole.RECRUITER}
 
 
 def generate_unique_token() -> str:
@@ -24,23 +26,46 @@ def generate_unique_token() -> str:
     return str(uuid.uuid4())
 
 
+def get_interview_or_404(interview_id: int, db: Session) -> Interview:
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    return interview
+
+
+def require_interview_membership(interview: Interview, user: User, db: Session) -> TeamMembership:
+    if user.role == UserRole.ADMIN:
+        return None
+
+    membership = (
+        db.query(TeamMembership)
+        .filter(
+            TeamMembership.user_id == user.id,
+            TeamMembership.organization_id == interview.organization_id,
+        )
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return membership
+
+
+def require_invitation_manager(interview: Interview, user: User, db: Session) -> None:
+    membership = require_interview_membership(interview, user, db)
+    if membership and membership.role not in INVITATION_MANAGER_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient organization permissions")
+
+
 @router.post("/", response_model=InvitationResponse, status_code=status.HTTP_201_CREATED)
 async def create_invitation(
     invitation_data: InvitationCreate,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Create an invitation for a candidate"""
-    
-    # Verify interview exists and belongs to employer
-    interview = db.query(Interview).filter(
-        Interview.id == invitation_data.interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
-    
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    interview = get_interview_or_404(invitation_data.interview_id, db)
+    require_invitation_manager(interview, current_user, db)
     
     if interview.status != InterviewStatus.ACTIVE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview must be active")
@@ -89,7 +114,7 @@ async def create_invitation(
 async def create_bulk_invitations(
     invitations: List[InvitationCreate],
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Create multiple invitations at once"""
@@ -97,15 +122,9 @@ async def create_bulk_invitations(
     if not invitations:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No invitations provided")
     
-    # Verify interview exists and belongs to employer
     interview_id = invitations[0].interview_id
-    interview = db.query(Interview).filter(
-        Interview.id == interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
-    
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    interview = get_interview_or_404(interview_id, db)
+    require_invitation_manager(interview, current_user, db)
     
     if interview.status != InterviewStatus.ACTIVE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview must be active")
@@ -156,30 +175,6 @@ async def create_bulk_invitations(
     return created_invitations
 
 
-@router.get("/{interview_id}", response_model=List[InvitationResponse])
-async def list_interview_invitations(
-    interview_id: int,
-    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
-    db: Session = Depends(get_db)
-):
-    """List all invitations for an interview"""
-    interview = db.query(Interview).filter(
-        Interview.id == interview_id,
-        Interview.employer_id == current_user.id
-    ).first()
-    
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
-    
-    invitations = (
-        db.query(Invitation)
-        .filter(Invitation.interview_id == interview_id)
-        .all()
-    )
-    
-    return invitations
-
-
 @router.get("/verify/{token}", response_model=InvitationResponse)
 async def verify_invitation_token(
     token: str,
@@ -205,21 +200,40 @@ async def verify_invitation_token(
     return invitation
 
 
+@router.get("/{interview_id}", response_model=List[InvitationResponse])
+async def list_interview_invitations(
+    interview_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List all invitations for an interview"""
+    interview = get_interview_or_404(interview_id, db)
+    require_interview_membership(interview, current_user, db)
+
+    invitations = (
+        db.query(Invitation)
+        .filter(Invitation.interview_id == interview_id)
+        .all()
+    )
+
+    return invitations
+
+
 @router.post("/{invitation_id}/resend", status_code=status.HTTP_200_OK)
 async def resend_invitation(
     invitation_id: int,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Resend an invitation email"""
-    invitation = db.query(Invitation).join(Interview).filter(
-        Invitation.id == invitation_id,
-        Interview.employer_id == current_user.id
-    ).first()
+    invitation = db.query(Invitation).filter(Invitation.id == invitation_id).first()
     
     if not invitation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+    interview = get_interview_or_404(invitation.interview_id, db)
+    require_invitation_manager(interview, current_user, db)
     
     if invitation.status == InvitationStatus.COMPLETED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Candidate has already completed the interview")
@@ -233,7 +247,6 @@ async def resend_invitation(
     db.commit()
     
     # Send email
-    interview = db.query(Interview).filter(Interview.id == invitation.interview_id).first()
     interview_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/interview/{invitation.unique_token}"
     
     background_tasks.add_task(

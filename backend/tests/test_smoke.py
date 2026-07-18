@@ -449,6 +449,95 @@ def test_duplicate_organization_membership_is_rejected(client):
     assert duplicate_response.status_code == 400, duplicate_response.text
 
 
+def test_same_organization_recruiter_can_manage_invitations(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    register_user(client, email="recruiter@example.com", role="employee")
+    recruiter_token = login_user(client, email="recruiter@example.com")
+    add_member_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "recruiter@example.com", "role": "recruiter"},
+    )
+    assert add_member_response.status_code == 201, add_member_response.text
+
+    create_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": "candidate@example.com",
+            "candidate_name": "Candidate One",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    invitation = create_response.json()
+
+    verify_response = client.get(f"/api/invitations/verify/{invitation['unique_token']}")
+    assert verify_response.status_code == 200, verify_response.text
+
+    list_response = client.get(
+        f"/api/invitations/{interview['id']}",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+    )
+    assert list_response.status_code == 200, list_response.text
+    assert len(list_response.json()) == 1
+
+    resend_response = client.post(
+        f"/api/invitations/{invitation['id']}/resend",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+    )
+    assert resend_response.status_code == 200, resend_response.text
+
+
+def test_cross_organization_employer_cannot_manage_invitations(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    register_user(client, email="other-employer@example.com")
+    other_token = login_user(client, email="other-employer@example.com")
+
+    create_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {other_token}"},
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": "candidate@example.com",
+            "candidate_name": "Candidate One",
+        },
+    )
+    assert create_response.status_code == 403, create_response.text
+
+    list_response = client.get(
+        f"/api/invitations/{interview['id']}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert list_response.status_code == 403, list_response.text
+
+
 def seed_template(client):
     from app.database import SessionLocal
     from app.models import InterviewTemplate, TemplateQuestion, TemplateRubricCriterion
