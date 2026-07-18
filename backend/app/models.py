@@ -110,6 +110,37 @@ class Interview(Base):
     responses = relationship("CandidateResponse", back_populates="interview", cascade="all, delete-orphan")
 
 
+class InterviewTemplate(Base):
+    __tablename__ = "interview_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, unique=True)
+    description = Column(Text, nullable=True)
+    role_category = Column(String(100), nullable=False)
+    duration_minutes = Column(Integer, default=30)
+    pass_score = Column(Float, default=70.0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    questions = relationship("TemplateQuestion", back_populates="template", cascade="all, delete-orphan")
+
+
+class TemplateQuestion(Base):
+    __tablename__ = "template_questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(Integer, ForeignKey("interview_templates.id"), nullable=False)
+    question_text = Column(Text, nullable=False)
+    expected_answer = Column(Text, nullable=True)
+    question_type = Column(String(50), default="text")
+    options = Column(Text, nullable=True)
+    weight = Column(Float, default=1.0)
+    order_index = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    template = relationship("InterviewTemplate", back_populates="questions")
+
+
 class InterviewQuestion(Base):
     __tablename__ = "interview_questions"
 

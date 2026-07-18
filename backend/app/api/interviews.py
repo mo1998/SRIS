@@ -8,8 +8,8 @@ from typing import List
 from datetime import datetime
 
 from app.database import get_db
-from app.models import User, Interview, InterviewQuestion, InterviewStatus, TeamMembership, TeamRole, UserRole
-from app.schemas import InterviewCreate, InterviewResponse, QuestionResponse
+from app.models import User, Interview, InterviewQuestion, InterviewStatus, InterviewTemplate, TeamMembership, TeamRole, UserRole
+from app.schemas import InterviewCreate, InterviewFromTemplateCreate, InterviewResponse, InterviewTemplateResponse, QuestionResponse
 from app.api.auth import get_current_user, require_role
 
 router = APIRouter()
@@ -59,6 +59,20 @@ def require_interview_manager(interview: Interview, user: User, db: Session) -> 
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient organization permissions")
 
 
+def add_questions_to_interview(interview_id: int, questions: List, db: Session) -> None:
+    for idx, q_data in enumerate(questions):
+        order_index = q_data.order_index if q_data.order_index else idx
+        db.add(InterviewQuestion(
+            interview_id=interview_id,
+            question_text=q_data.question_text,
+            expected_answer=q_data.expected_answer,
+            question_type=q_data.question_type,
+            options=q_data.options,
+            weight=q_data.weight,
+            order_index=order_index,
+        ))
+
+
 @router.post("/", response_model=InterviewResponse, status_code=status.HTTP_201_CREATED)
 async def create_interview(
     interview_data: InterviewCreate,
@@ -81,22 +95,76 @@ async def create_interview(
     db.add(interview)
     db.flush()  # Get interview ID
     
-    # Add questions
-    for idx, q_data in enumerate(interview_data.questions):
-        question = InterviewQuestion(
-            interview_id=interview.id,
-            question_text=q_data.question_text,
-            expected_answer=q_data.expected_answer,
-            question_type=q_data.question_type,
-            options=q_data.options,
-            weight=q_data.weight,
-            order_index=q_data.order_index if q_data.order_index else idx
-        )
-        db.add(question)
+    add_questions_to_interview(interview.id, interview_data.questions, db)
     
     db.commit()
     db.refresh(interview)
     
+    return interview
+
+
+@router.get("/templates", response_model=List[InterviewTemplateResponse])
+async def list_interview_templates(
+    db: Session = Depends(get_db)
+):
+    """List active built-in interview templates"""
+    return (
+        db.query(InterviewTemplate)
+        .filter(InterviewTemplate.is_active == True)
+        .order_by(InterviewTemplate.role_category, InterviewTemplate.name)
+        .all()
+    )
+
+
+@router.get("/templates/{template_id}", response_model=InterviewTemplateResponse)
+async def get_interview_template(
+    template_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get a built-in interview template"""
+    template = (
+        db.query(InterviewTemplate)
+        .filter(InterviewTemplate.id == template_id, InterviewTemplate.is_active == True)
+        .first()
+    )
+    if not template:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+
+    return template
+
+
+@router.post("/templates/{template_id}/interviews", response_model=InterviewResponse, status_code=status.HTTP_201_CREATED)
+async def create_interview_from_template(
+    template_id: int,
+    interview_data: InterviewFromTemplateCreate,
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db)
+):
+    """Create a draft interview from a built-in template"""
+    membership = get_primary_membership(current_user, db)
+    template = (
+        db.query(InterviewTemplate)
+        .filter(InterviewTemplate.id == template_id, InterviewTemplate.is_active == True)
+        .first()
+    )
+    if not template:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+
+    interview = Interview(
+        title=interview_data.title or template.name,
+        description=interview_data.description if interview_data.description is not None else template.description,
+        employer_id=current_user.id,
+        organization_id=membership.organization_id,
+        duration_minutes=interview_data.duration_minutes or template.duration_minutes,
+        max_attempts=interview_data.max_attempts,
+        pass_score=interview_data.pass_score if interview_data.pass_score is not None else template.pass_score,
+    )
+    db.add(interview)
+    db.flush()
+    add_questions_to_interview(interview.id, template.questions, db)
+    db.commit()
+    db.refresh(interview)
+
     return interview
 
 
