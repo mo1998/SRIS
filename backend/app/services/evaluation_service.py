@@ -6,9 +6,11 @@ from dataclasses import dataclass
 import json
 import re
 from typing import Dict, List, Protocol
+import httpx
 from sqlalchemy.orm import Session
 from datetime import datetime
 
+from app.config import settings
 from app.models import CandidateResponse, QuestionAnswer, InterviewQuestion, Interview
 
 
@@ -18,7 +20,7 @@ STOPWORDS = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass
 class EvaluationResult:
     score: float
     feedback: str
@@ -84,6 +86,69 @@ class BaselineEvaluationProvider:
         )
 
 
+class LocalVLLMEvaluationProvider:
+    name = "local_vllm"
+    version = "1.0.0"
+
+    def __init__(self, fallback_provider: EvaluationProvider):
+        self.fallback_provider = fallback_provider
+
+    async def evaluate_answer(self, answer_text: str, expected_answer: str) -> EvaluationResult:
+        if not answer_text.strip():
+            return await self.fallback_provider.evaluate_answer(answer_text, expected_answer)
+
+        try:
+            payload = {
+                "model": settings.LOCAL_LLM_MODEL,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "/no_think You evaluate structured interview answers. Do not show reasoning. "
+                            "Return valid compact JSON only with keys: score, feedback_en, feedback_ar, "
+                            "matched_criteria, missing_criteria, evidence. Score must be 0-100."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Expected answer: {expected_answer}\nCandidate answer: {answer_text}",
+                    },
+                ],
+                "temperature": 0,
+                "max_tokens": 512,
+            }
+            async with httpx.AsyncClient(timeout=settings.LOCAL_LLM_TIMEOUT_SECONDS) as client:
+                response = await client.post(f"{settings.LOCAL_LLM_BASE_URL.rstrip('/')}/chat/completions", json=payload)
+                response.raise_for_status()
+            completion = response.json()["choices"][0]["message"]["content"]
+            parsed = parse_llm_json(completion)
+            score = normalize_llm_score(parsed.get("score", 0))
+            feedback_en = str(parsed.get("feedback_en") or "No English feedback returned.")
+            feedback_ar = str(parsed.get("feedback_ar") or "No Arabic feedback returned.")
+            evidence = {
+                "provider": self.name,
+                "provider_version": self.version,
+                "model": settings.LOCAL_LLM_MODEL,
+                "matched_criteria": parsed.get("matched_criteria", []),
+                "missing_criteria": parsed.get("missing_criteria", []),
+                "evidence": parsed.get("evidence", ""),
+            }
+            return EvaluationResult(
+                score=score,
+                feedback=f"{self.name} {settings.LOCAL_LLM_MODEL}: {feedback_en} Arabic feedback: {feedback_ar}",
+                evidence=evidence,
+            )
+        except Exception as exc:
+            fallback = await self.fallback_provider.evaluate_answer(answer_text, expected_answer)
+            fallback.evidence.update({
+                "provider_fallback_from": self.name,
+                "provider_fallback_reason": str(exc),
+                "requested_model": settings.LOCAL_LLM_MODEL,
+            })
+            fallback.feedback = f"LLM evaluation unavailable; used deterministic fallback. {fallback.feedback}"
+            return fallback
+
+
 def normalize_tokens(text: str) -> List[str]:
     tokens = re.findall(r"[a-z0-9]+", (text or "").lower())
     return [token for token in tokens if token not in STOPWORDS and len(token) > 1]
@@ -96,11 +161,34 @@ def score_answer_length(answer_tokens: List[str], minimum_tokens: int) -> float:
 
 
 baseline_provider = BaselineEvaluationProvider()
+local_vllm_provider = LocalVLLMEvaluationProvider(baseline_provider)
+
+
+def get_evaluation_provider() -> EvaluationProvider:
+    if settings.EVALUATION_PROVIDER == "deterministic_baseline":
+        return baseline_provider
+    return local_vllm_provider
+
+
+def parse_llm_json(content: str) -> Dict[str, object]:
+    cleaned = re.sub(r"<think>.*?</think>", "", content or "", flags=re.DOTALL).strip()
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("LLM response did not contain a JSON object")
+    return json.loads(cleaned[start:end + 1])
+
+
+def normalize_llm_score(raw_score: object) -> float:
+    score = float(raw_score)
+    if 0 <= score <= 10:
+        score *= 10
+    return min(100.0, max(0.0, round(score, 1)))
 
 
 async def evaluate_answer_similarity(answer_text: str, expected_answer: str) -> tuple[float, str]:
-    """Evaluate an answer using the deterministic local baseline provider."""
-    result = await baseline_provider.evaluate_answer(answer_text, expected_answer)
+    """Evaluate an answer using the configured local evaluation provider."""
+    result = await get_evaluation_provider().evaluate_answer(answer_text, expected_answer)
     return result.score, result.feedback
 
 
@@ -161,7 +249,7 @@ async def evaluate_candidate_response(response_id: int, db: Session):
         
         # Score the answer
         if answer.answer_text and question.expected_answer:
-            result = await baseline_provider.evaluate_answer(answer.answer_text, question.expected_answer)
+            result = await get_evaluation_provider().evaluate_answer(answer.answer_text, question.expected_answer)
             answer.score = result.score
             answer.feedback = result.feedback
         else:

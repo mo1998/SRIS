@@ -47,6 +47,7 @@ env/
 
 # Uploads and user data
 backend/uploads/
+models/
 *.wav
 *.mp3
 *.webm
