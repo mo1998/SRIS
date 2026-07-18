@@ -620,6 +620,115 @@ def test_invitation_email_preview_uses_interview_and_custom_message(client):
     assert "Preview Screen" in body["html_body"]
 
 
+def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    async def noop_send_completion_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+    monkeypatch.setattr("app.services.email_service.send_completion_email", noop_send_completion_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token, title="Pipeline Screen")
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    invite_response = client.post(
+        "/api/invitations/bulk",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json=[
+            {
+                "interview_id": interview["id"],
+                "candidate_email": "pipeline-candidate@example.com",
+                "candidate_name": "Pipeline Candidate",
+            }
+        ],
+    )
+    assert invite_response.status_code == 201, invite_response.text
+    invitation = invite_response.json()[0]
+    assert invitation["status"] == "sent"
+
+    verify_response = client.get(f"/api/invitations/verify/{invitation['unique_token']}")
+    assert verify_response.status_code == 200, verify_response.text
+    verified_invitation = verify_response.json()
+    assert verified_invitation["interview"]["title"] == "Pipeline Screen"
+    assert len(verified_invitation["interview"]["questions"]) == 1
+
+    start_response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": invitation["candidate_email"],
+            "candidate_name": invitation["candidate_name"],
+            "invitation_token": invitation["unique_token"],
+        },
+    )
+    assert start_response.status_code == 201, start_response.text
+    candidate_response = start_response.json()
+    assert candidate_response["status"] == "in_progress"
+
+    accepted_invitation_response = client.get(
+        f"/api/invitations/{interview['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert accepted_invitation_response.status_code == 200, accepted_invitation_response.text
+    assert accepted_invitation_response.json()[0]["status"] == "accepted"
+
+    question = verified_invitation["interview"]["questions"][0]
+    answer_response = client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={
+            "question_id": question["id"],
+            "answer_text": "I listen, empathize, clarify, resolve, and follow up with the customer.",
+            "time_taken_seconds": 120,
+        },
+    )
+    assert answer_response.status_code == 200, answer_response.text
+
+    quality_response = client.post(
+        f"/api/responses/{candidate_response['id']}/quality",
+        params={
+            "voice_quality": 92,
+            "background_quality": 88,
+            "face_visibility": 91,
+            "lighting": 86,
+        },
+    )
+    assert quality_response.status_code == 200, quality_response.text
+
+    emotion_response = client.post(
+        f"/api/responses/{candidate_response['id']}/emotion",
+        params={"emotion": "neutral", "confidence": 90},
+    )
+    assert emotion_response.status_code == 200, emotion_response.text
+
+    complete_response = client.post(f"/api/responses/{candidate_response['id']}/complete")
+    assert complete_response.status_code == 200, complete_response.text
+    completed_response = complete_response.json()
+    assert completed_response["status"] == "completed"
+    assert completed_response["total_score"] is not None
+
+    completed_invitation_response = client.get(
+        f"/api/invitations/{interview['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert completed_invitation_response.status_code == 200, completed_invitation_response.text
+    assert completed_invitation_response.json()[0]["status"] == "completed"
+
+    employer_responses = client.get(
+        f"/api/responses/interview/{interview['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert employer_responses.status_code == 200, employer_responses.text
+    assert employer_responses.json()[0]["status"] == "completed"
+
+
 def test_invitation_can_be_revoked(client, monkeypatch):
     async def noop_send_invitation_email(**kwargs):
         return None
