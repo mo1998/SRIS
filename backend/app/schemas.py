@@ -163,6 +163,15 @@ class InterviewCreate(InterviewBase):
     questions: List[QuestionCreate] = []
 
 
+class InterviewUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    max_attempts: Optional[int] = None
+    pass_score: Optional[float] = None
+    questions: Optional[List[QuestionCreate]] = None
+
+
 class InterviewFromTemplateCreate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None

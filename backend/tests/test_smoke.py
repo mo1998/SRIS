@@ -268,6 +268,75 @@ def test_employer_can_create_interview_with_question_rubric(client):
     assert detail["questions"][0]["rubric_criteria"][1]["name"] == "Structure"
 
 
+def test_employer_can_update_draft_interview_questions_and_rubric(client):
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+
+    response = client.put(
+        f"/api/interviews/{interview['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Updated Structured Screen",
+            "duration_minutes": 45,
+            "questions": [
+                {
+                    "question_text": "Describe your troubleshooting process.",
+                    "expected_answer": "Clarifies symptoms, isolates causes, tests hypotheses, documents resolution.",
+                    "question_type": "text",
+                    "weight": 2,
+                    "order_index": 0,
+                    "rubric_criteria": [
+                        {
+                            "name": "Evidence",
+                            "description": "Uses observations to support decisions.",
+                            "weight": 1.5,
+                            "order_index": 0,
+                        }
+                    ],
+                },
+                {
+                    "question_text": "How do you communicate delays?",
+                    "expected_answer": "Communicates early, clearly, and with next steps.",
+                    "question_type": "text",
+                    "weight": 1,
+                    "order_index": 1,
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["title"] == "Updated Structured Screen"
+    assert body["duration_minutes"] == 45
+    assert [question["question_text"] for question in body["questions"]] == [
+        "Describe your troubleshooting process.",
+        "How do you communicate delays?",
+    ]
+    assert body["questions"][0]["rubric_criteria"][0]["name"] == "Evidence"
+
+
+def test_employer_cannot_update_active_interview(client):
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    update_response = client.put(
+        f"/api/interviews/{interview['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "Should Not Update"},
+    )
+
+    assert update_response.status_code == 400, update_response.text
+
+
 def test_employer_cannot_access_another_organization_interview(client):
     register_user(client)
     first_token = login_user(client)
