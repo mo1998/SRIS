@@ -224,6 +224,30 @@ const InterviewDetail: React.FC = () => {
       setError(err.response?.data?.detail || 'Failed to send invitations')
     }
   }
+
+  const handleResendInvitation = async (invitationId: number) => {
+    setError('')
+    try {
+      await api.invitations.resend(invitationId)
+      loadData()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to resend invitation')
+    }
+  }
+
+  const handleRevokeInvitation = async (invitationId: number) => {
+    if (!confirm('Revoke this invitation? The candidate will no longer be able to use it.')) {
+      return
+    }
+
+    setError('')
+    try {
+      await api.invitations.revoke(invitationId)
+      loadData()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to revoke invitation')
+    }
+  }
   
   const handleDownloadReport = async () => {
     try {
@@ -572,6 +596,7 @@ const InterviewDetail: React.FC = () => {
                       <th>Email</th>
                       <th>Status</th>
                       <th>Sent</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -590,6 +615,26 @@ const InterviewDetail: React.FC = () => {
                           </Badge>
                         </td>
                         <td>{inv.sent_at ? new Date(inv.sent_at).toLocaleDateString() : 'Not sent'}</td>
+                        <td>
+                          <div className="d-flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline-primary"
+                              onClick={() => handleResendInvitation(inv.id)}
+                              disabled={inv.status === 'completed' || inv.status === 'revoked'}
+                            >
+                              Resend
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline-danger"
+                              onClick={() => handleRevokeInvitation(inv.id)}
+                              disabled={inv.status === 'completed' || inv.status === 'revoked'}
+                            >
+                              Revoke
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -654,6 +699,7 @@ const InterviewDetail: React.FC = () => {
                     <th>Name</th>
                     <th>Email</th>
                     <th>Status</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -662,6 +708,16 @@ const InterviewDetail: React.FC = () => {
                       <td>{inv.candidate_name}</td>
                       <td>{inv.candidate_email}</td>
                       <td><Badge bg="secondary">{inv.status}</Badge></td>
+                      <td>
+                        <Button
+                          size="sm"
+                          variant="outline-danger"
+                          onClick={() => handleRevokeInvitation(inv.id)}
+                          disabled={inv.status === 'completed' || inv.status === 'revoked'}
+                        >
+                          Revoke
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
