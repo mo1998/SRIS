@@ -258,6 +258,7 @@ const InterviewDetail: React.FC = () => {
   }
   
   const sortedResponses = [...responses].sort((a, b) => (b.total_score || 0) - (a.total_score || 0))
+  const canActivate = (interview.questions?.length || 0) > 0
   
   return (
     <div>
@@ -270,7 +271,12 @@ const InterviewDetail: React.FC = () => {
         </div>
         <div className="d-flex gap-2">
           {interview.status === 'draft' && (
-            <Button variant="success" onClick={handleActivate}>
+            <Button
+              variant="success"
+              onClick={handleActivate}
+              disabled={!canActivate}
+              title={!canActivate ? 'Add at least one question before activating' : undefined}
+            >
               <FiActivity className="me-2" />
               Activate Interview
             </Button>
@@ -292,6 +298,10 @@ const InterviewDetail: React.FC = () => {
           )}
         </div>
       </div>
+
+      {interview.status === 'draft' && !canActivate && (
+        <Alert variant="warning">Add at least one question before activating this interview.</Alert>
+      )}
       
       <Row>
         <Col md={4}>

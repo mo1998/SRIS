@@ -194,4 +194,26 @@ describe('InterviewDetail', () => {
     })
     expect(await screen.findByText(/updated customer question/i)).toBeInTheDocument()
   })
+
+  it('disables activation when a draft interview has no questions', async () => {
+    apiMock.interviews.get.mockResolvedValue({
+      data: {
+        id: 1,
+        title: 'Empty Draft',
+        description: 'Missing questions',
+        status: 'draft',
+        duration_minutes: 30,
+        max_attempts: 1,
+        pass_score: 70,
+        created_at: '2026-07-18T00:00:00Z',
+        questions: [],
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Empty Draft')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /activate interview/i })).toBeDisabled()
+    expect(screen.getByText(/add at least one question before activating/i)).toBeInTheDocument()
+  })
 })
