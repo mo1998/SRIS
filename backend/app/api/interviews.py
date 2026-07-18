@@ -9,7 +9,7 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models import User, Interview, InterviewQuestion, InterviewStatus, InterviewTemplate, RubricCriterion, TeamMembership, TeamRole, UserRole
-from app.schemas import InterviewCreate, InterviewFromTemplateCreate, InterviewResponse, InterviewTemplateResponse, QuestionResponse
+from app.schemas import InterviewCreate, InterviewFromTemplateCreate, InterviewResponse, InterviewTemplateResponse, InterviewUpdate, QuestionResponse
 from app.api.auth import get_current_user, require_role
 
 router = APIRouter()
@@ -215,11 +215,7 @@ async def get_interview(
 @router.put("/{interview_id}", response_model=InterviewResponse)
 async def update_interview(
     interview_id: int,
-    title: str = None,
-    description: str = None,
-    duration_minutes: int = None,
-    max_attempts: int = None,
-    pass_score: float = None,
+    interview_data: InterviewUpdate,
     current_user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db)
 ):
@@ -229,17 +225,23 @@ async def update_interview(
     
     if interview.status != InterviewStatus.DRAFT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only update draft interviews")
-    
-    if title:
-        interview.title = title
-    if description is not None:
-        interview.description = description
-    if duration_minutes:
-        interview.duration_minutes = duration_minutes
-    if max_attempts:
-        interview.max_attempts = max_attempts
-    if pass_score:
-        interview.pass_score = pass_score
+
+    if interview_data.title is not None:
+        interview.title = interview_data.title
+    if interview_data.description is not None:
+        interview.description = interview_data.description
+    if interview_data.duration_minutes is not None:
+        interview.duration_minutes = interview_data.duration_minutes
+    if interview_data.max_attempts is not None:
+        interview.max_attempts = interview_data.max_attempts
+    if interview_data.pass_score is not None:
+        interview.pass_score = interview_data.pass_score
+
+    if interview_data.questions is not None:
+        for question in list(interview.questions):
+            db.delete(question)
+        db.flush()
+        add_questions_to_interview(interview.id, interview_data.questions, db)
     
     db.commit()
     db.refresh(interview)
