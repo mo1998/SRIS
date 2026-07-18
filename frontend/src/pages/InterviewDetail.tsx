@@ -12,6 +12,7 @@ const InterviewDetail: React.FC = () => {
   const [invitations, setInvitations] = useState<any[]>([])
   const [inviteData, setInviteData] = useState({ candidate_email: '', candidate_name: '' })
   const [bulkInvites, setBulkInvites] = useState('')
+  const [bulkInviteErrors, setBulkInviteErrors] = useState<string[]>([])
   const [inviteTab, setInviteTab] = useState('single')
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [isEditingQuestions, setIsEditingQuestions] = useState(false)
@@ -209,14 +210,58 @@ const InterviewDetail: React.FC = () => {
   
   const handleBulkInvite = async () => {
     setError('')
+    setBulkInviteErrors([])
+
+    const lines = bulkInvites
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+    const parsedInvitations: Array<{ interview_id: number; candidate_email: string; candidate_name: string }> = []
+    const validationErrors: string[] = []
+    const seenEmails = new Set<string>()
+
+    lines.forEach((line, index) => {
+      const [email = '', name = '', ...extraColumns] = line.split(',').map((value) => value.trim())
+      const rowNumber = index + 1
+      let rowHasErrors = false
+
+      if (extraColumns.length > 0) {
+        validationErrors.push(`Row ${rowNumber}: use only email, name`)
+        rowHasErrors = true
+      }
+      if (!email) {
+        validationErrors.push(`Row ${rowNumber}: email is required`)
+        rowHasErrors = true
+      } else if (!/^\S+@\S+\.\S+$/.test(email)) {
+        validationErrors.push(`Row ${rowNumber}: email is invalid`)
+        rowHasErrors = true
+      } else if (seenEmails.has(email.toLowerCase())) {
+        validationErrors.push(`Row ${rowNumber}: duplicate email`)
+        rowHasErrors = true
+      } else {
+        seenEmails.add(email.toLowerCase())
+      }
+      if (!name) {
+        validationErrors.push(`Row ${rowNumber}: name is required`)
+        rowHasErrors = true
+      }
+
+      if (!rowHasErrors) {
+        parsedInvitations.push({ interview_id: parseInt(id!), candidate_email: email, candidate_name: name })
+      }
+    })
+
+    if (lines.length === 0) {
+      validationErrors.push('Add at least one candidate')
+    }
+
+    if (validationErrors.length > 0) {
+      setBulkInviteErrors(validationErrors)
+      return
+    }
+
     try {
-      const lines = bulkInvites.trim().split('\n')
-      const invitations = lines.map(line => {
-        const [email, name] = line.split(',').map(s => s.trim())
-        return { interview_id: parseInt(id!), candidate_email: email, candidate_name: name || email }
-      })
-      
-      await api.invitations.createBulk(invitations)
+      await api.invitations.createBulk(parsedInvitations)
       setBulkInvites('')
       setInviteTab('list')
       loadData()
@@ -677,16 +722,28 @@ const InterviewDetail: React.FC = () => {
             </Tab>
             <Tab eventKey="bulk" title="Bulk Invite">
               <Form className="mt-3">
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-3" controlId="bulk-invite-candidates">
                   <Form.Label>Enter candidates (one per line: email, name)</Form.Label>
                   <Form.Control
                     as="textarea"
                     rows={5}
                     value={bulkInvites}
-                    onChange={(e) => setBulkInvites(e.target.value)}
+                    onChange={(e) => {
+                      setBulkInvites(e.target.value)
+                      setBulkInviteErrors([])
+                    }}
                     placeholder={"john@example.com, John Doe\njane@example.com, Jane Smith"}
                   />
                 </Form.Group>
+                {bulkInviteErrors.length > 0 && (
+                  <Alert variant="danger">
+                    <ul className="mb-0">
+                      {bulkInviteErrors.map((validationError) => (
+                        <li key={validationError}>{validationError}</li>
+                      ))}
+                    </ul>
+                  </Alert>
+                )}
                 <Button variant="primary" onClick={handleBulkInvite}>
                   Send All Invitations
                 </Button>
