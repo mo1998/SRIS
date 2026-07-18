@@ -214,6 +214,60 @@ def test_employer_can_create_interview(client):
     assert len(body["questions"]) == 1
 
 
+def test_employer_can_create_interview_with_question_rubric(client):
+    register_user(client)
+    token = login_user(client)
+
+    response = client.post(
+        "/api/interviews/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Rubric Screen",
+            "description": "Structured rubric interview",
+            "duration_minutes": 30,
+            "max_attempts": 1,
+            "pass_score": 70,
+            "questions": [
+                {
+                    "question_text": "How do you solve ambiguous problems?",
+                    "expected_answer": "Clarifies context, identifies constraints, proposes options, and validates outcomes.",
+                    "question_type": "text",
+                    "weight": 1,
+                    "order_index": 0,
+                    "rubric_criteria": [
+                        {
+                            "name": "Clarity",
+                            "description": "Explains assumptions and constraints clearly.",
+                            "weight": 1.5,
+                            "order_index": 0,
+                        },
+                        {
+                            "name": "Structure",
+                            "description": "Uses a coherent problem-solving approach.",
+                            "weight": 1.0,
+                            "order_index": 1,
+                        },
+                    ],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    interview = response.json()
+    criteria = interview["questions"][0]["rubric_criteria"]
+    assert [criterion["name"] for criterion in criteria] == ["Clarity", "Structure"]
+    assert criteria[0]["weight"] == 1.5
+
+    detail_response = client.get(
+        f"/api/interviews/{interview['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    detail = detail_response.json()
+    assert detail["questions"][0]["rubric_criteria"][1]["name"] == "Structure"
+
+
 def test_employer_cannot_access_another_organization_interview(client):
     register_user(client)
     first_token = login_user(client)

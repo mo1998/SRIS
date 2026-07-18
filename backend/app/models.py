@@ -156,6 +156,21 @@ class InterviewQuestion(Base):
 
     # Relationships
     interview = relationship("Interview", back_populates="questions")
+    rubric_criteria = relationship("RubricCriterion", back_populates="question", cascade="all, delete-orphan")
+
+
+class RubricCriterion(Base):
+    __tablename__ = "rubric_criteria"
+
+    id = Column(Integer, primary_key=True, index=True)
+    question_id = Column(Integer, ForeignKey("interview_questions.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    weight = Column(Float, default=1.0)
+    order_index = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    question = relationship("InterviewQuestion", back_populates="rubric_criteria")
 
 
 class Invitation(Base):
