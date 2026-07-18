@@ -103,7 +103,7 @@ describe('InterviewDetail', () => {
     renderPage()
 
     expect(await screen.findByText('Support Screen')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: /edit/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /edit/i })[0])
 
     const titleInput = screen.getByLabelText(/title/i)
     await userEvent.clear(titleInput)
@@ -125,5 +125,73 @@ describe('InterviewDetail', () => {
       }))
     })
     expect(await screen.findByText('Updated Support Screen')).toBeInTheDocument()
+  })
+
+  it('updates draft interview questions and rubric criteria', async () => {
+    apiMock.interviews.update.mockResolvedValue({
+      data: {
+        id: 1,
+        title: 'Support Screen',
+        description: 'Structured support interview',
+        status: 'draft',
+        duration_minutes: 30,
+        max_attempts: 1,
+        pass_score: 70,
+        created_at: '2026-07-18T00:00:00Z',
+        questions: [
+          {
+            id: 11,
+            question_text: 'Updated customer question?',
+            expected_answer: 'Updated expected answer.',
+            weight: 2,
+            rubric_criteria: [
+              {
+                id: 101,
+                name: 'Empathy',
+                description: 'Shows customer empathy.',
+                weight: 1.5,
+              },
+            ],
+          },
+        ],
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Support Screen')).toBeInTheDocument()
+    await userEvent.click(screen.getAllByRole('button', { name: /edit/i })[1])
+
+    const questionInput = screen.getByLabelText(/question text/i)
+    await userEvent.clear(questionInput)
+    await userEvent.type(questionInput, 'Updated customer question?')
+    await userEvent.clear(screen.getByLabelText(/expected answer/i))
+    await userEvent.type(screen.getByLabelText(/expected answer/i), 'Updated expected answer.')
+    await userEvent.clear(screen.getAllByLabelText(/^weight$/i)[0])
+    await userEvent.type(screen.getAllByLabelText(/^weight$/i)[0], '2')
+    await userEvent.click(screen.getByRole('button', { name: /add criterion/i }))
+    await userEvent.type(screen.getAllByLabelText(/^name$/i)[1], 'Empathy')
+    await userEvent.type(screen.getAllByLabelText(/^description$/i)[1], 'Shows customer empathy.')
+    await userEvent.click(screen.getByRole('button', { name: /save questions/i }))
+
+    await waitFor(() => {
+      expect(apiMock.interviews.update).toHaveBeenCalledWith(1, expect.objectContaining({
+        questions: [expect.objectContaining({
+          question_text: 'Updated customer question?',
+          expected_answer: 'Updated expected answer.',
+          weight: 2,
+          order_index: 0,
+          rubric_criteria: [expect.objectContaining({
+            name: 'Clarity',
+            order_index: 0,
+          }), expect.objectContaining({
+            name: 'Empathy',
+            description: 'Shows customer empathy.',
+            order_index: 1,
+          })],
+        })],
+      }))
+    })
+    expect(await screen.findByText(/updated customer question/i)).toBeInTheDocument()
   })
 })

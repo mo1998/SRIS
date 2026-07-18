@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Card, Row, Col, Button, Table, Badge, Modal, Form, Alert, Tabs, Tab } from 'react-bootstrap'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../services/api'
-import { FiMail, FiDownload, FiEye, FiActivity, FiEdit } from 'react-icons/fi'
+import { FiMail, FiDownload, FiEye, FiActivity, FiEdit, FiPlus, FiTrash2 } from 'react-icons/fi'
 
 const InterviewDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -14,6 +14,7 @@ const InterviewDetail: React.FC = () => {
   const [bulkInvites, setBulkInvites] = useState('')
   const [inviteTab, setInviteTab] = useState('single')
   const [isEditingDetails, setIsEditingDetails] = useState(false)
+  const [isEditingQuestions, setIsEditingQuestions] = useState(false)
   const [editData, setEditData] = useState({
     title: '',
     description: '',
@@ -21,6 +22,7 @@ const InterviewDetail: React.FC = () => {
     max_attempts: 1,
     pass_score: 70,
   })
+  const [questionDrafts, setQuestionDrafts] = useState<any[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   
@@ -43,6 +45,7 @@ const InterviewDetail: React.FC = () => {
         max_attempts: interviewRes.data.max_attempts || 1,
         pass_score: interviewRes.data.pass_score || 70,
       })
+      setQuestionDrafts(normalizeQuestions(interviewRes.data.questions || []))
       setResponses(responsesRes.data)
       setInvitations(invitationsRes.data)
     } catch (error) {
@@ -51,6 +54,20 @@ const InterviewDetail: React.FC = () => {
       setLoading(false)
     }
   }
+
+  const normalizeQuestions = (questions: any[]) => questions.map((question, index) => ({
+    question_text: question.question_text || '',
+    expected_answer: question.expected_answer || '',
+    question_type: question.question_type || 'text',
+    weight: question.weight || 1,
+    order_index: index,
+    rubric_criteria: (question.rubric_criteria || []).map((criterion: any, criterionIndex: number) => ({
+      name: criterion.name || '',
+      description: criterion.description || '',
+      weight: criterion.weight || 1,
+      order_index: criterionIndex,
+    })),
+  }))
   
   const handleActivate = async () => {
     if (!confirm('Activate this interview? Candidates will be able to start taking it.')) {
@@ -95,6 +112,83 @@ const InterviewDetail: React.FC = () => {
       setIsEditingDetails(false)
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to update interview')
+    }
+  }
+
+  const updateQuestionDraft = (questionIndex: number, field: string, value: any) => {
+    setQuestionDrafts((current) => current.map((question, index) => (
+      index === questionIndex ? { ...question, [field]: value } : question
+    )))
+  }
+
+  const addQuestionDraft = () => {
+    setQuestionDrafts((current) => [
+      ...current,
+      { question_text: '', expected_answer: '', question_type: 'text', weight: 1, order_index: current.length, rubric_criteria: [] },
+    ])
+  }
+
+  const removeQuestionDraft = (questionIndex: number) => {
+    setQuestionDrafts((current) => current.filter((_, index) => index !== questionIndex))
+  }
+
+  const addCriterionDraft = (questionIndex: number) => {
+    setQuestionDrafts((current) => current.map((question, index) => {
+      if (index !== questionIndex) return question
+      const criteria = question.rubric_criteria || []
+      return {
+        ...question,
+        rubric_criteria: [...criteria, { name: '', description: '', weight: 1, order_index: criteria.length }],
+      }
+    }))
+  }
+
+  const updateCriterionDraft = (questionIndex: number, criterionIndex: number, field: string, value: any) => {
+    setQuestionDrafts((current) => current.map((question, index) => {
+      if (index !== questionIndex) return question
+      return {
+        ...question,
+        rubric_criteria: (question.rubric_criteria || []).map((criterion: any, currentCriterionIndex: number) => (
+          currentCriterionIndex === criterionIndex ? { ...criterion, [field]: value } : criterion
+        )),
+      }
+    }))
+  }
+
+  const removeCriterionDraft = (questionIndex: number, criterionIndex: number) => {
+    setQuestionDrafts((current) => current.map((question, index) => {
+      if (index !== questionIndex) return question
+      return {
+        ...question,
+        rubric_criteria: (question.rubric_criteria || []).filter((_: any, currentCriterionIndex: number) => currentCriterionIndex !== criterionIndex),
+      }
+    }))
+  }
+
+  const handleUpdateQuestions = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setError('')
+
+    try {
+      const response = await api.interviews.update(parseInt(id!), {
+        title: interview.title,
+        description: interview.description,
+        duration_minutes: interview.duration_minutes,
+        max_attempts: interview.max_attempts,
+        pass_score: interview.pass_score,
+        questions: questionDrafts.map((question, questionIndex) => ({
+          ...question,
+          order_index: questionIndex,
+          rubric_criteria: (question.rubric_criteria || [])
+            .filter((criterion: any) => criterion.name.trim())
+            .map((criterion: any, criterionIndex: number) => ({ ...criterion, order_index: criterionIndex })),
+        })),
+      })
+      setInterview(response.data)
+      setQuestionDrafts(normalizeQuestions(response.data.questions || []))
+      setIsEditingQuestions(false)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to update questions')
     }
   }
   
@@ -289,32 +383,113 @@ const InterviewDetail: React.FC = () => {
           
           <Card>
             <Card.Header>
-              <h5 className="mb-0">Questions ({interview.questions?.length || 0})</h5>
+              <div className="d-flex justify-content-between align-items-center">
+                <h5 className="mb-0">Questions ({interview.questions?.length || 0})</h5>
+                {interview.status === 'draft' && (
+                  <Button
+                    variant="outline-primary"
+                    size="sm"
+                    onClick={() => {
+                      setQuestionDrafts(normalizeQuestions(interview.questions || []))
+                      setIsEditingQuestions((current) => !current)
+                    }}
+                  >
+                    <FiEdit className="me-1" />
+                    {isEditingQuestions ? 'Cancel' : 'Edit'}
+                  </Button>
+                )}
+              </div>
             </Card.Header>
             <Card.Body>
-              {interview.questions?.map((q: any, idx: number) => (
-                <div key={q.id} className="mb-3">
-                  <strong>Q{idx + 1}:</strong> {q.question_text}
-                  <br />
-                  <small className="text-muted">Weight: {q.weight}x</small>
-                  {(q.rubric_criteria || []).length > 0 && (
-                    <div className="mt-2 ms-3">
-                      <small className="text-muted d-block mb-1">Rubric criteria</small>
-                      <ul className="mb-0">
-                        {q.rubric_criteria.map((criterion: any) => (
-                          <li key={criterion.id}>
-                            <small>
-                              <strong>{criterion.name}</strong>
-                              {criterion.description ? `: ${criterion.description}` : ''}
-                              {criterion.weight ? ` (${criterion.weight}x)` : ''}
-                            </small>
-                          </li>
+              {isEditingQuestions ? (
+                <Form onSubmit={handleUpdateQuestions}>
+                  {questionDrafts.map((question, questionIndex) => (
+                    <Card key={questionIndex} className="mb-3 bg-light">
+                      <Card.Body>
+                        <div className="d-flex justify-content-between align-items-center mb-3">
+                          <strong>Question {questionIndex + 1}</strong>
+                          <Button type="button" size="sm" variant="outline-danger" onClick={() => removeQuestionDraft(questionIndex)} disabled={questionDrafts.length === 1}>
+                            <FiTrash2 />
+                          </Button>
+                        </div>
+                        <Form.Group className="mb-3" controlId={`edit-question-text-${questionIndex}`}>
+                          <Form.Label>Question Text</Form.Label>
+                          <Form.Control as="textarea" rows={2} value={question.question_text} onChange={(event) => updateQuestionDraft(questionIndex, 'question_text', event.target.value)} required />
+                        </Form.Group>
+                        <Form.Group className="mb-3" controlId={`edit-question-expected-${questionIndex}`}>
+                          <Form.Label>Expected Answer</Form.Label>
+                          <Form.Control as="textarea" rows={2} value={question.expected_answer} onChange={(event) => updateQuestionDraft(questionIndex, 'expected_answer', event.target.value)} />
+                        </Form.Group>
+                        <Form.Group className="mb-3" controlId={`edit-question-weight-${questionIndex}`}>
+                          <Form.Label>Weight</Form.Label>
+                          <Form.Control type="number" min={0.5} max={5} step={0.5} value={question.weight} onChange={(event) => updateQuestionDraft(questionIndex, 'weight', parseFloat(event.target.value))} />
+                        </Form.Group>
+
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <small className="text-muted">Rubric Criteria</small>
+                          <Button type="button" size="sm" variant="outline-secondary" onClick={() => addCriterionDraft(questionIndex)}>
+                            <FiPlus className="me-1" />
+                            Add Criterion
+                          </Button>
+                        </div>
+                        {(question.rubric_criteria || []).map((criterion: any, criterionIndex: number) => (
+                          <div key={criterionIndex} className="border rounded p-2 mb-2 bg-white">
+                            <div className="d-flex justify-content-between align-items-center mb-2">
+                              <strong className="small">Criterion {criterionIndex + 1}</strong>
+                              <Button type="button" size="sm" variant="outline-danger" onClick={() => removeCriterionDraft(questionIndex, criterionIndex)}>
+                                <FiTrash2 />
+                              </Button>
+                            </div>
+                            <Form.Group className="mb-2" controlId={`edit-criterion-name-${questionIndex}-${criterionIndex}`}>
+                              <Form.Label>Name</Form.Label>
+                              <Form.Control value={criterion.name} onChange={(event) => updateCriterionDraft(questionIndex, criterionIndex, 'name', event.target.value)} />
+                            </Form.Group>
+                            <Form.Group className="mb-2" controlId={`edit-criterion-description-${questionIndex}-${criterionIndex}`}>
+                              <Form.Label>Description</Form.Label>
+                              <Form.Control as="textarea" rows={2} value={criterion.description} onChange={(event) => updateCriterionDraft(questionIndex, criterionIndex, 'description', event.target.value)} />
+                            </Form.Group>
+                            <Form.Group controlId={`edit-criterion-weight-${questionIndex}-${criterionIndex}`}>
+                              <Form.Label>Weight</Form.Label>
+                              <Form.Control type="number" min={0.5} max={5} step={0.5} value={criterion.weight} onChange={(event) => updateCriterionDraft(questionIndex, criterionIndex, 'weight', parseFloat(event.target.value))} />
+                            </Form.Group>
+                          </div>
                         ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              ))}
+                      </Card.Body>
+                    </Card>
+                  ))}
+                  <div className="d-flex gap-2">
+                    <Button type="button" size="sm" variant="outline-secondary" onClick={addQuestionDraft}>
+                      <FiPlus className="me-1" />
+                      Add Question
+                    </Button>
+                    <Button type="submit" size="sm">Save Questions</Button>
+                  </div>
+                </Form>
+              ) : (
+                interview.questions?.map((q: any, idx: number) => (
+                  <div key={q.id} className="mb-3">
+                    <strong>Q{idx + 1}:</strong> {q.question_text}
+                    <br />
+                    <small className="text-muted">Weight: {q.weight}x</small>
+                    {(q.rubric_criteria || []).length > 0 && (
+                      <div className="mt-2 ms-3">
+                        <small className="text-muted d-block mb-1">Rubric criteria</small>
+                        <ul className="mb-0">
+                          {q.rubric_criteria.map((criterion: any) => (
+                            <li key={criterion.id}>
+                              <small>
+                                <strong>{criterion.name}</strong>
+                                {criterion.description ? `: ${criterion.description}` : ''}
+                                {criterion.weight ? ` (${criterion.weight}x)` : ''}
+                              </small>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
             </Card.Body>
           </Card>
         </Col>
