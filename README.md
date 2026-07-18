@@ -635,5 +635,3 @@ MIT License
 For issues, questions, or contributions, please open a GitHub issue.
 
 ---
-
-**Built with ❤️ using FastAPI, React, and AI**
