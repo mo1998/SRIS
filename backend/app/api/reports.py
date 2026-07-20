@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 from app.database import get_db
-from app.models import User, Interview, CandidateResponse, TeamMembership, UserRole
+from app.models import User, Interview, CandidateResponse, TeamMembership, TeamRole, UserRole
 from app.schemas import InterviewReport, CandidateReport, EvaluationAnalytics, EvaluationHealth, EvaluationRunAudit
 from app.api.auth import get_current_user, require_role, UserRole
 from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit, generate_interview_evaluation_analytics, get_evaluation_health
@@ -50,7 +50,23 @@ def require_candidate_evaluation_management(response: CandidateResponse, user: U
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
 
-    require_interview_membership(interview, user, db)
+    require_evaluation_management_membership(interview, user, db)
+
+
+def require_evaluation_management_membership(interview: Interview, user: User, db: Session) -> None:
+    if user.role == UserRole.ADMIN:
+        return
+
+    membership = (
+        db.query(TeamMembership)
+        .filter(
+            TeamMembership.user_id == user.id,
+            TeamMembership.organization_id == interview.organization_id,
+        )
+        .first()
+    )
+    if not membership or membership.role not in {TeamRole.OWNER, TeamRole.ADMIN, TeamRole.RECRUITER}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient evaluation permissions")
 
 
 @router.get("/interview/{interview_id}", response_model=InterviewReport)
@@ -99,7 +115,7 @@ async def reevaluate_interview_responses(
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
 
-    require_interview_membership(interview, current_user, db)
+    require_evaluation_management_membership(interview, current_user, db)
 
     responses = (
         db.query(CandidateResponse)

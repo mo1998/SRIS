@@ -777,6 +777,77 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert "listen" in evaluation_audit[0]["scores"][0]["evidence"]["matched_keywords"]
     assert evaluation_audit[0]["scores"][0]["evidence"]["rubric_criteria"][0]["name"] == "Ownership"
 
+    register_user(client, email="pipeline-reviewer@example.com", role="employee")
+    reviewer_token = login_user(client, email="pipeline-reviewer@example.com")
+    add_reviewer_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "pipeline-reviewer@example.com", "role": "reviewer"},
+    )
+    assert add_reviewer_response.status_code == 201, add_reviewer_response.text
+
+    reviewer_report_response = client.get(
+        f"/api/reports/candidate/{candidate_response['id']}",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+    assert reviewer_report_response.status_code == 200, reviewer_report_response.text
+    reviewer_audit_response = client.get(
+        f"/api/reports/candidate/{candidate_response['id']}/evaluations",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+    assert reviewer_audit_response.status_code == 200, reviewer_audit_response.text
+    reviewer_analytics_response = client.get(
+        f"/api/reports/interview/{interview['id']}/evaluation-analytics",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+    assert reviewer_analytics_response.status_code == 200, reviewer_analytics_response.text
+    reviewer_reevaluation_response = client.post(
+        f"/api/reports/candidate/{candidate_response['id']}/evaluations",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+    assert reviewer_reevaluation_response.status_code == 403, reviewer_reevaluation_response.text
+    reviewer_batch_response = client.post(
+        f"/api/reports/interview/{interview['id']}/evaluations",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+    assert reviewer_batch_response.status_code == 403, reviewer_batch_response.text
+
+    register_user(client, email="pipeline-candidate@example.com", role="employee")
+    candidate_token = login_user(client, email="pipeline-candidate@example.com")
+    candidate_self_report_response = client.get(
+        f"/api/reports/candidate/{candidate_response['id']}",
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+    assert candidate_self_report_response.status_code == 200, candidate_self_report_response.text
+    candidate_self_audit_response = client.get(
+        f"/api/reports/candidate/{candidate_response['id']}/evaluations",
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+    assert candidate_self_audit_response.status_code == 200, candidate_self_audit_response.text
+    candidate_self_reevaluation_response = client.post(
+        f"/api/reports/candidate/{candidate_response['id']}/evaluations",
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+    assert candidate_self_reevaluation_response.status_code == 403, candidate_self_reevaluation_response.text
+
+    register_user(client, email="pipeline-other@example.com")
+    other_token = login_user(client, email="pipeline-other@example.com")
+    other_candidate_report_response = client.get(
+        f"/api/reports/candidate/{candidate_response['id']}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert other_candidate_report_response.status_code == 403, other_candidate_report_response.text
+    other_candidate_audit_response = client.get(
+        f"/api/reports/candidate/{candidate_response['id']}/evaluations",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert other_candidate_audit_response.status_code == 403, other_candidate_audit_response.text
+    other_analytics_response = client.get(
+        f"/api/reports/interview/{interview['id']}/evaluation-analytics",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert other_analytics_response.status_code == 403, other_analytics_response.text
+
     reevaluation_response = client.post(
         f"/api/reports/candidate/{candidate_response['id']}/evaluations",
         headers={"Authorization": f"Bearer {owner_token}"},
