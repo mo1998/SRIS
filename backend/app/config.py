@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     MAIL_PORT: int = 587
     MAIL_TLS: bool = True
     MAIL_SSL: bool = False
+    INVITATION_RESEND_COOLDOWN_SECONDS: int = int(os.getenv("INVITATION_RESEND_COOLDOWN_SECONDS", "300"))
     
     # Evaluation
     EVALUATION_PROVIDER: str = os.getenv("EVALUATION_PROVIDER", "local_vllm")

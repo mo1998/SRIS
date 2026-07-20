@@ -319,6 +319,17 @@ async def resend_invitation(
 
     if invitation.status == InvitationStatus.REVOKED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot resend a revoked invitation")
+
+    if invitation.sent_at:
+        next_resend_at = invitation.sent_at + timedelta(seconds=settings.INVITATION_RESEND_COOLDOWN_SECONDS)
+        now = datetime.utcnow()
+        if now < next_resend_at:
+            retry_after = max(1, int((next_resend_at - now).total_seconds()))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Invitation was resent recently. Please try again later.",
+                headers={"Retry-After": str(retry_after)},
+            )
     
     # Generate new token and extend expiry
     invitation.unique_token = generate_unique_token()
