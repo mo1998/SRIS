@@ -613,6 +613,56 @@ def generate_candidate_evaluation_audit(response_id: int, db: Session) -> List[D
     return audit_runs
 
 
+def generate_interview_evaluation_analytics(interview_id: int, db: Session) -> Dict[str, object]:
+    responses = (
+        db.query(CandidateResponse)
+        .filter(CandidateResponse.interview_id == interview_id, CandidateResponse.status == "completed")
+        .all()
+    )
+    response_ids = [response.id for response in responses]
+    runs = db.query(EvaluationRun).filter(EvaluationRun.response_id.in_(response_ids)).all() if response_ids else []
+
+    provider_counts = {}
+    fallback_count = 0
+    for run in runs:
+        provider_counts[run.provider] = provider_counts.get(run.provider, 0) + 1
+
+    latest_scores = []
+    for response in responses:
+        latest_run = (
+            db.query(EvaluationRun)
+            .filter(EvaluationRun.response_id == response.id, EvaluationRun.status == "completed")
+            .order_by(EvaluationRun.completed_at.desc(), EvaluationRun.id.desc())
+            .first()
+        )
+        if latest_run and latest_run.raw_summary:
+            summary = parse_evidence_json(latest_run.raw_summary)
+            if summary.get("total_score") is not None:
+                latest_scores.append(float(summary["total_score"]))
+        latest_scores.extend([] if latest_run else [])
+
+        if latest_run:
+            scores = db.query(EvaluationScore).filter(EvaluationScore.evaluation_run_id == latest_run.id).all()
+            for score in scores:
+                evidence = parse_evidence_json(score.evidence_json)
+                if evidence.get("provider_fallback_from"):
+                    fallback_count += 1
+
+    return {
+        "interview_id": interview_id,
+        "completed_responses": len(responses),
+        "total_evaluation_runs": len(runs),
+        "queued_runs": sum(1 for run in runs if run.status == "queued"),
+        "running_runs": sum(1 for run in runs if run.status == "running"),
+        "completed_runs": sum(1 for run in runs if run.status == "completed"),
+        "failed_runs": sum(1 for run in runs if run.status == "failed"),
+        "average_latest_score": sum(latest_scores) / len(latest_scores) if latest_scores else 0.0,
+        "fallback_count": fallback_count,
+        "provider_counts": provider_counts,
+        "generated_at": datetime.utcnow(),
+    }
+
+
 async def get_evaluation_health() -> Dict[str, object]:
     provider = get_evaluation_provider()
     health = {

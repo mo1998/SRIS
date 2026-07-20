@@ -11,9 +11,9 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models import User, Interview, CandidateResponse, TeamMembership, UserRole
-from app.schemas import InterviewReport, CandidateReport, EvaluationHealth, EvaluationRunAudit
+from app.schemas import InterviewReport, CandidateReport, EvaluationAnalytics, EvaluationHealth, EvaluationRunAudit
 from app.api.auth import get_current_user, require_role, UserRole
-from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit, get_evaluation_health
+from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit, generate_interview_evaluation_analytics, get_evaluation_health
 
 router = APIRouter()
 
@@ -126,6 +126,23 @@ async def reevaluate_interview_responses(
         background_tasks.add_task(evaluate_candidate_response_background, run.response_id, run.id)
 
     return [generate_candidate_evaluation_audit(run.response_id, db)[0] for run in queued_runs]
+
+
+@router.get("/interview/{interview_id}/evaluation-analytics", response_model=EvaluationAnalytics)
+async def get_interview_evaluation_analytics(
+    interview_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get evaluation analytics for completed responses in an interview."""
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+
+    require_interview_membership(interview, current_user, db)
+
+    return generate_interview_evaluation_analytics(interview_id, db)
 
 
 @router.get("/candidate/{response_id}", response_model=CandidateReport)

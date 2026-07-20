@@ -808,6 +808,18 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert batch_runs[0]["response_id"] == candidate_response["id"]
     assert batch_runs[0]["status"] == "queued"
 
+    analytics_response = client.get(
+        f"/api/reports/interview/{interview['id']}/evaluation-analytics",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert analytics_response.status_code == 200, analytics_response.text
+    analytics = analytics_response.json()
+    assert analytics["completed_responses"] == 1
+    assert analytics["total_evaluation_runs"] == 3
+    assert analytics["completed_runs"] == 3
+    assert analytics["average_latest_score"] > 0
+    assert analytics["provider_counts"]["local_vllm"] == 3
+
     candidate_pdf_response = client.get(
         f"/api/reports/candidate/{candidate_response['id']}/pdf",
         headers={"Authorization": f"Bearer {owner_token}"},
