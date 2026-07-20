@@ -100,6 +100,7 @@ async def change_current_user_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
 
     current_user.hashed_password = get_password_hash(password_data.new_password)
+    current_user.token_version = (current_user.token_version or 0) + 1
     db.commit()
 
 
