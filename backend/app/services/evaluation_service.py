@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import json
 import re
 import hashlib
-from typing import Dict, List, Protocol
+from typing import Dict, List, Optional, Protocol
 import httpx
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -32,7 +32,7 @@ class EvaluationProvider(Protocol):
     name: str
     version: str
 
-    async def evaluate_answer(self, answer_text: str, expected_answer: str) -> EvaluationResult:
+    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None) -> EvaluationResult:
         ...
 
 
@@ -40,15 +40,16 @@ class BaselineEvaluationProvider:
     name = "deterministic_baseline"
     version = "1.0.0"
 
-    async def evaluate_answer(self, answer_text: str, expected_answer: str) -> EvaluationResult:
+    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None) -> EvaluationResult:
         answer_tokens = normalize_tokens(answer_text)
-        expected_tokens = normalize_tokens(expected_answer)
+        rubric_text = build_rubric_text(rubric_criteria or [])
+        expected_tokens = normalize_tokens(" ".join([expected_answer or "", rubric_text]))
 
         if not answer_tokens:
             return EvaluationResult(
                 score=0.0,
                 feedback="No answer provided. Evidence: empty candidate response.",
-                evidence={"matched_keywords": [], "missing_keywords": expected_tokens, "keyword_coverage": 0.0, "length_score": 0.0},
+                evidence={"matched_keywords": [], "missing_keywords": expected_tokens, "keyword_coverage": 0.0, "length_score": 0.0, "rubric_criteria": rubric_criteria or []},
             )
 
         if not expected_tokens:
@@ -56,7 +57,7 @@ class BaselineEvaluationProvider:
             return EvaluationResult(
                 score=round(length_score * 0.7, 1),
                 feedback="No expected answer was configured; scored using answer completeness only.",
-                evidence={"matched_keywords": [], "missing_keywords": [], "keyword_coverage": None, "length_score": round(length_score, 1)},
+                evidence={"matched_keywords": [], "missing_keywords": [], "keyword_coverage": None, "length_score": round(length_score, 1), "rubric_criteria": rubric_criteria or []},
             )
 
         expected_set = set(expected_tokens)
@@ -83,6 +84,7 @@ class BaselineEvaluationProvider:
                 "missing_keywords": missing_keywords,
                 "keyword_coverage": round(keyword_coverage * 100, 1),
                 "length_score": round(length_score * 100, 1),
+                "rubric_criteria": rubric_criteria or [],
             },
         )
 
@@ -94,9 +96,9 @@ class LocalVLLMEvaluationProvider:
     def __init__(self, fallback_provider: EvaluationProvider):
         self.fallback_provider = fallback_provider
 
-    async def evaluate_answer(self, answer_text: str, expected_answer: str) -> EvaluationResult:
+    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None) -> EvaluationResult:
         if not answer_text.strip():
-            return await self.fallback_provider.evaluate_answer(answer_text, expected_answer)
+            return await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
 
         try:
             payload = {
@@ -106,13 +108,18 @@ class LocalVLLMEvaluationProvider:
                         "role": "system",
                         "content": (
                             "/no_think You evaluate structured interview answers. Do not show reasoning. "
+                            "Use the expected answer and rubric criteria as the scoring contract. "
                             "Return valid compact JSON only with keys: score, feedback_en, feedback_ar, "
                             "matched_criteria, missing_criteria, evidence. Score must be 0-100."
                         ),
                     },
                     {
                         "role": "user",
-                        "content": f"Expected answer: {expected_answer}\nCandidate answer: {answer_text}",
+                        "content": (
+                            f"Expected answer: {expected_answer}\n"
+                            f"Rubric criteria JSON: {json.dumps(rubric_criteria or [], ensure_ascii=False)}\n"
+                            f"Candidate answer: {answer_text}"
+                        ),
                     },
                 ],
                 "temperature": 0,
@@ -133,6 +140,7 @@ class LocalVLLMEvaluationProvider:
                 "matched_criteria": parsed.get("matched_criteria", []),
                 "missing_criteria": parsed.get("missing_criteria", []),
                 "evidence": parsed.get("evidence", ""),
+                "rubric_criteria": rubric_criteria or [],
             }
             return EvaluationResult(
                 score=score,
@@ -140,7 +148,7 @@ class LocalVLLMEvaluationProvider:
                 evidence=evidence,
             )
         except Exception as exc:
-            fallback = await self.fallback_provider.evaluate_answer(answer_text, expected_answer)
+            fallback = await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
             fallback.evidence.update({
                 "provider_fallback_from": self.name,
                 "provider_fallback_reason": str(exc),
@@ -159,6 +167,24 @@ def score_answer_length(answer_tokens: List[str], minimum_tokens: int) -> float:
     if minimum_tokens <= 0:
         return 100.0
     return min(100.0, (len(answer_tokens) / minimum_tokens) * 100)
+
+
+def build_rubric_text(rubric_criteria: List[Dict[str, object]]) -> str:
+    return " ".join(
+        " ".join(str(criterion.get(key) or "") for key in ("name", "description"))
+        for criterion in rubric_criteria
+    )
+
+
+def serialize_rubric_criteria(question: InterviewQuestion) -> List[Dict[str, object]]:
+    return [
+        {
+            "name": criterion.name,
+            "description": criterion.description,
+            "weight": criterion.weight,
+        }
+        for criterion in sorted(question.rubric_criteria, key=lambda item: item.order_index or 0)
+    ]
 
 
 baseline_provider = BaselineEvaluationProvider()
@@ -264,7 +290,7 @@ async def evaluate_candidate_response(response_id: int, db: Session):
 
             # Score the answer
             if answer.answer_text and question.expected_answer:
-                result = await provider.evaluate_answer(answer.answer_text, question.expected_answer)
+                result = await provider.evaluate_answer(answer.answer_text, question.expected_answer, serialize_rubric_criteria(question))
                 answer.score = result.score
                 answer.feedback = result.feedback
             else:
