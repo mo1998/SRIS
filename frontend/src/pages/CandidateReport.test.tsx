@@ -36,6 +36,7 @@ const renderPage = () => render(
 describe('CandidateReport', () => {
   beforeEach(() => {
     authMock.user = { role: 'employer' }
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     apiMock.reports.getCandidateReport.mockReset()
     apiMock.reports.getCandidateEvaluations.mockReset()
     apiMock.reports.reevaluateCandidate.mockReset()
@@ -167,6 +168,12 @@ describe('CandidateReport', () => {
     expect(screen.getByText(/run #7/i)).toBeInTheDocument()
     expect(screen.getByText(/abc123/i)).toBeInTheDocument()
 
+    vi.mocked(window.confirm).mockReturnValueOnce(false)
+    await userEvent.click(screen.getByRole('button', { name: /re-evaluate/i }))
+
+    expect(apiMock.reports.reevaluateCandidate).not.toHaveBeenCalled()
+
+    vi.mocked(window.confirm).mockReturnValueOnce(true)
     await userEvent.click(screen.getByRole('button', { name: /re-evaluate/i }))
 
     await waitFor(() => {
