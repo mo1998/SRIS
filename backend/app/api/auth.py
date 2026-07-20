@@ -79,6 +79,19 @@ def create_refresh_token(data: dict) -> str:
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
+def create_user_token_payload(user: User) -> dict:
+    return {
+        "sub": str(user.id),
+        "role": user.role.value,
+        "token_version": user.token_version or 0,
+    }
+
+
+def validate_token_version(payload: dict, user: User) -> None:
+    if int(payload.get("token_version", -1)) != (user.token_version or 0):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
+
+
 def get_token_subject(payload: dict) -> int:
     subject = payload.get("sub")
     if subject is None:
@@ -105,6 +118,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(User).filter(User.id == user_id).first()
     if user is None or not user.is_active:
         raise credentials_exception
+    validate_token_version(payload, user)
     return user
 
 
@@ -184,8 +198,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
 
     clear_failed_login(form_data.username)
     
-    access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    access_token = create_access_token(data=create_user_token_payload(user))
+    refresh_token = create_refresh_token(data=create_user_token_payload(user))
     
     return {
         "access_token": access_token,
@@ -215,9 +229,10 @@ async def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    validate_token_version(payload, user)
     
-    new_access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
-    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    new_access_token = create_access_token(data=create_user_token_payload(user))
+    new_refresh_token = create_refresh_token(data=create_user_token_payload(user))
     
     return {
         "access_token": new_access_token,

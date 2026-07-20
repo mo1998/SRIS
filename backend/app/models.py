@@ -64,6 +64,7 @@ class User(Base):
     company_name = Column(String(255), nullable=True)  # For employers
     phone = Column(String(50), nullable=True)
     is_active = Column(Boolean, default=True)
+    token_version = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

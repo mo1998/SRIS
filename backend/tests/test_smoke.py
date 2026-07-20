@@ -266,6 +266,30 @@ def test_current_user_can_change_password(client):
     assert new_login_response.status_code == 200, new_login_response.text
 
 
+def test_password_change_revokes_existing_refresh_and_access_tokens(client):
+    register_user(client)
+    tokens = login_tokens(client)
+
+    response = client.post(
+        "/api/users/me/password",
+        headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        json={"current_password": "Strong-password1", "new_password": "New-strong-password2"},
+    )
+    assert response.status_code == 204, response.text
+
+    old_refresh_response = client.post(
+        "/api/auth/refresh",
+        params={"refresh_token": tokens["refresh_token"]},
+    )
+    assert old_refresh_response.status_code == 401, old_refresh_response.text
+
+    old_access_response = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {tokens['access_token']}"},
+    )
+    assert old_access_response.status_code == 401, old_access_response.text
+
+
 def test_current_user_password_change_rejects_wrong_current_password(client):
     register_user(client)
     token = login_user(client)
