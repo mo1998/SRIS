@@ -52,6 +52,13 @@ jobs:
       - name: Build
         run: npm run build --prefix frontend
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Run release candidate E2E smoke
+        run: npm run test:e2e --prefix frontend
+
   docker-config:
     name: Docker Compose Config
     runs-on: ubuntu-latest
