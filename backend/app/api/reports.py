@@ -11,9 +11,9 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models import User, Interview, CandidateResponse, TeamMembership, UserRole
-from app.schemas import InterviewReport, CandidateReport
+from app.schemas import InterviewReport, CandidateReport, EvaluationRunAudit
 from app.api.auth import get_current_user, require_role, UserRole
-from app.services.evaluation_service import generate_employer_report, generate_candidate_report
+from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit
 
 router = APIRouter()
 
@@ -88,6 +88,24 @@ async def get_candidate_report(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not available")
     
     return report
+
+
+@router.get("/candidate/{response_id}/evaluations", response_model=List[EvaluationRunAudit])
+async def get_candidate_evaluation_audit(
+    response_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get persisted evaluation run history and per-answer evidence for a response."""
+
+    response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
+
+    if not response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+
+    require_candidate_report_access(response, current_user, db)
+
+    return generate_candidate_evaluation_audit(response_id, db)
 
 
 @router.get("/interview/{interview_id}/pdf")

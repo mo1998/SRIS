@@ -511,3 +511,50 @@ def generate_employer_report(interview_id: int, db: Session) -> Dict:
         "candidates": candidates,
         "generated_at": datetime.utcnow()
     }
+
+
+def generate_candidate_evaluation_audit(response_id: int, db: Session) -> List[Dict]:
+    runs = (
+        db.query(EvaluationRun)
+        .filter(EvaluationRun.response_id == response_id)
+        .order_by(EvaluationRun.started_at.desc(), EvaluationRun.id.desc())
+        .all()
+    )
+
+    audit_runs = []
+    for run in runs:
+        scores = (
+            db.query(EvaluationScore)
+            .filter(EvaluationScore.evaluation_run_id == run.id)
+            .order_by(EvaluationScore.id.asc())
+            .all()
+        )
+        audit_runs.append({
+            "id": run.id,
+            "response_id": run.response_id,
+            "provider": run.provider,
+            "provider_version": run.provider_version,
+            "model_name": run.model_name,
+            "config_hash": run.config_hash,
+            "status": run.status,
+            "raw_summary": parse_evidence_json(run.raw_summary),
+            "error": run.error,
+            "started_at": run.started_at,
+            "completed_at": run.completed_at,
+            "scores": [
+                {
+                    "id": score.id,
+                    "question_answer_id": score.question_answer_id,
+                    "question_id": score.question_id,
+                    "question": score.question.question_text if score.question else None,
+                    "score": score.score,
+                    "feedback_en": score.feedback_en,
+                    "feedback_ar": score.feedback_ar,
+                    "evidence": parse_evidence_json(score.evidence_json),
+                    "created_at": score.created_at,
+                }
+                for score in scores
+            ],
+        })
+
+    return audit_runs
