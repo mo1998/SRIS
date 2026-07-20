@@ -6,7 +6,7 @@
 # 1. Clone and configure
 git clone <repository-url> && cd SRIS
 cp .env.example .env
-# Edit .env with your settings (at minimum: SECRET_KEY, OPENAI_API_KEY)
+# Edit .env with your settings (at minimum: SECRET_KEY and local LLM evaluation settings)
 
 # 2. Deploy
 ./deploy.sh
@@ -57,6 +57,7 @@ SRIS/
 docker compose logs -f           # View logs
 docker compose down              # Stop
 docker compose restart           # Restart
+docker compose config            # Validate compose files
 ```
 
 ### Production
@@ -73,6 +74,22 @@ docker compose up db-migrate     # Run migrations
 docker compose exec postgres psql -U postgres sris_db
 ```
 
+### Local LLM Evaluation
+```bash
+export EVALUATION_PROVIDER=local_vllm
+export LOCAL_LLM_BASE_URL=http://localhost:8100/v1
+export LOCAL_LLM_MODEL=qwen3-8b-awq
+export EVALUATION_PROMPT_VERSION=rubric-v1
+```
+
+Health and fallback status are available in the Employer Dashboard and via:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8000/api/reports/evaluation/health
+```
+
+Do not download or run model weights until the model has been explicitly approved.
+
 ---
 
 ## 🔐 Security Checklist
@@ -80,7 +97,8 @@ docker compose exec postgres psql -U postgres sris_db
 - [ ] Change `SECRET_KEY` (use `openssl rand -hex 32`)
 - [ ] Change `POSTGRES_PASSWORD` (strong password)
 - [ ] Change `REDIS_PASSWORD` (strong password)
-- [ ] Set `OPENAI_API_KEY` (your API key)
+- [ ] Configure `LOCAL_LLM_BASE_URL`, `LOCAL_LLM_MODEL`, and `EVALUATION_PROMPT_VERSION`
+- [ ] Confirm local LLM health endpoint reports expected provider/model/fallback status
 - [ ] Configure email SMTP settings
 - [ ] Setup SSL certificates for production
 - [ ] Update `FRONTEND_URL` and `ALLOWED_ORIGINS`
@@ -106,6 +124,8 @@ docker compose exec postgres psql -U postgres sris_db
 | Port in use | Change port in `.env` or stop conflicting service |
 | DB connection error | `docker compose restart postgres` |
 | Container won't start | `docker compose logs <service-name>` |
+| Evaluations use fallback | Check `/api/reports/evaluation/health`, vLLM process, model name, and `LOCAL_LLM_BASE_URL` |
+| Evaluation appears pending | Check candidate audit trail for queued/running/failed runs and backend logs |
 
 ---
 
@@ -115,5 +135,6 @@ docker compose exec postgres psql -U postgres sris_db
 2. Create your first interview
 3. Invite candidates via email
 4. Monitor responses and download reports
+5. Verify evaluation audit trail, health status, and PDF evidence before release
 
 **Full documentation:** See README.md
