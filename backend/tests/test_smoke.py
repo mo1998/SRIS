@@ -729,6 +729,25 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert employer_responses.status_code == 200, employer_responses.text
     assert employer_responses.json()[0]["status"] == "completed"
 
+    from app.database import SessionLocal
+    from app.models import EvaluationRun, EvaluationScore
+
+    db = SessionLocal()
+    try:
+        evaluation_run = db.query(EvaluationRun).filter(EvaluationRun.response_id == candidate_response["id"]).one()
+        assert evaluation_run.status == "completed"
+        assert evaluation_run.provider
+        assert evaluation_run.provider_version
+        assert evaluation_run.config_hash
+        assert evaluation_run.completed_at is not None
+        scores = db.query(EvaluationScore).filter(EvaluationScore.evaluation_run_id == evaluation_run.id).all()
+        assert len(scores) == 1
+        assert scores[0].score > 0
+        assert scores[0].evidence_json
+        assert "listen" in scores[0].evidence_json
+    finally:
+        db.close()
+
 
 def test_invitation_can_be_revoked(client, monkeypatch):
     async def noop_send_invitation_email(**kwargs):

@@ -5,13 +5,14 @@ Evaluation service - deterministic answer scoring and candidate evaluation
 from dataclasses import dataclass
 import json
 import re
+import hashlib
 from typing import Dict, List, Protocol
 import httpx
 from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.config import settings
-from app.models import CandidateResponse, QuestionAnswer, InterviewQuestion, Interview
+from app.models import CandidateResponse, EvaluationRun, EvaluationScore, QuestionAnswer, InterviewQuestion, Interview
 
 
 STOPWORDS = {
@@ -237,39 +238,74 @@ async def evaluate_candidate_response(response_id: int, db: Session):
     
     if not answers:
         return
+
+    provider = get_evaluation_provider()
+    evaluation_run = EvaluationRun(
+        response_id=response.id,
+        provider=provider.name,
+        provider_version=getattr(provider, "version", None),
+        model_name=settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else None,
+        config_hash=get_evaluation_config_hash(provider),
+        status="running",
+        started_at=datetime.utcnow(),
+    )
+    db.add(evaluation_run)
+    db.flush()
     
     total_score = 0.0
     total_weight = 0.0
-    
-    # Evaluate each answer
-    for answer in answers:
-        question = db.query(InterviewQuestion).filter(InterviewQuestion.id == answer.question_id).first()
-        if not question:
-            continue
-        
-        # Score the answer
-        if answer.answer_text and question.expected_answer:
-            result = await get_evaluation_provider().evaluate_answer(answer.answer_text, question.expected_answer)
-            answer.score = result.score
-            answer.feedback = result.feedback
-        else:
-            answer.score = 0.0
-            answer.feedback = "No answer provided"
-        
-        # Calculate emotion during this answer
-        if response.emotion_timeline:
-            try:
-                timeline = json.loads(response.emotion_timeline)
-                if timeline:
-                    # Get most common emotion during answer time
-                    emotions = [r.get("emotion", "neutral") for r in timeline]
-                    answer.emotion_during_answer = max(set(emotions), key=emotions.count)
-            except:
-                pass
-        
-        # Weighted score
-        total_score += (answer.score or 0.0) * question.weight
-        total_weight += question.weight
+
+    try:
+        # Evaluate each answer
+        for answer in answers:
+            question = db.query(InterviewQuestion).filter(InterviewQuestion.id == answer.question_id).first()
+            if not question:
+                continue
+
+            # Score the answer
+            if answer.answer_text and question.expected_answer:
+                result = await provider.evaluate_answer(answer.answer_text, question.expected_answer)
+                answer.score = result.score
+                answer.feedback = result.feedback
+            else:
+                result = EvaluationResult(
+                    score=0.0,
+                    feedback="No answer provided",
+                    evidence={"provider": provider.name, "reason": "empty_answer"},
+                )
+                answer.score = 0.0
+                answer.feedback = result.feedback
+
+            db.add(EvaluationScore(
+                evaluation_run_id=evaluation_run.id,
+                question_answer_id=answer.id,
+                question_id=question.id,
+                score=result.score,
+                feedback_en=extract_feedback(result.feedback, "en"),
+                feedback_ar=extract_feedback(result.feedback, "ar"),
+                evidence_json=json.dumps(result.evidence, ensure_ascii=False),
+            ))
+
+            # Calculate emotion during this answer
+            if response.emotion_timeline:
+                try:
+                    timeline = json.loads(response.emotion_timeline)
+                    if timeline:
+                        # Get most common emotion during answer time
+                        emotions = [r.get("emotion", "neutral") for r in timeline]
+                        answer.emotion_during_answer = max(set(emotions), key=emotions.count)
+                except:
+                    pass
+
+            # Weighted score
+            total_score += (answer.score or 0.0) * question.weight
+            total_weight += question.weight
+    except Exception as exc:
+        evaluation_run.status = "failed"
+        evaluation_run.error = str(exc)
+        evaluation_run.completed_at = datetime.utcnow()
+        db.commit()
+        raise
     
     # Calculate total score
     if total_weight > 0:
@@ -298,6 +334,13 @@ async def evaluate_candidate_response(response_id: int, db: Session):
     
     # Determine if passed
     response.passed = response.total_score >= pass_score if response.total_score else False
+    evaluation_run.status = "completed"
+    evaluation_run.raw_summary = json.dumps({
+        "total_score": response.total_score,
+        "passed": response.passed,
+        "answer_count": len(answers),
+    }, ensure_ascii=False)
+    evaluation_run.completed_at = datetime.utcnow()
     
     db.commit()
     
@@ -315,6 +358,24 @@ async def evaluate_candidate_response(response_id: int, db: Session):
             )
         except Exception as exc:
             print(f"Completion email failed: {exc}")
+
+
+def get_evaluation_config_hash(provider: EvaluationProvider) -> str:
+    payload = {
+        "provider": provider.name,
+        "provider_version": getattr(provider, "version", None),
+        "model": settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else None,
+        "base_url": settings.LOCAL_LLM_BASE_URL if provider.name == "local_vllm" else None,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+def extract_feedback(feedback: str, language: str) -> str:
+    if language == "ar" and "Arabic feedback:" in feedback:
+        return feedback.split("Arabic feedback:", 1)[1].strip()
+    if language == "en" and "Arabic feedback:" in feedback:
+        return feedback.split("Arabic feedback:", 1)[0].strip()
+    return feedback
 
 
 def generate_candidate_report(response_id: int, db: Session) -> Dict:
