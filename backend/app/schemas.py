@@ -432,3 +432,15 @@ class EvaluationRunAudit(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     scores: List[EvaluationScoreAudit] = []
+
+
+class EvaluationHealth(BaseModel):
+    provider: str
+    provider_version: Optional[str] = None
+    model_name: Optional[str] = None
+    base_url: Optional[str] = None
+    healthy: bool
+    status: str
+    fallback_provider: Optional[str] = None
+    last_error: Optional[str] = None
+    checked_at: datetime

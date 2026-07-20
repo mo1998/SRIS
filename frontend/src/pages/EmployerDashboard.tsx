@@ -8,6 +8,7 @@ const EmployerDashboard: React.FC = () => {
   const [interviews, setInterviews] = useState<any[]>([])
   const [organization, setOrganization] = useState<any>(null)
   const [memberships, setMemberships] = useState<any[]>([])
+  const [evaluationHealth, setEvaluationHealth] = useState<any>(null)
   const [memberEmail, setMemberEmail] = useState('')
   const [memberRole, setMemberRole] = useState('reviewer')
   const [teamError, setTeamError] = useState('')
@@ -21,14 +22,16 @@ const EmployerDashboard: React.FC = () => {
   
   const loadInterviews = async () => {
     try {
-      const [interviewsResponse, organizationResponse, membershipsResponse] = await Promise.all([
+      const [interviewsResponse, organizationResponse, membershipsResponse, evaluationHealthResponse] = await Promise.all([
         api.interviews.list(),
         api.users.getMyOrganization(),
-        api.users.getMyMemberships()
+        api.users.getMyMemberships(),
+        api.reports.getEvaluationHealth()
       ])
       setInterviews(interviewsResponse.data)
       setOrganization(organizationResponse.data)
       setMemberships(membershipsResponse.data)
+      setEvaluationHealth(evaluationHealthResponse.data)
     } catch (error) {
       console.error('Failed to load dashboard:', error)
     } finally {
@@ -121,6 +124,43 @@ const EmployerDashboard: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
+      <Card className="mb-4">
+        <Card.Header>
+          <h5 className="mb-0">Evaluation Agent Health</h5>
+        </Card.Header>
+        <Card.Body>
+          {loading ? (
+            <p>Loading...</p>
+          ) : evaluationHealth ? (
+            <Row>
+              <Col md={3}>
+                <p className="mb-1"><strong>Status</strong></p>
+                <Badge bg={evaluationHealth.healthy ? 'success' : 'warning'}>{evaluationHealth.status}</Badge>
+              </Col>
+              <Col md={3}>
+                <p className="mb-1"><strong>Provider</strong></p>
+                <p className="mb-0">{evaluationHealth.provider}</p>
+              </Col>
+              <Col md={3}>
+                <p className="mb-1"><strong>Model</strong></p>
+                <p className="mb-0">{evaluationHealth.model_name || 'N/A'}</p>
+              </Col>
+              <Col md={3}>
+                <p className="mb-1"><strong>Fallback</strong></p>
+                <p className="mb-0">{evaluationHealth.fallback_provider || 'N/A'}</p>
+              </Col>
+              {evaluationHealth.last_error && (
+                <Col xs={12} className="mt-3">
+                  <Alert variant="warning" className="mb-0">{evaluationHealth.last_error}</Alert>
+                </Col>
+              )}
+            </Row>
+          ) : (
+            <p className="text-muted mb-0">Evaluation health is unavailable.</p>
+          )}
+        </Card.Body>
+      </Card>
 
       <Row className="mb-4">
         <Col lg={5} className="mb-4 mb-lg-0">

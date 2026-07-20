@@ -2,7 +2,7 @@ import pytest
 
 from app.services import evaluation_service
 from app.config import settings
-from app.services.evaluation_service import baseline_provider, evaluate_answer_similarity, local_vllm_provider, normalize_llm_score, parse_llm_json
+from app.services.evaluation_service import baseline_provider, evaluate_answer_similarity, get_evaluation_health, local_vllm_provider, normalize_llm_score, parse_llm_json
 
 
 @pytest.mark.asyncio
@@ -150,3 +150,29 @@ async def test_local_vllm_provider_falls_back_when_endpoint_fails(monkeypatch):
     assert result.evidence["provider_fallback_from"] == "local_vllm"
     assert "vllm offline" in result.evidence["provider_fallback_reason"]
     assert "deterministic fallback" in result.feedback
+
+
+@pytest.mark.asyncio
+async def test_evaluation_health_reports_local_vllm_unavailable(monkeypatch):
+    class FailingClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, url):
+            raise RuntimeError("offline")
+
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "local_vllm")
+    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", FailingClient)
+
+    health = await get_evaluation_health()
+
+    assert health["provider"] == "local_vllm"
+    assert health["healthy"] is False
+    assert health["fallback_provider"] == "deterministic_baseline"
+    assert "offline" in health["last_error"]

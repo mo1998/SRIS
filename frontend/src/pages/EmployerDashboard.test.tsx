@@ -13,6 +13,9 @@ const apiMock = vi.hoisted(() => ({
     getMyMemberships: vi.fn(),
     addMembership: vi.fn(),
   },
+  reports: {
+    getEvaluationHealth: vi.fn(),
+  },
 }))
 
 vi.mock('../services/api', () => ({
@@ -31,6 +34,7 @@ describe('EmployerDashboard', () => {
     apiMock.users.getMyOrganization.mockReset()
     apiMock.users.getMyMemberships.mockReset()
     apiMock.users.addMembership.mockReset()
+    apiMock.reports.getEvaluationHealth.mockReset()
   })
 
   it('shows organization details and adds an existing team member', async () => {
@@ -44,10 +48,24 @@ describe('EmployerDashboard', () => {
     apiMock.users.addMembership.mockResolvedValue({
       data: { id: 2, user_id: 11, role: 'reviewer' },
     })
+    apiMock.reports.getEvaluationHealth.mockResolvedValue({
+      data: {
+        provider: 'local_vllm',
+        model_name: 'qwen3-8b-awq',
+        healthy: false,
+        status: 'local_vllm_unavailable_using_fallback',
+        fallback_provider: 'deterministic_baseline',
+        last_error: 'connection refused',
+      },
+    })
 
     renderDashboard()
 
     expect(await screen.findByText('SRIS Test Co')).toBeInTheDocument()
+    expect(screen.getByText(/evaluation agent health/i)).toBeInTheDocument()
+    expect(screen.getByText(/local_vllm_unavailable_using_fallback/i)).toBeInTheDocument()
+    expect(screen.getByText(/qwen3-8b-awq/i)).toBeInTheDocument()
+    expect(screen.getByText(/deterministic_baseline/i)).toBeInTheDocument()
     expect(screen.getByText('Team members: 1')).toBeInTheDocument()
     expect(screen.getByText('owner')).toBeInTheDocument()
 
