@@ -240,6 +240,7 @@ class CandidateResponse(Base):
     candidate = relationship("User", back_populates="responses")
     invitation = relationship("Invitation")
     question_answers = relationship("QuestionAnswer", back_populates="response", cascade="all, delete-orphan")
+    evaluation_runs = relationship("EvaluationRun", back_populates="response", cascade="all, delete-orphan")
 
 
 class QuestionAnswer(Base):
@@ -258,4 +259,42 @@ class QuestionAnswer(Base):
 
     # Relationships
     response = relationship("CandidateResponse", back_populates="question_answers")
+    question = relationship("InterviewQuestion")
+    evaluation_scores = relationship("EvaluationScore", back_populates="question_answer", cascade="all, delete-orphan")
+
+
+class EvaluationRun(Base):
+    __tablename__ = "evaluation_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    response_id = Column(Integer, ForeignKey("candidate_responses.id"), nullable=False, index=True)
+    provider = Column(String(100), nullable=False)
+    provider_version = Column(String(50), nullable=True)
+    model_name = Column(String(255), nullable=True)
+    config_hash = Column(String(100), nullable=True)
+    status = Column(String(50), default="running", nullable=False)
+    raw_summary = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    response = relationship("CandidateResponse", back_populates="evaluation_runs")
+    scores = relationship("EvaluationScore", back_populates="evaluation_run", cascade="all, delete-orphan")
+
+
+class EvaluationScore(Base):
+    __tablename__ = "evaluation_scores"
+
+    id = Column(Integer, primary_key=True, index=True)
+    evaluation_run_id = Column(Integer, ForeignKey("evaluation_runs.id"), nullable=False, index=True)
+    question_answer_id = Column(Integer, ForeignKey("question_answers.id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("interview_questions.id"), nullable=False)
+    score = Column(Float, nullable=False)
+    feedback_en = Column(Text, nullable=True)
+    feedback_ar = Column(Text, nullable=True)
+    evidence_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    evaluation_run = relationship("EvaluationRun", back_populates="scores")
+    question_answer = relationship("QuestionAnswer", back_populates="evaluation_scores")
     question = relationship("InterviewQuestion")
