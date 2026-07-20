@@ -138,7 +138,10 @@ Run frontend checks from the repository root:
 npm install --prefix frontend
 npm run test:run --prefix frontend
 npm run build --prefix frontend
+npm run test:e2e --prefix frontend
 ```
+
+The Playwright E2E smoke suite uses mocked API responses and validates the release-candidate employer and employee report flows without needing a live backend.
 
 Validate Docker Compose configuration without starting services:
 
