@@ -404,3 +404,30 @@ class CandidateReport(BaseModel):
     evaluation_status: Optional[str] = None
     evaluation_completed_at: Optional[datetime] = None
     generated_at: datetime
+
+
+class EvaluationScoreAudit(BaseModel):
+    id: int
+    question_answer_id: int
+    question_id: int
+    question: Optional[str] = None
+    score: float
+    feedback_en: Optional[str] = None
+    feedback_ar: Optional[str] = None
+    evidence: Optional[dict] = None
+    created_at: Optional[datetime] = None
+
+
+class EvaluationRunAudit(BaseModel):
+    id: int
+    response_id: int
+    provider: str
+    provider_version: Optional[str] = None
+    model_name: Optional[str] = None
+    config_hash: Optional[str] = None
+    status: str
+    raw_summary: Optional[dict] = None
+    error: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    scores: List[EvaluationScoreAudit] = []

@@ -754,6 +754,19 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert "How do you handle an upset customer?" == candidate_report["answers"][0]["question"]
     assert "listen" in candidate_report["answers"][0]["evidence"]["matched_keywords"]
 
+    evaluation_audit_response = client.get(
+        f"/api/reports/candidate/{candidate_response['id']}/evaluations",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert evaluation_audit_response.status_code == 200, evaluation_audit_response.text
+    evaluation_audit = evaluation_audit_response.json()
+    assert len(evaluation_audit) == 1
+    assert evaluation_audit[0]["provider"] == candidate_report["evaluation_provider"]
+    assert evaluation_audit[0]["config_hash"]
+    assert evaluation_audit[0]["raw_summary"]["answer_count"] == 1
+    assert evaluation_audit[0]["scores"][0]["question"] == "How do you handle an upset customer?"
+    assert "listen" in evaluation_audit[0]["scores"][0]["evidence"]["matched_keywords"]
+
     candidate_pdf_response = client.get(
         f"/api/reports/candidate/{candidate_response['id']}/pdf",
         headers={"Authorization": f"Bearer {owner_token}"},
