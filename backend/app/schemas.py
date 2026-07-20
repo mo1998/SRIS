@@ -357,13 +357,31 @@ class EmotionRecord(BaseModel):
 
 
 # Report schemas
+class InterviewReportCandidate(BaseModel):
+    response_id: int
+    rank: int
+    name: str
+    email: str
+    total_score: float
+    passed: bool
+    confidence_score: float
+    voice_quality: float
+    face_visibility: float
+    dominant_emotion: str
+    completed_at: Optional[datetime] = None
+    evaluation_provider: Optional[str] = None
+    evaluation_model: Optional[str] = None
+    evaluation_status: Optional[str] = None
+    evaluation_completed_at: Optional[datetime] = None
+
+
 class InterviewReport(BaseModel):
     interview_id: int
     interview_title: str
     total_candidates: int
     average_score: float
     pass_rate: float
-    candidates: List[CandidateResponseSummary]
+    candidates: List[InterviewReportCandidate]
     generated_at: datetime
 
 

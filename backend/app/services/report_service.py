@@ -124,19 +124,24 @@ async def generate_interview_pdf(interview_id: int, db: Session) -> str:
     elements.append(Paragraph("Candidate Rankings", heading_style))
     
     # Table header
-    ranking_data = [['Rank', 'Name', 'Email', 'Score', 'Status', 'Confidence']]
+    ranking_data = [['Rank', 'Name', 'Email', 'Score', 'Status', 'Evaluation Agent']]
     
     for idx, response in enumerate(responses, 1):
+        evaluation_run = get_latest_completed_evaluation_run(response.id, db)
+        evaluation_agent = 'N/A'
+        if evaluation_run:
+            evaluation_agent = f'{evaluation_run.provider or "N/A"} / {evaluation_run.model_name or "N/A"}'
+
         ranking_data.append([
             str(idx),
             response.candidate_name,
             response.candidate_email,
             f'{response.total_score or 0:.1f}%',
             'PASSED' if response.passed else 'FAILED',
-            f'{response.confidence_score or 50:.1f}%'
+            evaluation_agent
         ])
     
-    ranking_table = Table(ranking_data, colWidths=[0.6*inch, 1.5*inch, 2*inch, 0.9*inch, 0.9*inch, 1.1*inch])
+    ranking_table = Table(ranking_data, colWidths=[0.5*inch, 1.2*inch, 1.8*inch, 0.8*inch, 0.8*inch, 1.9*inch])
     ranking_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), HexColor('#3498db')),
         ('TEXTCOLOR', (0, 0), (-1, 0), HexColor('#ffffff')),

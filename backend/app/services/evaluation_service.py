@@ -471,7 +471,14 @@ def generate_employer_report(interview_id: int, db: Session) -> Dict:
     
     candidates = []
     for response in responses:
+        evaluation_run = (
+            db.query(EvaluationRun)
+            .filter(EvaluationRun.response_id == response.id, EvaluationRun.status == "completed")
+            .order_by(EvaluationRun.completed_at.desc(), EvaluationRun.id.desc())
+            .first()
+        )
         candidates.append({
+            "response_id": response.id,
             "rank": len(candidates) + 1,
             "name": response.candidate_name,
             "email": response.candidate_email,
@@ -481,7 +488,11 @@ def generate_employer_report(interview_id: int, db: Session) -> Dict:
             "voice_quality": response.voice_quality_score or 0.0,
             "face_visibility": response.face_visibility_score or 0.0,
             "dominant_emotion": response.dominant_emotion or "neutral",
-            "completed_at": response.completed_at
+            "completed_at": response.completed_at,
+            "evaluation_provider": evaluation_run.provider if evaluation_run else None,
+            "evaluation_model": evaluation_run.model_name if evaluation_run else None,
+            "evaluation_status": evaluation_run.status if evaluation_run else None,
+            "evaluation_completed_at": evaluation_run.completed_at if evaluation_run else None,
         })
     
     # Calculate statistics
