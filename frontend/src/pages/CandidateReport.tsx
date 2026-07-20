@@ -104,6 +104,20 @@ const CandidateReport: React.FC = () => {
     return new Date(value).toLocaleString()
   }
 
+  const getRunScore = (run: any) => {
+    const summaryScore = Number(run.raw_summary?.total_score)
+    if (!Number.isNaN(summaryScore)) return summaryScore
+    if (!run.scores?.length) return 0
+    return run.scores.reduce((total: number, score: any) => total + Number(score.score || 0), 0) / run.scores.length
+  }
+
+  const formatScoreDelta = (run: any, previousRun?: any) => {
+    if (!previousRun) return 'Baseline'
+    const delta = getRunScore(run) - getRunScore(previousRun)
+    if (delta === 0) return 'No change'
+    return `${delta > 0 ? '+' : ''}${delta.toFixed(1)} pts`
+  }
+
   const canManageEvaluations = user?.role === 'employer' || user?.role === 'admin'
   
   return (
@@ -306,6 +320,7 @@ const CandidateReport: React.FC = () => {
                 <Accordion.Item eventKey={`${runIndex}`} key={run.id}>
                   <Accordion.Header>
                     <span className="me-2">Run #{run.id}</span>
+                    {runIndex === 0 && <Badge bg="primary" className="me-2">Latest</Badge>}
                     <Badge bg={run.status === 'completed' ? 'success' : run.status === 'failed' ? 'danger' : 'warning'}>
                       {run.status}
                     </Badge>
@@ -320,6 +335,7 @@ const CandidateReport: React.FC = () => {
                       <Col md={6}>
                         <p className="mb-1"><strong>Started:</strong> {formatDateTime(run.started_at)}</p>
                         <p className="mb-1"><strong>Completed:</strong> {formatDateTime(run.completed_at)}</p>
+                        <p className="mb-1"><strong>Score Delta:</strong> {formatScoreDelta(run, evaluationAudit[runIndex + 1])}</p>
                         {run.raw_summary && (
                           <p className="mb-1"><strong>Summary:</strong> {run.raw_summary.total_score?.toFixed?.(1) || run.raw_summary.total_score || 0}% / {run.raw_summary.answer_count || 0} answers</p>
                         )}
