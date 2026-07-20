@@ -17,6 +17,14 @@ vi.mock('../services/api', () => ({
   api: apiMock,
 }))
 
+const authMock = vi.hoisted(() => ({
+  user: { role: 'employer' },
+}))
+
+vi.mock('../store/authStore', () => ({
+  useAuth: () => authMock,
+}))
+
 const renderPage = () => render(
   <MemoryRouter initialEntries={["/employer/candidate/99"]}>
     <Routes>
@@ -27,6 +35,7 @@ const renderPage = () => render(
 
 describe('CandidateReport', () => {
   beforeEach(() => {
+    authMock.user = { role: 'employer' }
     apiMock.reports.getCandidateReport.mockReset()
     apiMock.reports.getCandidateEvaluations.mockReset()
     apiMock.reports.reevaluateCandidate.mockReset()
@@ -132,5 +141,37 @@ describe('CandidateReport', () => {
       expect(apiMock.reports.getCandidateReport).toHaveBeenCalledTimes(2)
       expect(apiMock.reports.getCandidateEvaluations).toHaveBeenCalledTimes(2)
     })
+  })
+
+  it('hides re-evaluation action from employee candidates', async () => {
+    authMock.user = { role: 'employee' }
+    apiMock.reports.getCandidateReport.mockResolvedValue({
+      data: {
+        response_id: 99,
+        candidate_name: 'Candidate One',
+        candidate_email: 'candidate@example.com',
+        interview_title: 'Support Screen',
+        total_score: 90,
+        passed: true,
+        voice_quality: 0,
+        background_quality: 0,
+        face_visibility: 0,
+        lighting: 0,
+        dominant_emotion: 'neutral',
+        confidence_score: 50,
+        evaluation_provider: 'local_vllm',
+        evaluation_model: 'qwen3-8b-awq',
+        evaluation_status: 'completed',
+        answers: [],
+        feedback: 'Overall feedback',
+        generated_at: '2026-07-20T00:00:00Z',
+      },
+    })
+    apiMock.reports.getCandidateEvaluations.mockResolvedValue({ data: [] })
+
+    renderPage()
+
+    expect(await screen.findByText(/candidate performance report/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /re-evaluate/i })).not.toBeInTheDocument()
   })
 })

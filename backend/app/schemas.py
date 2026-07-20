@@ -386,6 +386,7 @@ class InterviewReport(BaseModel):
 
 
 class CandidateReport(BaseModel):
+    response_id: int
     candidate_name: str
     candidate_email: str
     interview_title: str

@@ -746,6 +746,7 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     )
     assert candidate_report_response.status_code == 200, candidate_report_response.text
     candidate_report = candidate_report_response.json()
+    assert candidate_report["response_id"] == candidate_response["id"]
     assert candidate_report["evaluation_provider"]
     assert candidate_report["evaluation_model"]
     assert candidate_report["evaluation_status"] == "completed"

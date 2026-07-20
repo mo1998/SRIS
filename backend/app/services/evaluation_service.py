@@ -415,6 +415,7 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
         })
     
     return {
+        "response_id": response.id,
         "candidate_name": response.candidate_name,
         "candidate_email": response.candidate_email,
         "interview_title": interview.title if interview else "Unknown",
