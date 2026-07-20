@@ -95,6 +95,12 @@ const AppRoutes: React.FC = () => {
               <MyResults />
             </ProtectedRoute>
           } />
+
+          <Route path="/employee/candidate/:responseId" element={
+            <ProtectedRoute roles={['employee']}>
+              <CandidateReport />
+            </ProtectedRoute>
+          } />
         </Routes>
       </div>
     </Router>

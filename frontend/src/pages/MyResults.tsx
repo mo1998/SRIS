@@ -80,10 +80,12 @@ const MyResults: React.FC = () => {
                 </td>
                 <td>{result.completed_at ? new Date(result.completed_at).toLocaleDateString() : 'N/A'}</td>
                 <td>
-                  <Button variant="outline-primary" size="sm">
-                    <FiEye className="me-1" />
-                    View Details
-                  </Button>
+                  <Link to={`/employee/candidate/${result.response_id}`}>
+                    <Button variant="outline-primary" size="sm">
+                      <FiEye className="me-1" />
+                      View Details
+                    </Button>
+                  </Link>
                 </td>
               </tr>
             ))}

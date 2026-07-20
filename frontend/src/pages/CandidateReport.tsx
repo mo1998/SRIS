@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react'
 import { Card, Row, Col, Badge, Button, Table, Accordion } from 'react-bootstrap'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
+import { useAuth } from '../store/authStore'
 import { FiArrowLeft, FiDownload } from 'react-icons/fi'
 
 const CandidateReport: React.FC = () => {
   const { responseId } = useParams<{ responseId: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [report, setReport] = useState<any>(null)
   const [evaluationAudit, setEvaluationAudit] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -101,6 +103,8 @@ const CandidateReport: React.FC = () => {
     if (!value) return 'N/A'
     return new Date(value).toLocaleString()
   }
+
+  const canManageEvaluations = user?.role === 'employer' || user?.role === 'admin'
   
   return (
     <div>
@@ -286,9 +290,11 @@ const CandidateReport: React.FC = () => {
         <Card.Header>
           <div className="d-flex justify-content-between align-items-center">
             <h5 className="mb-0">Evaluation Audit Trail</h5>
-            <Button variant="outline-primary" size="sm" onClick={handleReevaluate} disabled={reevaluating}>
-              {reevaluating ? 'Re-evaluating...' : 'Re-evaluate'}
-            </Button>
+            {canManageEvaluations && (
+              <Button variant="outline-primary" size="sm" onClick={handleReevaluate} disabled={reevaluating}>
+                {reevaluating ? 'Re-evaluating...' : 'Re-evaluate'}
+              </Button>
+            )}
           </div>
         </Card.Header>
         <Card.Body>
