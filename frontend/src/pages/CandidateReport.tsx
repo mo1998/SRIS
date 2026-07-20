@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Row, Col, Badge, Button, Table } from 'react-bootstrap'
+import { Card, Row, Col, Badge, Button, Table, Accordion } from 'react-bootstrap'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { FiArrowLeft, FiDownload } from 'react-icons/fi'
@@ -8,6 +8,7 @@ const CandidateReport: React.FC = () => {
   const { responseId } = useParams<{ responseId: string }>()
   const navigate = useNavigate()
   const [report, setReport] = useState<any>(null)
+  const [evaluationAudit, setEvaluationAudit] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   
   useEffect(() => {
@@ -16,8 +17,13 @@ const CandidateReport: React.FC = () => {
   
   const loadReport = async () => {
     try {
-      const response = await api.reports.getCandidateReport(parseInt(responseId!))
-      setReport(response.data)
+      const parsedResponseId = parseInt(responseId!)
+      const [reportResponse, auditResponse] = await Promise.all([
+        api.reports.getCandidateReport(parsedResponseId),
+        api.reports.getCandidateEvaluations(parsedResponseId),
+      ])
+      setReport(reportResponse.data)
+      setEvaluationAudit(auditResponse.data)
     } catch (error) {
       console.error('Failed to load report:', error)
     } finally {
@@ -69,6 +75,15 @@ const CandidateReport: React.FC = () => {
 
   const getEvidenceItems = (answer: any, primaryKey: string, fallbackKey: string) => {
     return answer.evidence?.[primaryKey] || answer.evidence?.[fallbackKey]
+  }
+
+  const getScoreEvidenceItems = (score: any, primaryKey: string, fallbackKey: string) => {
+    return score.evidence?.[primaryKey] || score.evidence?.[fallbackKey]
+  }
+
+  const formatDateTime = (value?: string) => {
+    if (!value) return 'N/A'
+    return new Date(value).toLocaleString()
   }
   
   return (
@@ -247,6 +262,83 @@ const CandidateReport: React.FC = () => {
               ))}
             </tbody>
           </Table>
+        </Card.Body>
+      </Card>
+
+      <Card className="mt-4">
+        <Card.Header>
+          <h5 className="mb-0">Evaluation Audit Trail</h5>
+        </Card.Header>
+        <Card.Body>
+          {evaluationAudit.length === 0 ? (
+            <p className="text-muted mb-0">No evaluation runs recorded.</p>
+          ) : (
+            <Accordion defaultActiveKey="0">
+              {evaluationAudit.map((run: any, runIndex: number) => (
+                <Accordion.Item eventKey={`${runIndex}`} key={run.id}>
+                  <Accordion.Header>
+                    <span className="me-2">Run #{run.id}</span>
+                    <Badge bg={run.status === 'completed' ? 'success' : run.status === 'failed' ? 'danger' : 'warning'}>
+                      {run.status}
+                    </Badge>
+                  </Accordion.Header>
+                  <Accordion.Body>
+                    <Row className="mb-3">
+                      <Col md={6}>
+                        <p className="mb-1"><strong>Provider:</strong> {run.provider}</p>
+                        <p className="mb-1"><strong>Model:</strong> {run.model_name || 'N/A'}</p>
+                        <p className="mb-1"><strong>Config Hash:</strong> {run.config_hash || 'N/A'}</p>
+                      </Col>
+                      <Col md={6}>
+                        <p className="mb-1"><strong>Started:</strong> {formatDateTime(run.started_at)}</p>
+                        <p className="mb-1"><strong>Completed:</strong> {formatDateTime(run.completed_at)}</p>
+                        {run.raw_summary && (
+                          <p className="mb-1"><strong>Summary:</strong> {run.raw_summary.total_score?.toFixed?.(1) || run.raw_summary.total_score || 0}% / {run.raw_summary.answer_count || 0} answers</p>
+                        )}
+                      </Col>
+                    </Row>
+                    {run.error && <p className="text-danger"><strong>Error:</strong> {run.error}</p>}
+                    <Table size="sm" bordered responsive>
+                      <thead>
+                        <tr>
+                          <th>Question</th>
+                          <th>Score</th>
+                          <th>Feedback</th>
+                          <th>Evidence</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {run.scores.map((score: any) => (
+                          <tr key={score.id}>
+                            <td style={{ maxWidth: '260px' }}>{score.question || `Question ${score.question_id}`}</td>
+                            <td>{score.score.toFixed(1)}%</td>
+                            <td style={{ maxWidth: '280px' }}>{score.feedback_en || 'N/A'}</td>
+                            <td style={{ minWidth: '240px' }}>
+                              {getScoreEvidenceItems(score, 'matched_criteria', 'matched_keywords') && (
+                                <div className="mb-2">
+                                  <strong>Matched</strong>
+                                  {renderEvidenceList(getScoreEvidenceItems(score, 'matched_criteria', 'matched_keywords'))}
+                                </div>
+                              )}
+                              {getScoreEvidenceItems(score, 'missing_criteria', 'missing_keywords') && (
+                                <div className="mb-2">
+                                  <strong>Missing</strong>
+                                  {renderEvidenceList(getScoreEvidenceItems(score, 'missing_criteria', 'missing_keywords'))}
+                                </div>
+                              )}
+                              {score.evidence?.provider_fallback_from && (
+                                <p className="mb-0"><strong>Fallback:</strong> {score.evidence.provider_fallback_from}</p>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </Accordion.Body>
+                </Accordion.Item>
+              ))}
+            </Accordion>
+          )}
         </Card.Body>
       </Card>
     </div>
