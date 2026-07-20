@@ -6,6 +6,7 @@ import CandidateReport from './CandidateReport'
 const apiMock = vi.hoisted(() => ({
   reports: {
     getCandidateReport: vi.fn(),
+    getCandidateEvaluations: vi.fn(),
     downloadCandidatePdf: vi.fn(),
   },
 }))
@@ -25,6 +26,7 @@ const renderPage = () => render(
 describe('CandidateReport', () => {
   beforeEach(() => {
     apiMock.reports.getCandidateReport.mockReset()
+    apiMock.reports.getCandidateEvaluations.mockReset()
     apiMock.reports.downloadCandidatePdf.mockReset()
   })
 
@@ -63,14 +65,51 @@ describe('CandidateReport', () => {
         generated_at: '2026-07-20T00:00:00Z',
       },
     })
+    apiMock.reports.getCandidateEvaluations.mockResolvedValue({
+      data: [
+        {
+          id: 7,
+          response_id: 99,
+          provider: 'local_vllm',
+          provider_version: '1.0.0',
+          model_name: 'qwen3-8b-awq',
+          config_hash: 'abc123',
+          status: 'completed',
+          raw_summary: { total_score: 90, answer_count: 1 },
+          error: null,
+          started_at: '2026-07-20T00:00:00Z',
+          completed_at: '2026-07-20T00:01:00Z',
+          scores: [
+            {
+              id: 70,
+              question_answer_id: 10,
+              question_id: 5,
+              question: 'How do you handle an upset customer?',
+              score: 90,
+              feedback_en: 'Strong answer',
+              feedback_ar: 'إجابة قوية',
+              evidence: {
+                matched_criteria: ['listen'],
+                missing_criteria: [],
+                provider_fallback_from: null,
+              },
+              created_at: '2026-07-20T00:01:00Z',
+            },
+          ],
+        },
+      ],
+    })
 
     renderPage()
 
     expect(await screen.findByText(/candidate performance report/i)).toBeInTheDocument()
-    expect(screen.getByText(/local_vllm/i)).toBeInTheDocument()
-    expect(screen.getByText(/qwen3-8b-awq/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/local_vllm/i)).toHaveLength(2)
+    expect(screen.getAllByText(/qwen3-8b-awq/i)).toHaveLength(2)
     expect(screen.getByText(/إجابة قوية/i)).toBeInTheDocument()
-    expect(screen.getByText('listen')).toBeInTheDocument()
+    expect(screen.getAllByText('listen')).toHaveLength(2)
     expect(screen.getByText(/candidate described listening and following up/i)).toBeInTheDocument()
+    expect(screen.getByText(/evaluation audit trail/i)).toBeInTheDocument()
+    expect(screen.getByText(/run #7/i)).toBeInTheDocument()
+    expect(screen.getByText(/abc123/i)).toBeInTheDocument()
   })
 })

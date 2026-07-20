@@ -68,6 +68,7 @@ export const api = {
   reports: {
     getInterviewReport: (interviewId: number) => axios.get(`${API_URL}/reports/interview/${interviewId}`),
     getCandidateReport: (responseId: number) => axios.get(`${API_URL}/reports/candidate/${responseId}`),
+    getCandidateEvaluations: (responseId: number) => axios.get(`${API_URL}/reports/candidate/${responseId}/evaluations`),
     downloadInterviewPdf: (interviewId: number) => 
       axios.get(`${API_URL}/reports/interview/${interviewId}/pdf`, { responseType: 'blob' }),
     downloadCandidatePdf: (responseId: number) => 
