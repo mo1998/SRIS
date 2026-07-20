@@ -51,6 +51,10 @@ const CandidateReport: React.FC = () => {
   }
 
   const handleReevaluate = async () => {
+    if (!window.confirm('Run a new evaluation for this response? This will create a new audit run.')) {
+      return
+    }
+
     setReevaluationError('')
     setReevaluating(true)
 
