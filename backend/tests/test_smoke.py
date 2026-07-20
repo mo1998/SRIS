@@ -75,6 +75,11 @@ def test_health_check(client):
     assert response.json() == {"status": "healthy", "request_id": "test-request-id"}
     assert response.headers["X-Request-ID"] == "test-request-id"
     assert float(response.headers["X-Process-Time-Ms"]) >= 0
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Cross-Origin-Opener-Policy"] == "same-origin"
+    assert response.headers["Permissions-Policy"] == "camera=(self), microphone=(self), geolocation=()"
 
 
 def test_register_and_login_employer(client):

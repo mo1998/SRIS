@@ -18,6 +18,14 @@ from app.api.router import api_router
 
 logger = logging.getLogger("sris.request")
 
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
+}
+
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
@@ -47,6 +55,8 @@ async def request_observability_middleware(request: Request, call_next):
     duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time-Ms"] = str(duration_ms)
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
 
     logger.info(json.dumps({
         "event": "http_request",
