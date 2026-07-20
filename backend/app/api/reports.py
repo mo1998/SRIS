@@ -2,7 +2,7 @@
 Report generation routes
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
@@ -119,6 +119,7 @@ async def get_candidate_evaluation_audit(
 @router.post("/candidate/{response_id}/evaluations", response_model=EvaluationRunAudit)
 async def reevaluate_candidate_response(
     response_id: int,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -137,12 +138,12 @@ async def reevaluate_candidate_response(
     if not response.question_answers:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response has no answers to evaluate")
 
-    from app.services.evaluation_service import evaluate_candidate_response
+    from app.services.evaluation_service import create_evaluation_run, evaluate_candidate_response_background
 
-    await evaluate_candidate_response(response_id, db)
+    evaluation_run = create_evaluation_run(response_id, db)
+    db.commit()
+    background_tasks.add_task(evaluate_candidate_response_background, response_id, evaluation_run.id)
     audit_runs = generate_candidate_evaluation_audit(response_id, db)
-    if not audit_runs:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Evaluation did not produce an audit run")
 
     return audit_runs[0]
 

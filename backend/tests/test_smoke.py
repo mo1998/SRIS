@@ -720,8 +720,6 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert complete_response.status_code == 200, complete_response.text
     completed_response = complete_response.json()
     assert completed_response["status"] == "completed"
-    assert completed_response["total_score"] > 0
-    assert completed_response["passed"] is True
 
     completed_invitation_response = client.get(
         f"/api/invitations/{interview['id']}",
@@ -736,6 +734,8 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     )
     assert employer_responses.status_code == 200, employer_responses.text
     assert employer_responses.json()[0]["status"] == "completed"
+    assert employer_responses.json()[0]["total_score"] > 0
+    assert employer_responses.json()[0]["passed"] is True
 
     interview_report_response = client.get(
         f"/api/reports/interview/{interview['id']}",
@@ -784,9 +784,7 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert reevaluation_response.status_code == 200, reevaluation_response.text
     reevaluation = reevaluation_response.json()
     assert reevaluation["id"] != evaluation_audit[0]["id"]
-    assert reevaluation["status"] == "completed"
-    assert reevaluation["raw_summary"]["answer_count"] == 1
-    assert "listen" in reevaluation["scores"][0]["evidence"]["matched_keywords"]
+    assert reevaluation["status"] == "queued"
 
     updated_audit_response = client.get(
         f"/api/reports/candidate/{candidate_response['id']}/evaluations",
@@ -796,6 +794,9 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     updated_audit = updated_audit_response.json()
     assert len(updated_audit) == 2
     assert updated_audit[0]["id"] == reevaluation["id"]
+    assert updated_audit[0]["status"] == "completed"
+    assert updated_audit[0]["raw_summary"]["answer_count"] == 1
+    assert "listen" in updated_audit[0]["scores"][0]["evidence"]["matched_keywords"]
 
     candidate_pdf_response = client.get(
         f"/api/reports/candidate/{candidate_response['id']}/pdf",

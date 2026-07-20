@@ -2,7 +2,7 @@
 Candidate response routes - submitting answers, quality checks
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -240,6 +240,7 @@ async def submit_emotion_data(
 @router.post("/{response_id}/complete", response_model=CandidateResponseSummary)
 async def complete_interview_response(
     response_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """Mark interview response as complete and trigger evaluation"""
@@ -265,9 +266,11 @@ async def complete_interview_response(
     db.commit()
     db.refresh(candidate_response)
     
-    # Trigger evaluation (this will be async in production)
-    from app.services.evaluation_service import evaluate_candidate_response
-    await evaluate_candidate_response(response_id, db)
+    from app.services.evaluation_service import create_evaluation_run, evaluate_candidate_response_background
+
+    evaluation_run = create_evaluation_run(response_id, db)
+    db.commit()
+    background_tasks.add_task(evaluate_candidate_response_background, response_id, evaluation_run.id)
     
     return candidate_response
 
