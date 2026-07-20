@@ -80,6 +80,36 @@ describe('CandidateReport', () => {
     apiMock.reports.getCandidateEvaluations.mockResolvedValue({
       data: [
         {
+          id: 8,
+          response_id: 99,
+          provider: 'local_vllm',
+          provider_version: '1.0.0',
+          model_name: 'qwen3-8b-awq',
+          config_hash: 'def456',
+          status: 'completed',
+          raw_summary: { total_score: 93, answer_count: 1 },
+          error: null,
+          started_at: '2026-07-20T00:02:00Z',
+          completed_at: '2026-07-20T00:03:00Z',
+          scores: [
+            {
+              id: 80,
+              question_answer_id: 10,
+              question_id: 5,
+              question: 'How do you handle an upset customer?',
+              score: 93,
+              feedback_en: 'Stronger answer',
+              feedback_ar: 'إجابة أقوى',
+              evidence: {
+                matched_criteria: ['listen'],
+                missing_criteria: [],
+                provider_fallback_from: null,
+              },
+              created_at: '2026-07-20T00:03:00Z',
+            },
+          ],
+        },
+        {
           id: 7,
           response_id: 99,
           provider: 'local_vllm',
@@ -125,12 +155,15 @@ describe('CandidateReport', () => {
     renderPage()
 
     expect(await screen.findByText(/candidate performance report/i)).toBeInTheDocument()
-    expect(screen.getAllByText(/local_vllm/i)).toHaveLength(2)
-    expect(screen.getAllByText(/qwen3-8b-awq/i)).toHaveLength(2)
-    expect(screen.getByText(/إجابة قوية/i)).toBeInTheDocument()
-    expect(screen.getAllByText('listen')).toHaveLength(2)
+    expect(screen.getAllByText(/local_vllm/i)).toHaveLength(3)
+    expect(screen.getAllByText(/qwen3-8b-awq/i)).toHaveLength(3)
+    expect(screen.getAllByText(/إجابة قوية/i).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('listen')).toHaveLength(3)
     expect(screen.getByText(/candidate described listening and following up/i)).toBeInTheDocument()
     expect(screen.getByText(/evaluation audit trail/i)).toBeInTheDocument()
+    expect(screen.getByText(/run #8/i)).toBeInTheDocument()
+    expect(screen.getByText(/latest/i)).toBeInTheDocument()
+    expect(screen.getByText(/\+3\.0 pts/i)).toBeInTheDocument()
     expect(screen.getByText(/run #7/i)).toBeInTheDocument()
     expect(screen.getByText(/abc123/i)).toBeInTheDocument()
 
