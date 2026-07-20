@@ -179,3 +179,41 @@ async def test_evaluation_health_reports_local_vllm_unavailable(monkeypatch):
     assert health["healthy"] is False
     assert health["fallback_provider"] == "deterministic_baseline"
     assert "offline" in health["last_error"]
+
+
+def test_enqueue_evaluation_run_uses_background_tasks_by_default(monkeypatch):
+    calls = []
+
+    class FakeBackgroundTasks:
+        def add_task(self, func, *args):
+            calls.append((func, args))
+
+    monkeypatch.setattr(settings, "EVALUATION_QUEUE_BACKEND", "background")
+
+    backend = evaluation_service.enqueue_evaluation_run(1, 2, FakeBackgroundTasks())
+
+    assert backend == "background"
+    assert calls[0][1] == (1, 2)
+
+
+def test_enqueue_evaluation_run_uses_rq_when_configured(monkeypatch):
+    enqueued = []
+
+    class FakeQueue:
+        def __init__(self, name, connection):
+            self.name = name
+            self.connection = connection
+
+        def enqueue(self, func, *args, job_timeout):
+            enqueued.append((self.name, func, args, job_timeout))
+
+    monkeypatch.setattr(settings, "EVALUATION_QUEUE_BACKEND", "rq")
+    monkeypatch.setattr(evaluation_service.redis, "from_url", lambda url: object())
+    monkeypatch.setattr(evaluation_service, "Queue", FakeQueue)
+
+    backend = evaluation_service.enqueue_evaluation_run(3, 4, object())
+
+    assert backend == "rq"
+    assert enqueued[0][0] == settings.EVALUATION_QUEUE_NAME
+    assert enqueued[0][2] == (3, 4)
+    assert enqueued[0][3] == 600

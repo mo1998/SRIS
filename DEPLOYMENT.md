@@ -77,6 +77,8 @@ docker compose exec postgres psql -U postgres sris_db
 ### Local LLM Evaluation
 ```bash
 export EVALUATION_PROVIDER=local_vllm
+export EVALUATION_QUEUE_BACKEND=rq
+export EVALUATION_QUEUE_NAME=evaluation
 export LOCAL_LLM_BASE_URL=http://localhost:8100/v1
 export LOCAL_LLM_MODEL=qwen3-8b-awq
 export EVALUATION_PROMPT_VERSION=rubric-v1
@@ -89,6 +91,13 @@ curl -H "Authorization: Bearer <token>" http://localhost:8000/api/reports/evalua
 ```
 
 Do not download or run model weights until the model has been explicitly approved.
+
+Docker deployments include an `evaluation-worker` service that consumes Redis/RQ jobs. Scale it independently when evaluations become a bottleneck:
+
+```bash
+docker compose up -d --scale evaluation-worker=2
+docker compose -f docker-compose.prod.yml up -d --scale evaluation-worker=${EVALUATION_WORKER_REPLICAS:-2}
+```
 
 ---
 
@@ -126,6 +135,7 @@ Do not download or run model weights until the model has been explicitly approve
 | Container won't start | `docker compose logs <service-name>` |
 | Evaluations use fallback | Check `/api/reports/evaluation/health`, vLLM process, model name, and `LOCAL_LLM_BASE_URL` |
 | Evaluation appears pending | Check candidate audit trail for queued/running/failed runs and backend logs |
+| Evaluation queue is stuck | Check `docker compose logs evaluation-worker`, Redis health, and `EVALUATION_QUEUE_BACKEND` |
 
 ---
 

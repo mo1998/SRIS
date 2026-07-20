@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     
     # Evaluation
     EVALUATION_PROVIDER: str = os.getenv("EVALUATION_PROVIDER", "local_vllm")
+    EVALUATION_QUEUE_BACKEND: str = os.getenv("EVALUATION_QUEUE_BACKEND", "background")
+    EVALUATION_QUEUE_NAME: str = os.getenv("EVALUATION_QUEUE_NAME", "evaluation")
     EVALUATION_PROMPT_VERSION: str = os.getenv("EVALUATION_PROMPT_VERSION", "rubric-v1")
     LOCAL_LLM_BASE_URL: str = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:8100/v1")
     LOCAL_LLM_MODEL: str = os.getenv("LOCAL_LLM_MODEL", "qwen3-8b-awq")
