@@ -29,6 +29,8 @@ const InterviewDetail: React.FC = () => {
   })
   const [questionDrafts, setQuestionDrafts] = useState<any[]>([])
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [batchReevaluating, setBatchReevaluating] = useState(false)
   const [loading, setLoading] = useState(true)
   
   useEffect(() => {
@@ -345,6 +347,25 @@ const InterviewDetail: React.FC = () => {
       console.error('Failed to download report:', error)
     }
   }
+
+  const handleBatchReevaluate = async () => {
+    if (!confirm('Queue re-evaluation for all completed responses in this interview?')) {
+      return
+    }
+
+    setError('')
+    setMessage('')
+    setBatchReevaluating(true)
+    try {
+      const response = await api.reports.reevaluateInterview(parseInt(id!))
+      setMessage(`Queued ${response.data.length} evaluation run${response.data.length === 1 ? '' : 's'}`)
+      loadData()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to queue re-evaluation')
+    } finally {
+      setBatchReevaluating(false)
+    }
+  }
   
   if (loading) {
     return <p>Loading...</p>
@@ -369,6 +390,7 @@ const InterviewDetail: React.FC = () => {
   return (
     <div>
       {error && <Alert variant="danger">{error}</Alert>}
+      {message && <Alert variant="success">{message}</Alert>}
       
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
@@ -400,6 +422,11 @@ const InterviewDetail: React.FC = () => {
             <Button variant="outline-dark" onClick={handleDownloadReport}>
               <FiDownload className="me-2" />
               Download Report
+            </Button>
+          )}
+          {responses.some((response) => response.status === 'completed') && (
+            <Button variant="outline-primary" onClick={handleBatchReevaluate} disabled={batchReevaluating}>
+              {batchReevaluating ? 'Queueing...' : 'Re-evaluate All'}
             </Button>
           )}
         </div>

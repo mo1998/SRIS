@@ -67,6 +67,7 @@ export const api = {
   // Reports
   reports: {
     getInterviewReport: (interviewId: number) => axios.get(`${API_URL}/reports/interview/${interviewId}`),
+    reevaluateInterview: (interviewId: number) => axios.post(`${API_URL}/reports/interview/${interviewId}/evaluations`),
     getCandidateReport: (responseId: number) => axios.get(`${API_URL}/reports/candidate/${responseId}`),
     getCandidateEvaluations: (responseId: number) => axios.get(`${API_URL}/reports/candidate/${responseId}/evaluations`),
     reevaluateCandidate: (responseId: number) => axios.post(`${API_URL}/reports/candidate/${responseId}/evaluations`),
