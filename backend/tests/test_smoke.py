@@ -69,10 +69,12 @@ def current_user(client, token):
 
 
 def test_health_check(client):
-    response = client.get("/health")
+    response = client.get("/health", headers={"X-Request-ID": "test-request-id"})
 
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy"}
+    assert response.json() == {"status": "healthy", "request_id": "test-request-id"}
+    assert response.headers["X-Request-ID"] == "test-request-id"
+    assert float(response.headers["X-Process-Time-Ms"]) >= 0
 
 
 def test_register_and_login_employer(client):
