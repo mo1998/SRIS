@@ -21,6 +21,7 @@ const apiMock = vi.hoisted(() => ({
   },
   reports: {
     downloadInterviewPdf: vi.fn(),
+    reevaluateInterview: vi.fn(),
   },
 }))
 
@@ -52,6 +53,8 @@ describe('InterviewDetail', () => {
     apiMock.invitations.preview.mockReset()
     apiMock.invitations.resend.mockReset()
     apiMock.invitations.revoke.mockReset()
+    apiMock.reports.downloadInterviewPdf.mockReset()
+    apiMock.reports.reevaluateInterview.mockReset()
     apiMock.interviews.get.mockResolvedValue({
       data: {
         id: 1,
@@ -92,6 +95,32 @@ describe('InterviewDetail', () => {
       ],
     })
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
+  it('queues re-evaluation for completed interview responses', async () => {
+    apiMock.responses.list.mockResolvedValue({
+      data: [
+        {
+          id: 99,
+          candidate_name: 'Candidate One',
+          candidate_email: 'candidate@example.com',
+          total_score: 90,
+          status: 'completed',
+          confidence_score: 80,
+        },
+      ],
+    })
+    apiMock.reports.reevaluateInterview.mockResolvedValue({ data: [{ id: 10, status: 'queued' }] })
+
+    renderPage()
+
+    const reevaluateAllButton = await screen.findByRole('button', { name: /re-evaluate all/i })
+    await userEvent.click(reevaluateAllButton)
+
+    await waitFor(() => {
+      expect(apiMock.reports.reevaluateInterview).toHaveBeenCalledWith(1)
+    })
+    expect(await screen.findByText('Queued 1 evaluation run')).toBeInTheDocument()
   })
 
   it('shows rubric criteria for interview questions', async () => {

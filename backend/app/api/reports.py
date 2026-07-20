@@ -86,6 +86,48 @@ async def get_evaluation_provider_health(
     return await get_evaluation_health()
 
 
+@router.post("/interview/{interview_id}/evaluations", response_model=List[EvaluationRunAudit])
+async def reevaluate_interview_responses(
+    interview_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Queue fresh evaluations for every completed response in an interview."""
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+
+    require_interview_membership(interview, current_user, db)
+
+    responses = (
+        db.query(CandidateResponse)
+        .filter(CandidateResponse.interview_id == interview_id, CandidateResponse.status == "completed")
+        .all()
+    )
+    if not responses:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No completed responses to re-evaluate")
+
+    from app.services.evaluation_service import create_evaluation_run, evaluate_candidate_response_background
+
+    queued_runs = []
+    for response in responses:
+        if not response.question_answers:
+            continue
+        evaluation_run = create_evaluation_run(response.id, db)
+        queued_runs.append(evaluation_run)
+
+    if not queued_runs:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No completed responses with answers to re-evaluate")
+
+    db.commit()
+    for run in queued_runs:
+        background_tasks.add_task(evaluate_candidate_response_background, run.response_id, run.id)
+
+    return [generate_candidate_evaluation_audit(run.response_id, db)[0] for run in queued_runs]
+
+
 @router.get("/candidate/{response_id}", response_model=CandidateReport)
 async def get_candidate_report(
     response_id: int,

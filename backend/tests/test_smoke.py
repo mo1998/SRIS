@@ -798,6 +798,16 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert updated_audit[0]["raw_summary"]["answer_count"] == 1
     assert "listen" in updated_audit[0]["scores"][0]["evidence"]["matched_keywords"]
 
+    batch_reevaluation_response = client.post(
+        f"/api/reports/interview/{interview['id']}/evaluations",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert batch_reevaluation_response.status_code == 200, batch_reevaluation_response.text
+    batch_runs = batch_reevaluation_response.json()
+    assert len(batch_runs) == 1
+    assert batch_runs[0]["response_id"] == candidate_response["id"]
+    assert batch_runs[0]["status"] == "queued"
+
     candidate_pdf_response = client.get(
         f"/api/reports/candidate/{candidate_response['id']}/pdf",
         headers={"Authorization": f"Bearer {owner_token}"},
@@ -817,7 +827,7 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
         assert evaluation_run.provider_version
         assert evaluation_run.config_hash
         assert evaluation_run.completed_at is not None
-        assert db.query(EvaluationRun).filter(EvaluationRun.response_id == candidate_response["id"]).count() == 2
+        assert db.query(EvaluationRun).filter(EvaluationRun.response_id == candidate_response["id"]).count() == 3
         scores = db.query(EvaluationScore).filter(EvaluationScore.evaluation_run_id == evaluation_run.id).all()
         assert len(scores) == 1
         assert scores[0].score > 0
