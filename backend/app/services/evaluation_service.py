@@ -611,3 +611,33 @@ def generate_candidate_evaluation_audit(response_id: int, db: Session) -> List[D
         })
 
     return audit_runs
+
+
+async def get_evaluation_health() -> Dict[str, object]:
+    provider = get_evaluation_provider()
+    health = {
+        "provider": provider.name,
+        "provider_version": getattr(provider, "version", None),
+        "model_name": settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else None,
+        "base_url": settings.LOCAL_LLM_BASE_URL if provider.name == "local_vllm" else None,
+        "healthy": True,
+        "status": "available",
+        "fallback_provider": getattr(getattr(provider, "fallback_provider", None), "name", None),
+        "last_error": None,
+        "checked_at": datetime.utcnow(),
+    }
+
+    if provider.name != "local_vllm":
+        return health
+
+    try:
+        async with httpx.AsyncClient(timeout=min(settings.LOCAL_LLM_TIMEOUT_SECONDS, 2.0)) as client:
+            response = await client.get(f"{settings.LOCAL_LLM_BASE_URL.rstrip('/')}/models")
+            response.raise_for_status()
+        health["status"] = "local_vllm_available"
+    except Exception as exc:
+        health["healthy"] = False
+        health["status"] = "local_vllm_unavailable_using_fallback"
+        health["last_error"] = str(exc)
+
+    return health

@@ -11,9 +11,9 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models import User, Interview, CandidateResponse, TeamMembership, UserRole
-from app.schemas import InterviewReport, CandidateReport, EvaluationRunAudit
+from app.schemas import InterviewReport, CandidateReport, EvaluationHealth, EvaluationRunAudit
 from app.api.auth import get_current_user, require_role, UserRole
-from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit
+from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit, get_evaluation_health
 
 router = APIRouter()
 
@@ -73,6 +73,17 @@ async def get_interview_report(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not available")
     
     return report
+
+
+@router.get("/evaluation/health", response_model=EvaluationHealth)
+async def get_evaluation_provider_health(
+    current_user: User = Depends(get_current_user)
+):
+    """Get local evaluation provider health and fallback status."""
+    if current_user.role not in [UserRole.EMPLOYER, UserRole.ADMIN]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    return await get_evaluation_health()
 
 
 @router.get("/candidate/{response_id}", response_model=CandidateReport)
