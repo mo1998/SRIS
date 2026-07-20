@@ -8,6 +8,7 @@ const InterviewDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const [interview, setInterview] = useState<any>(null)
   const [responses, setResponses] = useState<any[]>([])
+  const [evaluationAnalytics, setEvaluationAnalytics] = useState<any>(null)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [invitations, setInvitations] = useState<any[]>([])
   const [inviteData, setInviteData] = useState({ candidate_email: '', candidate_name: '' })
@@ -39,10 +40,11 @@ const InterviewDetail: React.FC = () => {
   
   const loadData = async () => {
     try {
-      const [interviewRes, responsesRes, invitationsRes] = await Promise.all([
+      const [interviewRes, responsesRes, invitationsRes, analyticsRes] = await Promise.all([
         api.interviews.get(parseInt(id!)),
         api.responses.list(parseInt(id!)),
-        api.invitations.list(parseInt(id!))
+        api.invitations.list(parseInt(id!)),
+        api.reports.getInterviewEvaluationAnalytics(parseInt(id!))
       ])
       setInterview(interviewRes.data)
       setEditData({
@@ -55,6 +57,7 @@ const InterviewDetail: React.FC = () => {
       setQuestionDrafts(normalizeQuestions(interviewRes.data.questions || []))
       setResponses(responsesRes.data)
       setInvitations(invitationsRes.data)
+      setEvaluationAnalytics(analyticsRes.data)
     } catch (error) {
       console.error('Failed to load data:', error)
     } finally {
@@ -643,6 +646,26 @@ const InterviewDetail: React.FC = () => {
               <h5 className="mb-0">Candidate Responses ({responses.length})</h5>
             </Card.Header>
             <Card.Body>
+              {evaluationAnalytics && (
+                <Row className="mb-3">
+                  <Col md={3}>
+                    <strong>Eval Runs</strong>
+                    <p className="mb-0">{evaluationAnalytics.total_evaluation_runs}</p>
+                  </Col>
+                  <Col md={3}>
+                    <strong>Completed</strong>
+                    <p className="mb-0">{evaluationAnalytics.completed_runs}</p>
+                  </Col>
+                  <Col md={3}>
+                    <strong>Avg Latest</strong>
+                    <p className="mb-0">{evaluationAnalytics.average_latest_score.toFixed(1)}%</p>
+                  </Col>
+                  <Col md={3}>
+                    <strong>Fallbacks</strong>
+                    <p className="mb-0">{evaluationAnalytics.fallback_count}</p>
+                  </Col>
+                </Row>
+              )}
               {responses.length === 0 ? (
                 <p className="text-center text-muted">No responses yet. Invite candidates to get started!</p>
               ) : (

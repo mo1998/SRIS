@@ -22,6 +22,7 @@ const apiMock = vi.hoisted(() => ({
   reports: {
     downloadInterviewPdf: vi.fn(),
     reevaluateInterview: vi.fn(),
+    getInterviewEvaluationAnalytics: vi.fn(),
   },
 }))
 
@@ -55,6 +56,7 @@ describe('InterviewDetail', () => {
     apiMock.invitations.revoke.mockReset()
     apiMock.reports.downloadInterviewPdf.mockReset()
     apiMock.reports.reevaluateInterview.mockReset()
+    apiMock.reports.getInterviewEvaluationAnalytics.mockReset()
     apiMock.interviews.get.mockResolvedValue({
       data: {
         id: 1,
@@ -94,6 +96,15 @@ describe('InterviewDetail', () => {
         },
       ],
     })
+    apiMock.reports.getInterviewEvaluationAnalytics.mockResolvedValue({
+      data: {
+        completed_responses: 1,
+        total_evaluation_runs: 3,
+        completed_runs: 3,
+        average_latest_score: 91.5,
+        fallback_count: 1,
+      },
+    })
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
@@ -127,6 +138,8 @@ describe('InterviewDetail', () => {
     renderPage()
 
     expect(await screen.findByText('Support Screen')).toBeInTheDocument()
+    expect(screen.getByText('Eval Runs')).toBeInTheDocument()
+    expect(screen.getByText('91.5%')).toBeInTheDocument()
     expect(screen.getByText(/how do you handle an upset customer/i)).toBeInTheDocument()
     expect(screen.getByText(/rubric criteria/i)).toBeInTheDocument()
     expect(screen.getByText(/clarity/i)).toBeInTheDocument()

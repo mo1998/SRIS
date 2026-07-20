@@ -3,7 +3,7 @@ Pydantic schemas for API validation
 """
 
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from enum import Enum
 
@@ -444,3 +444,17 @@ class EvaluationHealth(BaseModel):
     fallback_provider: Optional[str] = None
     last_error: Optional[str] = None
     checked_at: datetime
+
+
+class EvaluationAnalytics(BaseModel):
+    interview_id: int
+    completed_responses: int
+    total_evaluation_runs: int
+    queued_runs: int
+    running_runs: int
+    completed_runs: int
+    failed_runs: int
+    average_latest_score: float
+    fallback_count: int
+    provider_counts: Dict[str, int]
+    generated_at: datetime
