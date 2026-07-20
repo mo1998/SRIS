@@ -22,7 +22,9 @@ An AI-powered remote interview platform that enables employers to create intervi
 - ✅ Personal performance reports after completion
 
 ### AI/ML Features
-- 🤖 **Answer Evaluation**: OpenAI-powered semantic answer scoring
+- 🤖 **Answer Evaluation**: Local LLM-first structured scoring with deterministic fallback
+- 🧾 **Evaluation Audit Trail**: Persisted runs, scores, rubric evidence, prompt version, config hash, and re-evaluation history
+- 📊 **Evaluation Operations**: Provider health, fallback status, batch re-evaluation, and interview-level analytics
 - 🎤 **Voice Denoising**: Audio quality enhancement using noisereduce
 - 😊 **Emotion Detection**: Real-time facial emotion analysis
 - 📹 **Face Detection**: Face visibility and positioning validation
@@ -35,7 +37,7 @@ An AI-powered remote interview platform that enables employers to create intervi
 - **Framework**: FastAPI (Python)
 - **Database**: PostgreSQL
 - **Cache**: Redis
-- **AI/ML**: OpenAI API, OpenCV, MediaPipe, DeepFace, noisereduce
+- **AI/ML**: Local OpenAI-compatible LLM endpoint, deterministic fallback evaluator, OpenCV, MediaPipe, DeepFace, noisereduce
 - **Authentication**: JWT with python-jose
 - **Email**: FastAPI-mail
 - **PDF Generation**: ReportLab
@@ -146,6 +148,67 @@ docker compose config
 
 Optional ML and media dependencies live in `backend/requirements-ml.txt`. Install them only when implementing approved local AI/media features. Model weights must not be downloaded or run without explicit approval.
 
+### Local LLM Evaluation
+
+SRIS is configured to use a local OpenAI-compatible endpoint for interview evaluation. The default tested path is vLLM serving Qwen3 AWQ:
+
+```bash
+export EVALUATION_PROVIDER=local_vllm
+export LOCAL_LLM_BASE_URL=http://localhost:8100/v1
+export LOCAL_LLM_MODEL=qwen3-8b-awq
+export EVALUATION_PROMPT_VERSION=rubric-v1
+```
+
+Example vLLM launch command, after the model is already approved and available locally:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 /home/ubuntu/anaconda3/envs/sris/bin/python \
+   -m vllm.entrypoints.openai.api_server \
+   --host 0.0.0.0 \
+   --port 8100 \
+   --model /home/mrazek/SRIS/models/qwen3-8b-awq \
+   --served-model-name qwen3-8b-awq \
+   --max-model-len 4096 \
+   --gpu-memory-utilization 0.60 \
+   --max-num-seqs 8 \
+   --trust-remote-code
+```
+
+Evaluation behavior:
+
+- Completion and re-evaluation queue an `evaluation_runs` row, then process scoring in the background.
+- Audit history is available at `GET /api/reports/candidate/{response_id}/evaluations`.
+- Employers/admins can re-evaluate a candidate response or batch re-evaluate completed responses for an interview.
+- Candidate and interview reports show persisted evidence, model metadata, prompt version/config hash, score deltas, and fallback state.
+- If local vLLM is unavailable, SRIS falls back to deterministic rubric-aware scoring and records fallback evidence.
+
+Operational checks:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8000/api/reports/evaluation/health
+```
+
+The Employer Dashboard also displays evaluation health, provider/model, fallback provider, prompt version, and config hash.
+
+### Phase 5 Acceptance Checklist
+
+Run these checks before treating local AI evaluation as release-ready:
+
+```bash
+conda run -n sris python -m pytest backend/tests -q
+npm test -- --run --prefix frontend
+npm run build --prefix frontend
+docker compose config
+```
+
+Manual acceptance:
+
+- Start the local vLLM endpoint only after model-use approval.
+- Complete a candidate interview and confirm the response returns immediately while evaluation status is visible in the audit trail.
+- Confirm candidate report JSON, PDF, and UI include provider, model, prompt version/config hash, rubric evidence, and bilingual feedback.
+- Trigger single and batch re-evaluation and verify new audit runs plus score deltas.
+- Stop vLLM and confirm health shows fallback status and evaluations record deterministic fallback evidence.
+
 ---
 
 ### 🐳 Option 1: Docker Deployment (Production Ready)
@@ -165,7 +228,9 @@ cp .env.example .env
 ```bash
 # Required settings
 SECRET_KEY=your-super-secret-key  # Run: openssl rand -hex 32
-OPENAI_API_KEY=your-openai-key    # For AI answer evaluation
+LOCAL_LLM_BASE_URL=http://localhost:8100/v1
+LOCAL_LLM_MODEL=qwen3-8b-awq
+EVALUATION_PROMPT_VERSION=rubric-v1
 
 # Email (for sending invitations)
 MAIL_FROM=noreply@yourdomain.com
@@ -200,7 +265,9 @@ openssl rand -hex 16  # For POSTGRES_PASSWORD, REDIS_PASSWORD
 SECRET_KEY=<generated-key>
 POSTGRES_PASSWORD=<strong-password>
 REDIS_PASSWORD=<strong-password>
-OPENAI_API_KEY=<your-key>
+LOCAL_LLM_BASE_URL=http://localhost:8100/v1
+LOCAL_LLM_MODEL=qwen3-8b-awq
+EVALUATION_PROMPT_VERSION=rubric-v1
 FRONTEND_URL=https://yourdomain.com
 ALLOWED_ORIGINS=["https://yourdomain.com"]
 ```
