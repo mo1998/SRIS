@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     MAIL_TLS: bool = True
     MAIL_SSL: bool = False
     INVITATION_RESEND_COOLDOWN_SECONDS: int = int(os.getenv("INVITATION_RESEND_COOLDOWN_SECONDS", "300"))
+    MAX_BULK_INVITATIONS: int = int(os.getenv("MAX_BULK_INVITATIONS", "100"))
     
     # Evaluation
     EVALUATION_PROVIDER: str = os.getenv("EVALUATION_PROVIDER", "local_vllm")

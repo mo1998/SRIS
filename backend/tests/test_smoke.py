@@ -708,6 +708,38 @@ def test_bulk_invitations_are_marked_sent(client, monkeypatch):
     assert all(invitation["sent_at"] for invitation in invitations)
 
 
+def test_bulk_invitations_reject_batches_over_limit(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    from app.config import settings
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+    monkeypatch.setattr(settings, "MAX_BULK_INVITATIONS", 2)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    response = client.post(
+        "/api/invitations/bulk",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json=[
+            {"interview_id": interview["id"], "candidate_email": "one@example.com", "candidate_name": "One"},
+            {"interview_id": interview["id"], "candidate_email": "two@example.com", "candidate_name": "Two"},
+            {"interview_id": interview["id"], "candidate_email": "three@example.com", "candidate_name": "Three"},
+        ],
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == "Bulk invitations cannot exceed 2 candidates"
+
+
 def test_bulk_invitations_reject_mixed_interview_ids(client, monkeypatch):
     async def noop_send_invitation_email(**kwargs):
         return None

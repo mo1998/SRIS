@@ -4,6 +4,8 @@ import { useParams, Link } from 'react-router-dom'
 import { api } from '../services/api'
 import { FiMail, FiDownload, FiEye, FiActivity, FiEdit, FiPlus, FiTrash2 } from 'react-icons/fi'
 
+const MAX_BULK_INVITATIONS = 100
+
 const InterviewDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const [interview, setInterview] = useState<any>(null)
@@ -269,6 +271,10 @@ const InterviewDetail: React.FC = () => {
 
     if (lines.length === 0) {
       validationErrors.push('Add at least one candidate')
+    }
+
+    if (lines.length > MAX_BULK_INVITATIONS) {
+      validationErrors.push(`Bulk invite limit is ${MAX_BULK_INVITATIONS} candidates`)
     }
 
     if (validationErrors.length > 0) {
