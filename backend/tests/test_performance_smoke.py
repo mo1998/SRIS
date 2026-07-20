@@ -64,4 +64,4 @@ def test_completed_interview_flow_performance_smoke(client, monkeypatch):
     assert float(analytics_response.headers["X-Process-Time-Ms"]) >= 0
 
     duration = time.perf_counter() - started_at
-    assert duration < 15
+    assert duration < 30

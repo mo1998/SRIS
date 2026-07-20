@@ -90,6 +90,52 @@ def test_register_and_login_employer(client):
     assert token
 
 
+def test_login_rate_limit_blocks_repeated_failed_attempts(client, monkeypatch):
+    from app.api.auth import login_failures
+    from app.config import settings
+
+    login_failures.clear()
+    monkeypatch.setattr(settings, "LOGIN_RATE_LIMIT_ATTEMPTS", 2)
+    monkeypatch.setattr(settings, "LOGIN_RATE_LIMIT_WINDOW_SECONDS", 60)
+    register_user(client, email="limited@example.com")
+
+    for _ in range(2):
+        response = client.post(
+            "/api/auth/login",
+            data={"username": "limited@example.com", "password": "wrong-password"},
+        )
+        assert response.status_code == 401, response.text
+
+    limited_response = client.post(
+        "/api/auth/login",
+        data={"username": "limited@example.com", "password": "wrong-password"},
+    )
+    assert limited_response.status_code == 429, limited_response.text
+    assert limited_response.headers["Retry-After"] == "60"
+
+
+def test_successful_login_clears_failed_login_attempts(client, monkeypatch):
+    from app.api.auth import login_failures
+    from app.config import settings
+
+    login_failures.clear()
+    monkeypatch.setattr(settings, "LOGIN_RATE_LIMIT_ATTEMPTS", 2)
+    register_user(client, email="reset-limit@example.com")
+
+    failed_response = client.post(
+        "/api/auth/login",
+        data={"username": "reset-limit@example.com", "password": "wrong-password"},
+    )
+    assert failed_response.status_code == 401, failed_response.text
+
+    successful_response = client.post(
+        "/api/auth/login",
+        data={"username": "reset-limit@example.com", "password": "strong-password"},
+    )
+    assert successful_response.status_code == 200, successful_response.text
+    assert "reset-limit@example.com" not in login_failures
+
+
 def test_employer_registration_creates_owner_organization(client):
     register_user(client)
     token = login_user(client)

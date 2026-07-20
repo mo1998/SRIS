@@ -18,6 +18,43 @@ router = APIRouter()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+login_failures: dict[str, list[datetime]] = {}
+
+
+def get_login_rate_limit_key(username: str) -> str:
+    return (username or "").strip().lower()
+
+
+def prune_login_failures(key: str, now: datetime) -> list[datetime]:
+    window_started_at = now - timedelta(seconds=settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS)
+    failures = [failed_at for failed_at in login_failures.get(key, []) if failed_at >= window_started_at]
+    if failures:
+        login_failures[key] = failures
+    else:
+        login_failures.pop(key, None)
+    return failures
+
+
+def enforce_login_rate_limit(username: str) -> None:
+    key = get_login_rate_limit_key(username)
+    failures = prune_login_failures(key, datetime.utcnow())
+    if len(failures) >= settings.LOGIN_RATE_LIMIT_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please try again later.",
+            headers={"Retry-After": str(settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS)},
+        )
+
+
+def record_failed_login(username: str) -> None:
+    key = get_login_rate_limit_key(username)
+    failures = prune_login_failures(key, datetime.utcnow())
+    failures.append(datetime.utcnow())
+    login_failures[key] = failures
+
+
+def clear_failed_login(username: str) -> None:
+    login_failures.pop(get_login_rate_limit_key(username), None)
 
 
 def get_password_hash(password: str) -> str:
@@ -128,9 +165,11 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 @router.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """Login and get access token"""
+    enforce_login_rate_limit(form_data.username)
     user = db.query(User).filter(User.email == form_data.username).first()
     
     if not user or not verify_password(form_data.password, user.hashed_password):
+        record_failed_login(form_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -142,6 +181,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is deactivated"
         )
+
+    clear_failed_login(form_data.username)
     
     access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
