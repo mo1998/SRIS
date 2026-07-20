@@ -122,6 +122,7 @@ async def test_local_vllm_provider_uses_openai_compatible_json(monkeypatch):
     assert result.score == 90.0
     assert result.evidence["provider"] == "local_vllm"
     assert result.evidence["model"] == "qwen3-test"
+    assert result.evidence["prompt_version"] == settings.EVALUATION_PROMPT_VERSION
     assert result.evidence["rubric_criteria"][0]["name"] == "Ownership"
     assert "Strong answer" in result.feedback
     assert "إجابة قوية" in result.feedback
@@ -173,6 +174,8 @@ async def test_evaluation_health_reports_local_vllm_unavailable(monkeypatch):
     health = await get_evaluation_health()
 
     assert health["provider"] == "local_vllm"
+    assert health["prompt_version"] == settings.EVALUATION_PROMPT_VERSION
+    assert health["config_hash"]
     assert health["healthy"] is False
     assert health["fallback_provider"] == "deterministic_baseline"
     assert "offline" in health["last_error"]

@@ -437,6 +437,8 @@ class EvaluationRunAudit(BaseModel):
 class EvaluationHealth(BaseModel):
     provider: str
     provider_version: Optional[str] = None
+    prompt_version: Optional[str] = None
+    config_hash: Optional[str] = None
     model_name: Optional[str] = None
     base_url: Optional[str] = None
     healthy: bool
