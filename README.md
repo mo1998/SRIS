@@ -146,6 +146,18 @@ Validate Docker Compose configuration without starting services:
 docker compose config
 ```
 
+Run the CI-safe backend performance smoke test:
+
+```bash
+conda run -n sris python -m pytest backend/tests/test_performance_smoke.py -q
+```
+
+Run a local HTTP load smoke against a running backend:
+
+```bash
+python scripts/load_test.py --base-url http://localhost:8000 --candidates 20 --concurrency 5
+```
+
 Optional ML and media dependencies live in `backend/requirements-ml.txt`. Install them only when implementing approved local AI/media features. Model weights must not be downloaded or run without explicit approval.
 
 ### Local LLM Evaluation
