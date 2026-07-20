@@ -1073,6 +1073,57 @@ def start_candidate_response(client, interview_id, email="candidate@example.com"
     return response.json()
 
 
+def test_answer_audio_upload_rejects_unsupported_extension(client):
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+    candidate_response = start_candidate_response(client, interview["id"])
+
+    response = client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "Audio answer",
+        },
+        files={"audio_file": ("payload.exe", b"not audio", "application/octet-stream")},
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == "Unsupported audio file type"
+
+
+def test_answer_audio_upload_rejects_oversized_file(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MAX_AUDIO_SIZE", 4)
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+    candidate_response = start_candidate_response(client, interview["id"])
+
+    response = client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "Audio answer",
+        },
+        files={"audio_file": ("answer.wav", b"too large", "audio/wav")},
+    )
+
+    assert response.status_code == 413, response.text
+    assert response.json()["detail"] == "Audio file exceeds maximum size"
+
+
 def test_same_organization_member_can_list_interview_responses(client):
     register_user(client)
     owner_token = login_user(client)
