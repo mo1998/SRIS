@@ -155,6 +155,18 @@ Run the CI-safe backend performance smoke test:
 conda run -n sris python -m pytest backend/tests/test_performance_smoke.py -q
 ```
 
+Run the full release readiness check bundle:
+
+```bash
+scripts/release_check.sh
+```
+
+Add `--with-e2e` when Playwright browsers are installed locally:
+
+```bash
+scripts/release_check.sh --with-e2e
+```
+
 Run a local HTTP load smoke against a running backend:
 
 ```bash
@@ -213,10 +225,7 @@ The Employer Dashboard also displays evaluation health, provider/model, fallback
 Run these checks before treating local AI evaluation as release-ready:
 
 ```bash
-conda run -n sris python -m pytest backend/tests -q
-npm test -- --run --prefix frontend
-npm run build --prefix frontend
-docker compose config
+scripts/release_check.sh
 ```
 
 Manual acceptance:
