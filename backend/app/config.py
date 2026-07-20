@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # File Uploads
     UPLOAD_DIR: str = "uploads"
     MAX_AUDIO_SIZE: int = 10 * 1024 * 1024  # 10MB
+    ALLOWED_AUDIO_EXTENSIONS: List[str] = [".wav", ".mp3", ".webm", ".m4a", ".ogg"]
     MAX_VIDEO_SIZE: int = 100 * 1024 * 1024  # 100MB
     
     # Interview Settings

@@ -10,11 +10,30 @@ import os
 import uuid
 
 from app.database import get_db
+from app.config import settings
 from app.models import User, Interview, InterviewQuestion, InterviewStatus, Invitation, InvitationStatus, CandidateResponse, QuestionAnswer, TeamMembership, UserRole
 from app.schemas import CandidateResponseCreate, CandidateResponseSummary, QuestionAnswerSchema, QualityCheckResult
 from app.api.auth import get_current_user, require_role
 
 router = APIRouter()
+
+
+def validate_audio_filename(filename: str) -> str:
+    extension = os.path.splitext(filename or "")[1].lower()
+    if extension not in settings.ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported audio file type",
+        )
+    return extension
+
+
+def validate_audio_size(content: bytes) -> None:
+    if len(content) > settings.MAX_AUDIO_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Audio file exceeds maximum size",
+        )
 
 
 def require_interview_membership(interview: Interview, user: User, db: Session) -> None:
@@ -148,12 +167,15 @@ async def submit_answer(
     # Save audio file if provided
     audio_path = None
     if audio_file:
+        validate_audio_filename(audio_file.filename)
+        content = await audio_file.read()
+        validate_audio_size(content)
+
         os.makedirs("uploads/interviews/audio", exist_ok=True)
         audio_filename = f"{uuid.uuid4()}_{audio_file.filename}"
         audio_path = f"uploads/interviews/audio/{audio_filename}"
         
         with open(audio_path, "wb") as f:
-            content = await audio_file.read()
             f.write(content)
     
     # Create answer
