@@ -767,6 +767,26 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert evaluation_audit[0]["scores"][0]["question"] == "How do you handle an upset customer?"
     assert "listen" in evaluation_audit[0]["scores"][0]["evidence"]["matched_keywords"]
 
+    reevaluation_response = client.post(
+        f"/api/reports/candidate/{candidate_response['id']}/evaluations",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert reevaluation_response.status_code == 200, reevaluation_response.text
+    reevaluation = reevaluation_response.json()
+    assert reevaluation["id"] != evaluation_audit[0]["id"]
+    assert reevaluation["status"] == "completed"
+    assert reevaluation["raw_summary"]["answer_count"] == 1
+    assert "listen" in reevaluation["scores"][0]["evidence"]["matched_keywords"]
+
+    updated_audit_response = client.get(
+        f"/api/reports/candidate/{candidate_response['id']}/evaluations",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert updated_audit_response.status_code == 200, updated_audit_response.text
+    updated_audit = updated_audit_response.json()
+    assert len(updated_audit) == 2
+    assert updated_audit[0]["id"] == reevaluation["id"]
+
     candidate_pdf_response = client.get(
         f"/api/reports/candidate/{candidate_response['id']}/pdf",
         headers={"Authorization": f"Bearer {owner_token}"},
@@ -780,12 +800,13 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
 
     db = SessionLocal()
     try:
-        evaluation_run = db.query(EvaluationRun).filter(EvaluationRun.response_id == candidate_response["id"]).one()
+        evaluation_run = db.query(EvaluationRun).filter(EvaluationRun.response_id == candidate_response["id"]).order_by(EvaluationRun.id.asc()).first()
         assert evaluation_run.status == "completed"
         assert evaluation_run.provider
         assert evaluation_run.provider_version
         assert evaluation_run.config_hash
         assert evaluation_run.completed_at is not None
+        assert db.query(EvaluationRun).filter(EvaluationRun.response_id == candidate_response["id"]).count() == 2
         scores = db.query(EvaluationScore).filter(EvaluationScore.evaluation_run_id == evaluation_run.id).all()
         assert len(scores) == 1
         assert scores[0].score > 0

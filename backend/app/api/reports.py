@@ -45,6 +45,14 @@ def require_candidate_report_access(response: CandidateResponse, user: User, db:
     require_interview_membership(interview, user, db)
 
 
+def require_candidate_evaluation_management(response: CandidateResponse, user: User, db: Session) -> None:
+    interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+
+    require_interview_membership(interview, user, db)
+
+
 @router.get("/interview/{interview_id}", response_model=InterviewReport)
 async def get_interview_report(
     interview_id: int,
@@ -106,6 +114,37 @@ async def get_candidate_evaluation_audit(
     require_candidate_report_access(response, current_user, db)
 
     return generate_candidate_evaluation_audit(response_id, db)
+
+
+@router.post("/candidate/{response_id}/evaluations", response_model=EvaluationRunAudit)
+async def reevaluate_candidate_response(
+    response_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Run a fresh evaluation for a completed response and persist a new audit run."""
+
+    response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
+
+    if not response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+
+    require_candidate_evaluation_management(response, current_user, db)
+
+    if response.status != "completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only completed responses can be re-evaluated")
+
+    if not response.question_answers:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response has no answers to evaluate")
+
+    from app.services.evaluation_service import evaluate_candidate_response
+
+    await evaluate_candidate_response(response_id, db)
+    audit_runs = generate_candidate_evaluation_audit(response_id, db)
+    if not audit_runs:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Evaluation did not produce an audit run")
+
+    return audit_runs[0]
 
 
 @router.get("/interview/{interview_id}/pdf")
