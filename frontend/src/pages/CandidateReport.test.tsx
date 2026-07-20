@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CandidateReport from './CandidateReport'
@@ -7,6 +8,7 @@ const apiMock = vi.hoisted(() => ({
   reports: {
     getCandidateReport: vi.fn(),
     getCandidateEvaluations: vi.fn(),
+    reevaluateCandidate: vi.fn(),
     downloadCandidatePdf: vi.fn(),
   },
 }))
@@ -27,6 +29,7 @@ describe('CandidateReport', () => {
   beforeEach(() => {
     apiMock.reports.getCandidateReport.mockReset()
     apiMock.reports.getCandidateEvaluations.mockReset()
+    apiMock.reports.reevaluateCandidate.mockReset()
     apiMock.reports.downloadCandidatePdf.mockReset()
   })
 
@@ -99,6 +102,16 @@ describe('CandidateReport', () => {
         },
       ],
     })
+    apiMock.reports.reevaluateCandidate.mockResolvedValue({
+      data: {
+        id: 8,
+        response_id: 99,
+        provider: 'local_vllm',
+        model_name: 'qwen3-8b-awq',
+        status: 'completed',
+        scores: [],
+      },
+    })
 
     renderPage()
 
@@ -111,5 +124,13 @@ describe('CandidateReport', () => {
     expect(screen.getByText(/evaluation audit trail/i)).toBeInTheDocument()
     expect(screen.getByText(/run #7/i)).toBeInTheDocument()
     expect(screen.getByText(/abc123/i)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /re-evaluate/i }))
+
+    await waitFor(() => {
+      expect(apiMock.reports.reevaluateCandidate).toHaveBeenCalledWith(99)
+      expect(apiMock.reports.getCandidateReport).toHaveBeenCalledTimes(2)
+      expect(apiMock.reports.getCandidateEvaluations).toHaveBeenCalledTimes(2)
+    })
   })
 })
