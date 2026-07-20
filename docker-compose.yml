@@ -64,6 +64,8 @@ services:
       MAIL_PORT: ${MAIL_PORT:-587}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-["http://localhost","http://frontend"]}
+      EVALUATION_QUEUE_BACKEND: ${EVALUATION_QUEUE_BACKEND:-rq}
+      EVALUATION_QUEUE_NAME: ${EVALUATION_QUEUE_NAME:-evaluation}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -82,6 +84,34 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    restart: unless-stopped
+
+  evaluation-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sris-evaluation-worker
+    command: python -m app.worker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/sris_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
+      SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-this-in-production}
+      EVALUATION_PROVIDER: ${EVALUATION_PROVIDER:-local_vllm}
+      EVALUATION_QUEUE_BACKEND: rq
+      EVALUATION_QUEUE_NAME: ${EVALUATION_QUEUE_NAME:-evaluation}
+      EVALUATION_PROMPT_VERSION: ${EVALUATION_PROMPT_VERSION:-rubric-v1}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:8100/v1}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3-8b-awq}
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sris-network
     restart: unless-stopped
 
   # Frontend (React + Nginx)

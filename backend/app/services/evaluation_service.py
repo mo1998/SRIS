@@ -3,11 +3,15 @@ Evaluation service - deterministic answer scoring and candidate evaluation
 """
 
 from dataclasses import dataclass
+import asyncio
 import json
 import re
 import hashlib
 from typing import Dict, List, Optional, Protocol
 import httpx
+import redis
+from fastapi import BackgroundTasks
+from rq import Queue
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -411,6 +415,21 @@ async def evaluate_candidate_response_background(response_id: int, evaluation_ru
         await evaluate_candidate_response(response_id, db, evaluation_run_id=evaluation_run_id)
     finally:
         db.close()
+
+
+def run_evaluation_job(response_id: int, evaluation_run_id: int) -> None:
+    asyncio.run(evaluate_candidate_response_background(response_id, evaluation_run_id))
+
+
+def enqueue_evaluation_run(response_id: int, evaluation_run_id: int, background_tasks: BackgroundTasks) -> str:
+    if settings.EVALUATION_QUEUE_BACKEND == "rq":
+        redis_connection = redis.from_url(settings.REDIS_URL)
+        queue = Queue(settings.EVALUATION_QUEUE_NAME, connection=redis_connection)
+        queue.enqueue(run_evaluation_job, response_id, evaluation_run_id, job_timeout=600)
+        return "rq"
+
+    background_tasks.add_task(evaluate_candidate_response_background, response_id, evaluation_run_id)
+    return "background"
 
 
 def get_evaluation_config_hash(provider: EvaluationProvider) -> str:

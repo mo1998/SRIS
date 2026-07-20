@@ -125,7 +125,7 @@ async def reevaluate_interview_responses(
     if not responses:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No completed responses to re-evaluate")
 
-    from app.services.evaluation_service import create_evaluation_run, evaluate_candidate_response_background
+    from app.services.evaluation_service import create_evaluation_run, enqueue_evaluation_run
 
     queued_runs = []
     for response in responses:
@@ -139,7 +139,7 @@ async def reevaluate_interview_responses(
 
     db.commit()
     for run in queued_runs:
-        background_tasks.add_task(evaluate_candidate_response_background, run.response_id, run.id)
+        enqueue_evaluation_run(run.response_id, run.id, background_tasks)
 
     return [generate_candidate_evaluation_audit(run.response_id, db)[0] for run in queued_runs]
 
@@ -224,11 +224,11 @@ async def reevaluate_candidate_response(
     if not response.question_answers:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response has no answers to evaluate")
 
-    from app.services.evaluation_service import create_evaluation_run, evaluate_candidate_response_background
+    from app.services.evaluation_service import create_evaluation_run, enqueue_evaluation_run
 
     evaluation_run = create_evaluation_run(response_id, db)
     db.commit()
-    background_tasks.add_task(evaluate_candidate_response_background, response_id, evaluation_run.id)
+    enqueue_evaluation_run(response_id, evaluation_run.id, background_tasks)
     audit_runs = generate_candidate_evaluation_audit(response_id, db)
 
     return audit_runs[0]

@@ -65,6 +65,8 @@ services:
       MAIL_PORT: ${MAIL_PORT}
       FRONTEND_URL: ${FRONTEND_URL}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      EVALUATION_QUEUE_BACKEND: rq
+      EVALUATION_QUEUE_NAME: ${EVALUATION_QUEUE_NAME:-evaluation}
     volumes:
       - backend_uploads:/app/uploads
       - backend_logs:/app/logs
@@ -83,6 +85,39 @@ services:
     restart: always
     deploy:
       replicas: ${BACKEND_REPLICAS:-2}
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+
+  evaluation-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python -m app.worker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/sris_db
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      SECRET_KEY: ${SECRET_KEY}
+      EVALUATION_PROVIDER: ${EVALUATION_PROVIDER:-local_vllm}
+      EVALUATION_QUEUE_BACKEND: rq
+      EVALUATION_QUEUE_NAME: ${EVALUATION_QUEUE_NAME:-evaluation}
+      EVALUATION_PROMPT_VERSION: ${EVALUATION_PROMPT_VERSION:-rubric-v1}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:8100/v1}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3-8b-awq}
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sris-network
+    restart: always
+    deploy:
+      replicas: ${EVALUATION_WORKER_REPLICAS:-1}
       resources:
         limits:
           memory: 2G

@@ -154,6 +154,8 @@ SRIS is configured to use a local OpenAI-compatible endpoint for interview evalu
 
 ```bash
 export EVALUATION_PROVIDER=local_vllm
+export EVALUATION_QUEUE_BACKEND=rq
+export EVALUATION_QUEUE_NAME=evaluation
 export LOCAL_LLM_BASE_URL=http://localhost:8100/v1
 export LOCAL_LLM_MODEL=qwen3-8b-awq
 export EVALUATION_PROMPT_VERSION=rubric-v1
@@ -176,7 +178,8 @@ CUDA_VISIBLE_DEVICES=0 /home/ubuntu/anaconda3/envs/sris/bin/python \
 
 Evaluation behavior:
 
-- Completion and re-evaluation queue an `evaluation_runs` row, then process scoring in the background.
+- Completion and re-evaluation queue an `evaluation_runs` row, then process scoring through the configured evaluation queue.
+- Local/test mode can use FastAPI background tasks with `EVALUATION_QUEUE_BACKEND=background`; Docker deployments use Redis/RQ with the `evaluation-worker` service.
 - Audit history is available at `GET /api/reports/candidate/{response_id}/evaluations`.
 - Employers/admins can re-evaluate a candidate response or batch re-evaluate completed responses for an interview.
 - Candidate and interview reports show persisted evidence, model metadata, prompt version/config hash, score deltas, and fallback state.
@@ -231,6 +234,7 @@ SECRET_KEY=your-super-secret-key  # Run: openssl rand -hex 32
 LOCAL_LLM_BASE_URL=http://localhost:8100/v1
 LOCAL_LLM_MODEL=qwen3-8b-awq
 EVALUATION_PROMPT_VERSION=rubric-v1
+EVALUATION_QUEUE_BACKEND=rq
 
 # Email (for sending invitations)
 MAIL_FROM=noreply@yourdomain.com
@@ -268,6 +272,7 @@ REDIS_PASSWORD=<strong-password>
 LOCAL_LLM_BASE_URL=http://localhost:8100/v1
 LOCAL_LLM_MODEL=qwen3-8b-awq
 EVALUATION_PROMPT_VERSION=rubric-v1
+EVALUATION_QUEUE_BACKEND=rq
 FRONTEND_URL=https://yourdomain.com
 ALLOWED_ORIGINS=["https://yourdomain.com"]
 ```

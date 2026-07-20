@@ -266,11 +266,11 @@ async def complete_interview_response(
     db.commit()
     db.refresh(candidate_response)
     
-    from app.services.evaluation_service import create_evaluation_run, evaluate_candidate_response_background
+    from app.services.evaluation_service import create_evaluation_run, enqueue_evaluation_run
 
     evaluation_run = create_evaluation_run(response_id, db)
     db.commit()
-    background_tasks.add_task(evaluate_candidate_response_background, response_id, evaluation_run.id)
+    enqueue_evaluation_run(response_id, evaluation_run.id, background_tasks)
     
     return candidate_response
 
