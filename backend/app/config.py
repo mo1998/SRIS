@@ -64,3 +64,36 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+INSECURE_SECRET_KEYS = {
+    "your-secret-key-change-in-production",
+    "your-super-secret-key-change-this-in-production",
+    "test-secret-key",
+    "",
+}
+
+
+def validate_production_settings(active_settings: Settings) -> None:
+    if active_settings.DEBUG:
+        return
+
+    errors = []
+    if active_settings.SECRET_KEY in INSECURE_SECRET_KEYS or len(active_settings.SECRET_KEY) < 32:
+        errors.append("SECRET_KEY must be unique and at least 32 characters when DEBUG=False")
+
+    if "*" in active_settings.ALLOWED_ORIGINS:
+        errors.append("ALLOWED_ORIGINS must not contain '*' when DEBUG=False")
+
+    local_origins = [origin for origin in active_settings.ALLOWED_ORIGINS if "localhost" in origin or "127.0.0.1" in origin]
+    if local_origins:
+        errors.append("ALLOWED_ORIGINS must not contain localhost origins when DEBUG=False")
+
+    if active_settings.EVALUATION_QUEUE_BACKEND != "rq":
+        errors.append("EVALUATION_QUEUE_BACKEND must be 'rq' when DEBUG=False")
+
+    if errors:
+        raise RuntimeError("Unsafe production configuration: " + "; ".join(errors))
+
+
+validate_production_settings(settings)

@@ -107,6 +107,7 @@ docker compose -f docker-compose.prod.yml up -d --scale evaluation-worker=${EVAL
 ## 🔐 Security Checklist
 
 - [ ] Change `SECRET_KEY` (use `openssl rand -hex 32`)
+- [ ] Confirm `DEBUG=False` only after production secrets, non-local CORS origins, and Redis/RQ evaluation queue are configured
 - [ ] Change `POSTGRES_PASSWORD` (strong password)
 - [ ] Change `REDIS_PASSWORD` (strong password)
 - [ ] Configure `LOCAL_LLM_BASE_URL`, `LOCAL_LLM_MODEL`, and `EVALUATION_PROMPT_VERSION`
@@ -139,6 +140,7 @@ docker compose -f docker-compose.prod.yml up -d --scale evaluation-worker=${EVAL
 | Evaluations use fallback | Check `/api/reports/evaluation/health`, vLLM process, model name, and `LOCAL_LLM_BASE_URL` |
 | Evaluation appears pending | Check candidate audit trail for queued/running/failed runs and backend logs |
 | Evaluation queue is stuck | Check `docker compose logs evaluation-worker`, Redis health, and `EVALUATION_QUEUE_BACKEND` |
+| Backend exits on startup | Check production guardrail errors for `SECRET_KEY`, `ALLOWED_ORIGINS`, and `EVALUATION_QUEUE_BACKEND` |
 
 ---
 
