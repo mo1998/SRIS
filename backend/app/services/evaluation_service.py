@@ -138,6 +138,7 @@ class LocalVLLMEvaluationProvider:
                 "provider": self.name,
                 "provider_version": self.version,
                 "model": settings.LOCAL_LLM_MODEL,
+                "prompt_version": settings.EVALUATION_PROMPT_VERSION,
                 "matched_criteria": parsed.get("matched_criteria", []),
                 "missing_criteria": parsed.get("missing_criteria", []),
                 "evidence": parsed.get("evidence", ""),
@@ -416,6 +417,7 @@ def get_evaluation_config_hash(provider: EvaluationProvider) -> str:
     payload = {
         "provider": provider.name,
         "provider_version": getattr(provider, "version", None),
+        "prompt_version": settings.EVALUATION_PROMPT_VERSION,
         "model": settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else None,
         "base_url": settings.LOCAL_LLM_BASE_URL if provider.name == "local_vllm" else None,
     }
@@ -668,6 +670,8 @@ async def get_evaluation_health() -> Dict[str, object]:
     health = {
         "provider": provider.name,
         "provider_version": getattr(provider, "version", None),
+        "prompt_version": settings.EVALUATION_PROMPT_VERSION,
+        "config_hash": get_evaluation_config_hash(provider),
         "model_name": settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else None,
         "base_url": settings.LOCAL_LLM_BASE_URL if provider.name == "local_vllm" else None,
         "healthy": True,

@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     
     # Evaluation
     EVALUATION_PROVIDER: str = os.getenv("EVALUATION_PROVIDER", "local_vllm")
+    EVALUATION_PROMPT_VERSION: str = os.getenv("EVALUATION_PROMPT_VERSION", "rubric-v1")
     LOCAL_LLM_BASE_URL: str = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:8100/v1")
     LOCAL_LLM_MODEL: str = os.getenv("LOCAL_LLM_MODEL", "qwen3-8b-awq")
     LOCAL_LLM_TIMEOUT_SECONDS: float = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "5"))

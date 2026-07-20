@@ -51,6 +51,8 @@ describe('EmployerDashboard', () => {
     apiMock.reports.getEvaluationHealth.mockResolvedValue({
       data: {
         provider: 'local_vllm',
+        prompt_version: 'rubric-v1',
+        config_hash: 'cfg123',
         model_name: 'qwen3-8b-awq',
         healthy: false,
         status: 'local_vllm_unavailable_using_fallback',
@@ -66,6 +68,8 @@ describe('EmployerDashboard', () => {
     expect(screen.getByText(/local_vllm_unavailable_using_fallback/i)).toBeInTheDocument()
     expect(screen.getByText(/qwen3-8b-awq/i)).toBeInTheDocument()
     expect(screen.getByText(/deterministic_baseline/i)).toBeInTheDocument()
+    expect(screen.getByText(/rubric-v1/i)).toBeInTheDocument()
+    expect(screen.getByText(/cfg123/i)).toBeInTheDocument()
     expect(screen.getByText('Team members: 1')).toBeInTheDocument()
     expect(screen.getByText('owner')).toBeInTheDocument()
 

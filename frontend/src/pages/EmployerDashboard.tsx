@@ -150,6 +150,14 @@ const EmployerDashboard: React.FC = () => {
                 <p className="mb-1"><strong>Fallback</strong></p>
                 <p className="mb-0">{evaluationHealth.fallback_provider || 'N/A'}</p>
               </Col>
+              <Col md={6} className="mt-3">
+                <p className="mb-1"><strong>Prompt Version</strong></p>
+                <p className="mb-0">{evaluationHealth.prompt_version || 'N/A'}</p>
+              </Col>
+              <Col md={6} className="mt-3">
+                <p className="mb-1"><strong>Config Hash</strong></p>
+                <p className="mb-0">{evaluationHealth.config_hash || 'N/A'}</p>
+              </Col>
               {evaluationHealth.last_error && (
                 <Col xs={12} className="mt-3">
                   <Alert variant="warning" className="mb-0">{evaluationHealth.last_error}</Alert>
