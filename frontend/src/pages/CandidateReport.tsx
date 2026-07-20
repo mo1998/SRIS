@@ -57,6 +57,19 @@ const CandidateReport: React.FC = () => {
   const getEmotionClass = (emotion: string) => {
     return `emotion-${emotion.toLowerCase()}`
   }
+
+  const renderEvidenceList = (items?: string[]) => {
+    if (!items || items.length === 0) return <span className="text-muted">None</span>
+    return (
+      <ul className="mb-0 ps-3">
+        {items.map((item) => <li key={item}>{item}</li>)}
+      </ul>
+    )
+  }
+
+  const getEvidenceItems = (answer: any, primaryKey: string, fallbackKey: string) => {
+    return answer.evidence?.[primaryKey] || answer.evidence?.[fallbackKey]
+  }
   
   return (
     <div>
@@ -93,6 +106,14 @@ const CandidateReport: React.FC = () => {
               </Badge>
             </Col>
           </Row>
+          {(report.evaluation_provider || report.evaluation_model) && (
+            <div className="border-top mt-3 pt-3">
+              <h6>Evaluation Agent</h6>
+              <p className="mb-1"><strong>Provider:</strong> {report.evaluation_provider || 'N/A'}</p>
+              <p className="mb-1"><strong>Model:</strong> {report.evaluation_model || 'N/A'}</p>
+              <p className="mb-0"><strong>Status:</strong> {report.evaluation_status || 'N/A'}</p>
+            </div>
+          )}
         </Card.Body>
       </Card>
       
@@ -181,6 +202,7 @@ const CandidateReport: React.FC = () => {
                 <th>Score</th>
                 <th>Emotion</th>
                 <th>Feedback</th>
+                <th>Evidence</th>
               </tr>
             </thead>
             <tbody>
@@ -201,6 +223,26 @@ const CandidateReport: React.FC = () => {
                     )}
                   </td>
                   <td style={{ maxWidth: '300px' }}>{answer.feedback}</td>
+                  <td style={{ minWidth: '260px' }}>
+                    {answer.feedback_ar && (
+                      <p className="mb-2"><strong>Arabic:</strong> {answer.feedback_ar}</p>
+                    )}
+                    {getEvidenceItems(answer, 'matched_criteria', 'matched_keywords') && (
+                      <div className="mb-2">
+                        <strong>Matched Criteria</strong>
+                        {renderEvidenceList(getEvidenceItems(answer, 'matched_criteria', 'matched_keywords'))}
+                      </div>
+                    )}
+                    {getEvidenceItems(answer, 'missing_criteria', 'missing_keywords') && (
+                      <div className="mb-2">
+                        <strong>Missing Criteria</strong>
+                        {renderEvidenceList(getEvidenceItems(answer, 'missing_criteria', 'missing_keywords'))}
+                      </div>
+                    )}
+                    {answer.evidence?.evidence && (
+                      <p className="mb-0"><strong>Evidence:</strong> {answer.evidence.evidence}</p>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

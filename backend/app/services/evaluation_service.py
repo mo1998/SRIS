@@ -386,16 +386,31 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
     
     interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
     answers = db.query(QuestionAnswer).filter(QuestionAnswer.response_id == response_id).all()
+    evaluation_run = (
+        db.query(EvaluationRun)
+        .filter(EvaluationRun.response_id == response_id, EvaluationRun.status == "completed")
+        .order_by(EvaluationRun.completed_at.desc(), EvaluationRun.id.desc())
+        .first()
+    )
+    scores_by_answer_id = {}
+    if evaluation_run:
+        scores = db.query(EvaluationScore).filter(EvaluationScore.evaluation_run_id == evaluation_run.id).all()
+        scores_by_answer_id = {score.question_answer_id: score for score in scores}
     
     answer_details = []
     for answer in answers:
         question = db.query(InterviewQuestion).filter(InterviewQuestion.id == answer.question_id).first()
+        evaluation_score = scores_by_answer_id.get(answer.id)
         answer_details.append({
+            "question_id": answer.question_id,
             "question": question.question_text if question else "Unknown",
             "expected_answer": question.expected_answer if question else "",
-            "candidate_answer": answer.answer_text,
+            "answer_text": answer.answer_text,
             "score": answer.score,
             "feedback": answer.feedback,
+            "feedback_en": evaluation_score.feedback_en if evaluation_score else None,
+            "feedback_ar": evaluation_score.feedback_ar if evaluation_score else None,
+            "evidence": parse_evidence_json(evaluation_score.evidence_json) if evaluation_score else None,
             "emotion": answer.emotion_during_answer
         })
     
@@ -412,9 +427,30 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
         "dominant_emotion": response.dominant_emotion or "neutral",
         "confidence_score": response.confidence_score or 50.0,
         "answers": answer_details,
+        "feedback": build_report_feedback(response),
         "started_at": response.started_at,
-        "completed_at": response.completed_at
+        "completed_at": response.completed_at,
+        "evaluation_provider": evaluation_run.provider if evaluation_run else None,
+        "evaluation_model": evaluation_run.model_name if evaluation_run else None,
+        "evaluation_status": evaluation_run.status if evaluation_run else None,
+        "evaluation_completed_at": evaluation_run.completed_at if evaluation_run else None,
+        "generated_at": datetime.utcnow(),
     }
+
+
+def parse_evidence_json(evidence_json: str) -> Dict[str, object]:
+    if not evidence_json:
+        return {}
+    try:
+        return json.loads(evidence_json)
+    except json.JSONDecodeError:
+        return {"raw": evidence_json}
+
+
+def build_report_feedback(response: CandidateResponse) -> str:
+    if response.passed:
+        return "Candidate passed the interview based on the configured pass score."
+    return "Candidate did not meet the configured pass score."
 
 
 def generate_employer_report(interview_id: int, db: Session) -> Dict:
