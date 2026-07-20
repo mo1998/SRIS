@@ -2,7 +2,7 @@
 Pydantic schemas for API validation
 """
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Dict
 from datetime import datetime
 from enum import Enum
@@ -60,6 +60,11 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
 
+    @field_validator("password")
+    @classmethod
+    def validate_password_complexity(cls, password: str) -> str:
+        return validate_password_strength(password)
+
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = Field(None, min_length=1)
@@ -69,6 +74,21 @@ class UserUpdate(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password_complexity(cls, password: str) -> str:
+        return validate_password_strength(password)
+
+
+def validate_password_strength(password: str) -> str:
+    if not any(character.islower() for character in password):
+        raise ValueError("Password must include a lowercase letter")
+    if not any(character.isupper() for character in password):
+        raise ValueError("Password must include an uppercase letter")
+    if not any(character.isdigit() for character in password):
+        raise ValueError("Password must include a number")
+    return password
 
 
 class UserResponse(UserBase):

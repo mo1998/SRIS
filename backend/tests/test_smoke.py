@@ -3,7 +3,7 @@ def register_user(client, email="employer@example.com", role="employer"):
         "/api/auth/register",
         json={
             "email": email,
-            "password": "strong-password",
+            "password": "Strong-password1",
             "full_name": "Test Employer",
             "role": role,
             "company_name": "SRIS Test Co",
@@ -49,7 +49,7 @@ def create_interview(client, token, title="Customer Support Screen"):
 def login_tokens(client, email="employer@example.com"):
     response = client.post(
         "/api/auth/login",
-        data={"username": email, "password": "strong-password"},
+        data={"username": email, "password": "Strong-password1"},
     )
     assert response.status_code == 200, response.text
     return response.json()
@@ -88,6 +88,21 @@ def test_register_and_login_employer(client):
 
     assert user["email"] == "employer@example.com"
     assert token
+
+
+def test_registration_rejects_weak_password(client):
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "weak@example.com",
+            "password": "weakpass",
+            "full_name": "Weak Password",
+            "role": "employee",
+        },
+    )
+
+    assert response.status_code == 422, response.text
+    assert "Password must include" in response.text
 
 
 def test_login_rate_limit_blocks_repeated_failed_attempts(client, monkeypatch):
@@ -130,7 +145,7 @@ def test_successful_login_clears_failed_login_attempts(client, monkeypatch):
 
     successful_response = client.post(
         "/api/auth/login",
-        data={"username": "reset-limit@example.com", "password": "strong-password"},
+        data={"username": "reset-limit@example.com", "password": "Strong-password1"},
     )
     assert successful_response.status_code == 200, successful_response.text
     assert "reset-limit@example.com" not in login_failures
@@ -234,19 +249,19 @@ def test_current_user_can_change_password(client):
     response = client.post(
         "/api/users/me/password",
         headers={"Authorization": f"Bearer {token}"},
-        json={"current_password": "strong-password", "new_password": "new-strong-password"},
+        json={"current_password": "Strong-password1", "new_password": "New-strong-password2"},
     )
     assert response.status_code == 204, response.text
 
     old_login_response = client.post(
         "/api/auth/login",
-        data={"username": "employer@example.com", "password": "strong-password"},
+        data={"username": "employer@example.com", "password": "Strong-password1"},
     )
     assert old_login_response.status_code == 401, old_login_response.text
 
     new_login_response = client.post(
         "/api/auth/login",
-        data={"username": "employer@example.com", "password": "new-strong-password"},
+        data={"username": "employer@example.com", "password": "New-strong-password2"},
     )
     assert new_login_response.status_code == 200, new_login_response.text
 
@@ -258,10 +273,24 @@ def test_current_user_password_change_rejects_wrong_current_password(client):
     response = client.post(
         "/api/users/me/password",
         headers={"Authorization": f"Bearer {token}"},
-        json={"current_password": "wrong-password", "new_password": "new-strong-password"},
+        json={"current_password": "wrong-password", "new_password": "New-strong-password2"},
     )
 
     assert response.status_code == 400, response.text
+
+
+def test_password_change_rejects_weak_new_password(client):
+    register_user(client)
+    token = login_user(client)
+
+    response = client.post(
+        "/api/users/me/password",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"current_password": "Strong-password1", "new_password": "weakpass"},
+    )
+
+    assert response.status_code == 422, response.text
+    assert "Password must include" in response.text
 
 
 def test_employer_can_create_interview(client):
