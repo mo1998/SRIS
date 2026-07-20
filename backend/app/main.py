@@ -2,14 +2,21 @@
 Smart Remote Interview System (SRIS) - Main Application
 """
 
-from fastapi import FastAPI
+import json
+import logging
+import os
+import time
+import uuid
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os
 
 from app.config import settings
 from app.database import engine, Base
 from app.api.router import api_router
+
+logger = logging.getLogger("sris.request")
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -29,6 +36,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def request_observability_middleware(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    start_time = time.perf_counter()
+
+    response = await call_next(request)
+
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Process-Time-Ms"] = str(duration_ms)
+
+    logger.info(json.dumps({
+        "event": "http_request",
+        "request_id": request_id,
+        "method": request.method,
+        "path": request.url.path,
+        "status_code": response.status_code,
+        "duration_ms": duration_ms,
+    }))
+
+    return response
+
 # Include API routes
 app.include_router(api_router, prefix="/api")
 
@@ -46,5 +76,8 @@ async def root():
     }
 
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+async def health_check(request: Request):
+    return {
+        "status": "healthy",
+        "request_id": request.headers.get("X-Request-ID"),
+    }
