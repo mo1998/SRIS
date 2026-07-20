@@ -124,6 +124,12 @@ async def create_bulk_invitations(
     
     if not invitations:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No invitations provided")
+
+    if len(invitations) > settings.MAX_BULK_INVITATIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bulk invitations cannot exceed {settings.MAX_BULK_INVITATIONS} candidates",
+        )
     
     interview_id = invitations[0].interview_id
     if any(invitation.interview_id != interview_id for invitation in invitations):

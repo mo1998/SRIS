@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -308,6 +308,21 @@ describe('InterviewDetail', () => {
     expect(await screen.findByText('Row 1: email is invalid')).toBeInTheDocument()
     expect(screen.getByText('Row 2: name is required')).toBeInTheDocument()
     expect(screen.getByText('Row 4: duplicate email')).toBeInTheDocument()
+    expect(apiMock.invitations.createBulk).not.toHaveBeenCalled()
+  })
+
+  it('rejects bulk invite input over the client-side limit', async () => {
+    renderPage()
+
+    expect(await screen.findByText('Candidate One')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /invite candidates/i }))
+    await userEvent.click(screen.getByRole('tab', { name: /bulk invite/i }))
+    fireEvent.change(screen.getByLabelText(/enter candidates/i), {
+      target: { value: Array.from({ length: 101 }, (_, index) => `candidate${index}@example.com, Candidate ${index}`).join('\n') },
+    })
+    await userEvent.click(screen.getByRole('button', { name: /send all invitations/i }))
+
+    expect(await screen.findByText('Bulk invite limit is 100 candidates')).toBeInTheDocument()
     expect(apiMock.invitations.createBulk).not.toHaveBeenCalled()
   })
 
