@@ -31,6 +31,18 @@ async def test_baseline_penalizes_missing_keywords_and_short_answers():
 
 
 @pytest.mark.asyncio
+async def test_baseline_includes_rubric_criteria_in_evidence_and_scoring():
+    result = await baseline_provider.evaluate_answer(
+        "I listen first and use a clear escalation plan.",
+        "Listen and follow up.",
+        [{"name": "Escalation", "description": "Has a clear escalation plan", "weight": 1.5}],
+    )
+
+    assert "escalation" in result.evidence["matched_keywords"]
+    assert result.evidence["rubric_criteria"][0]["name"] == "Escalation"
+
+
+@pytest.mark.asyncio
 async def test_baseline_scores_empty_answer_zero_with_evidence():
     result = await baseline_provider.evaluate_answer("", "Listen and follow up.")
 
@@ -93,17 +105,24 @@ async def test_local_vllm_provider_uses_openai_compatible_json(monkeypatch):
         async def post(self, url, json):
             assert url == "http://local-vllm.test/v1/chat/completions"
             assert json["model"] == "qwen3-test"
+            assert "Rubric criteria JSON" in json["messages"][1]["content"]
+            assert "Ownership" in json["messages"][1]["content"]
             return FakeResponse()
 
     monkeypatch.setattr(settings, "LOCAL_LLM_BASE_URL", "http://local-vllm.test/v1")
     monkeypatch.setattr(settings, "LOCAL_LLM_MODEL", "qwen3-test")
     monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", FakeClient)
 
-    result = await local_vllm_provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
+    result = await local_vllm_provider.evaluate_answer(
+        "I listen and follow up.",
+        "Listen and follow up.",
+        [{"name": "Ownership", "description": "Takes ownership", "weight": 1.0}],
+    )
 
     assert result.score == 90.0
     assert result.evidence["provider"] == "local_vllm"
     assert result.evidence["model"] == "qwen3-test"
+    assert result.evidence["rubric_criteria"][0]["name"] == "Ownership"
     assert "Strong answer" in result.feedback
     assert "إجابة قوية" in result.feedback
 

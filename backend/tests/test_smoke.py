@@ -30,6 +30,14 @@ def create_interview(client, token, title="Customer Support Screen"):
                     "question_type": "text",
                     "weight": 1,
                     "order_index": 0,
+                    "rubric_criteria": [
+                        {
+                            "name": "Ownership",
+                            "description": "Takes ownership of the customer issue",
+                            "weight": 1,
+                            "order_index": 0,
+                        }
+                    ],
                 }
             ],
         },
@@ -685,7 +693,7 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
         f"/api/responses/{candidate_response['id']}/answer",
         params={
             "question_id": question["id"],
-            "answer_text": "I listen, empathize, clarify, resolve, and follow up with the customer.",
+            "answer_text": "I listen, empathize, clarify, take ownership, resolve, and follow up with the customer.",
             "time_taken_seconds": 120,
         },
     )
@@ -767,6 +775,7 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert evaluation_audit[0]["raw_summary"]["answer_count"] == 1
     assert evaluation_audit[0]["scores"][0]["question"] == "How do you handle an upset customer?"
     assert "listen" in evaluation_audit[0]["scores"][0]["evidence"]["matched_keywords"]
+    assert evaluation_audit[0]["scores"][0]["evidence"]["rubric_criteria"][0]["name"] == "Ownership"
 
     reevaluation_response = client.post(
         f"/api/reports/candidate/{candidate_response['id']}/evaluations",
