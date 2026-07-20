@@ -10,6 +10,8 @@ const CandidateReport: React.FC = () => {
   const [report, setReport] = useState<any>(null)
   const [evaluationAudit, setEvaluationAudit] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [reevaluating, setReevaluating] = useState(false)
+  const [reevaluationError, setReevaluationError] = useState('')
   
   useEffect(() => {
     loadReport()
@@ -43,6 +45,20 @@ const CandidateReport: React.FC = () => {
       link.remove()
     } catch (error) {
       console.error('Failed to download PDF:', error)
+    }
+  }
+
+  const handleReevaluate = async () => {
+    setReevaluationError('')
+    setReevaluating(true)
+
+    try {
+      await api.reports.reevaluateCandidate(parseInt(responseId!))
+      await loadReport()
+    } catch (error: any) {
+      setReevaluationError(error.response?.data?.detail || 'Failed to re-evaluate response')
+    } finally {
+      setReevaluating(false)
     }
   }
   
@@ -98,6 +114,7 @@ const CandidateReport: React.FC = () => {
           Download PDF
         </Button>
       </div>
+      {reevaluationError && <p className="text-danger">{reevaluationError}</p>}
       
       <Card className="mb-4">
         <Card.Header>
@@ -267,7 +284,12 @@ const CandidateReport: React.FC = () => {
 
       <Card className="mt-4">
         <Card.Header>
-          <h5 className="mb-0">Evaluation Audit Trail</h5>
+          <div className="d-flex justify-content-between align-items-center">
+            <h5 className="mb-0">Evaluation Audit Trail</h5>
+            <Button variant="outline-primary" size="sm" onClick={handleReevaluate} disabled={reevaluating}>
+              {reevaluating ? 'Re-evaluating...' : 'Re-evaluate'}
+            </Button>
+          </div>
         </Card.Header>
         <Card.Body>
           {evaluationAudit.length === 0 ? (
