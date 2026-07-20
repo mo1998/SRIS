@@ -729,6 +729,20 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert employer_responses.status_code == 200, employer_responses.text
     assert employer_responses.json()[0]["status"] == "completed"
 
+    candidate_report_response = client.get(
+        f"/api/reports/candidate/{candidate_response['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert candidate_report_response.status_code == 200, candidate_report_response.text
+    candidate_report = candidate_report_response.json()
+    assert candidate_report["evaluation_provider"]
+    assert candidate_report["evaluation_model"]
+    assert candidate_report["evaluation_status"] == "completed"
+    assert candidate_report["answers"][0]["feedback_en"]
+    assert candidate_report["answers"][0]["feedback_ar"]
+    assert "How do you handle an upset customer?" == candidate_report["answers"][0]["question"]
+    assert "listen" in candidate_report["answers"][0]["evidence"]["matched_keywords"]
+
     from app.database import SessionLocal
     from app.models import EvaluationRun, EvaluationScore
 

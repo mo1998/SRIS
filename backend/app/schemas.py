@@ -298,8 +298,17 @@ class QuestionAnswerSchema(BaseModel):
     audio_file_path: Optional[str] = None
     score: Optional[float] = None
     feedback: Optional[str] = None
+    feedback_en: Optional[str] = None
+    feedback_ar: Optional[str] = None
+    evidence: Optional[dict] = None
     emotion_during_answer: Optional[str] = None
     time_taken_seconds: Optional[int] = None
+
+
+class ReportQuestionAnswerSchema(QuestionAnswerSchema):
+    question: Optional[str] = None
+    expected_answer: Optional[str] = None
+    emotion: Optional[str] = None
 
 
 class CandidateResponseCreate(BaseModel):
@@ -370,6 +379,10 @@ class CandidateReport(BaseModel):
     lighting: float
     dominant_emotion: str
     confidence_score: float
-    answers: List[QuestionAnswerSchema]
+    answers: List[ReportQuestionAnswerSchema]
     feedback: str
+    evaluation_provider: Optional[str] = None
+    evaluation_model: Optional[str] = None
+    evaluation_status: Optional[str] = None
+    evaluation_completed_at: Optional[datetime] = None
     generated_at: datetime
