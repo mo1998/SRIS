@@ -743,6 +743,14 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert "How do you handle an upset customer?" == candidate_report["answers"][0]["question"]
     assert "listen" in candidate_report["answers"][0]["evidence"]["matched_keywords"]
 
+    candidate_pdf_response = client.get(
+        f"/api/reports/candidate/{candidate_response['id']}/pdf",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert candidate_pdf_response.status_code == 200, candidate_pdf_response.text
+    assert candidate_pdf_response.headers["content-type"] == "application/pdf"
+    assert candidate_pdf_response.content.startswith(b"%PDF")
+
     from app.database import SessionLocal
     from app.models import EvaluationRun, EvaluationScore
 

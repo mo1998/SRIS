@@ -46,6 +46,7 @@ env/
 *.db
 
 # Uploads and user data
+uploads/
 backend/uploads/
 models/
 *.wav

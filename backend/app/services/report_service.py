@@ -2,8 +2,11 @@
 PDF report generation service
 """
 
+import json
 import os
 from datetime import datetime
+from typing import Dict, List, Optional
+from xml.sax.saxutils import escape
 from sqlalchemy.orm import Session
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -12,7 +15,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-from app.models import Interview, CandidateResponse, QuestionAnswer, InterviewQuestion
+from app.models import Interview, CandidateResponse, QuestionAnswer, InterviewQuestion, EvaluationRun, EvaluationScore
 
 
 async def generate_interview_pdf(interview_id: int, db: Session) -> str:
@@ -191,12 +194,14 @@ async def generate_candidate_pdf(response_id: int, db: Session) -> str:
     
     interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
     answers = db.query(QuestionAnswer).filter(QuestionAnswer.response_id == response_id).all()
+    evaluation_run = get_latest_completed_evaluation_run(response_id, db)
+    scores_by_answer_id = get_evaluation_scores_by_answer_id(evaluation_run.id, db) if evaluation_run else {}
     
     # Create PDF
     os.makedirs("uploads/reports", exist_ok=True)
     filename = f"uploads/reports/candidate_{response_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
     
-    doc = SimpleDocTemplate(filename, pagesize=letter)
+    doc = SimpleDocTemplate(filename, pagesize=letter, pageCompression=0)
     styles = getSampleStyleSheet()
     elements = []
     
@@ -270,6 +275,28 @@ async def generate_candidate_pdf(response_id: int, db: Session) -> str:
     
     elements.append(results_table)
     elements.append(Spacer(1, 20))
+
+    if evaluation_run:
+        elements.append(Paragraph("Evaluation Agent", heading_style))
+
+        evaluation_data = [
+            ['Provider:', evaluation_run.provider or 'N/A'],
+            ['Model:', evaluation_run.model_name or 'N/A'],
+            ['Status:', evaluation_run.status or 'N/A'],
+            ['Completed:', (evaluation_run.completed_at or datetime.utcnow()).strftime('%B %d, %Y %I:%M %p')]
+        ]
+
+        evaluation_table = Table(evaluation_data, colWidths=[2*inch, 4*inch])
+        evaluation_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), HexColor('#ecf0f1')),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, HexColor('#bdc3c7')),
+        ]))
+
+        elements.append(evaluation_table)
+        elements.append(Spacer(1, 20))
     
     # Quality Metrics
     elements.append(Paragraph("Environment Quality Metrics", heading_style))
@@ -298,16 +325,25 @@ async def generate_candidate_pdf(response_id: int, db: Session) -> str:
     
     for idx, answer in enumerate(answers, 1):
         question = db.query(InterviewQuestion).filter(InterviewQuestion.id == answer.question_id).first()
+        evaluation_score = scores_by_answer_id.get(answer.id)
         
         if question:
             elements.append(Paragraph(f"Question {idx}: {question.question_text}", 
                                      ParagraphStyle('Q', parent=styles['Heading3'], fontSize=12, spaceBefore=15)))
             
             answer_data = [
-                ['Your Answer:', answer.answer_text or 'No answer provided'],
+                ['Your Answer:', as_pdf_paragraph(answer.answer_text or 'No answer provided', styles)],
                 ['Score:', f'{answer.score or 0:.1f}%'],
-                ['Feedback:', answer.feedback or '']
+                ['Feedback:', as_pdf_paragraph(evaluation_score.feedback_en or answer.feedback or '', styles) if evaluation_score else as_pdf_paragraph(answer.feedback or '', styles)]
             ]
+
+            if evaluation_score and evaluation_score.feedback_ar:
+                answer_data.append(['Arabic Feedback:', as_pdf_paragraph(evaluation_score.feedback_ar, styles)])
+
+            if evaluation_score:
+                evidence_lines = format_evaluation_evidence(evaluation_score.evidence_json)
+                if evidence_lines:
+                    answer_data.append(['Evaluation Evidence:', as_pdf_paragraph('<br/>'.join(evidence_lines), styles, already_escaped=True)])
             
             answer_table = Table(answer_data, colWidths=[1.5*inch, 4.5*inch])
             answer_table.setStyle(TableStyle([
@@ -332,3 +368,47 @@ async def generate_candidate_pdf(response_id: int, db: Session) -> str:
     doc.build(elements)
     
     return filename
+
+
+def get_latest_completed_evaluation_run(response_id: int, db: Session) -> Optional[EvaluationRun]:
+    return (
+        db.query(EvaluationRun)
+        .filter(EvaluationRun.response_id == response_id, EvaluationRun.status == "completed")
+        .order_by(EvaluationRun.completed_at.desc(), EvaluationRun.id.desc())
+        .first()
+    )
+
+
+def get_evaluation_scores_by_answer_id(evaluation_run_id: int, db: Session) -> Dict[int, EvaluationScore]:
+    scores = db.query(EvaluationScore).filter(EvaluationScore.evaluation_run_id == evaluation_run_id).all()
+    return {score.question_answer_id: score for score in scores}
+
+
+def format_evaluation_evidence(evidence_json: str) -> List[str]:
+    if not evidence_json:
+        return []
+
+    try:
+        evidence = json.loads(evidence_json)
+    except json.JSONDecodeError:
+        return [escape(evidence_json)]
+
+    lines = []
+    matched = evidence.get("matched_criteria") or evidence.get("matched_keywords") or []
+    missing = evidence.get("missing_criteria") or evidence.get("missing_keywords") or []
+
+    if matched:
+        lines.append(f"<b>Matched:</b> {escape(', '.join(str(item) for item in matched))}")
+    if missing:
+        lines.append(f"<b>Missing:</b> {escape(', '.join(str(item) for item in missing))}")
+    if evidence.get("evidence"):
+        lines.append(f"<b>Evidence:</b> {escape(str(evidence['evidence']))}")
+    if evidence.get("provider_fallback_from"):
+        lines.append(f"<b>Fallback:</b> {escape(str(evidence['provider_fallback_from']))}")
+
+    return lines
+
+
+def as_pdf_paragraph(value: str, styles, already_escaped: bool = False) -> Paragraph:
+    text = value if already_escaped else escape(value)
+    return Paragraph(text, ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=9, leading=11))
