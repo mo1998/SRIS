@@ -58,6 +58,7 @@ docker compose logs -f           # View logs
 docker compose down              # Stop
 docker compose restart           # Restart
 docker compose config            # Validate compose files
+python scripts/load_test.py --base-url http://localhost:8000 --candidates 20 --concurrency 5
 ```
 
 ### Production
