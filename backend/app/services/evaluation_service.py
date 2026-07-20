@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.config import settings
+from app.database import SessionLocal
 from app.models import CandidateResponse, EvaluationRun, EvaluationScore, QuestionAnswer, InterviewQuestion, Interview
 
 
@@ -251,7 +252,7 @@ async def calculate_emotion_score(emotion_timeline: str) -> float:
         return 50.0
 
 
-async def evaluate_candidate_response(response_id: int, db: Session):
+async def evaluate_candidate_response(response_id: int, db: Session, evaluation_run_id: Optional[int] = None):
     """
     Complete evaluation of a candidate's interview response
     """
@@ -266,17 +267,14 @@ async def evaluate_candidate_response(response_id: int, db: Session):
         return
 
     provider = get_evaluation_provider()
-    evaluation_run = EvaluationRun(
-        response_id=response.id,
-        provider=provider.name,
-        provider_version=getattr(provider, "version", None),
-        model_name=settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else None,
-        config_hash=get_evaluation_config_hash(provider),
-        status="running",
-        started_at=datetime.utcnow(),
-    )
-    db.add(evaluation_run)
-    db.flush()
+    if evaluation_run_id:
+        evaluation_run = db.query(EvaluationRun).filter(EvaluationRun.id == evaluation_run_id).first()
+        if not evaluation_run:
+            return
+        evaluation_run.status = "running"
+        evaluation_run.started_at = evaluation_run.started_at or datetime.utcnow()
+    else:
+        evaluation_run = create_evaluation_run(response_id, db, status="running")
     
     total_score = 0.0
     total_weight = 0.0
@@ -384,6 +382,34 @@ async def evaluate_candidate_response(response_id: int, db: Session):
             )
         except Exception as exc:
             print(f"Completion email failed: {exc}")
+
+
+def create_evaluation_run(response_id: int, db: Session, status: str = "queued") -> EvaluationRun:
+    provider = get_evaluation_provider()
+    evaluation_run = EvaluationRun(
+        response_id=response_id,
+        provider=provider.name,
+        provider_version=getattr(provider, "version", None),
+        model_name=settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else None,
+        config_hash=get_evaluation_config_hash(provider),
+        status=status,
+        started_at=datetime.utcnow(),
+    )
+    db.add(evaluation_run)
+    db.flush()
+    return evaluation_run
+
+
+async def evaluate_candidate_response_background(response_id: int, evaluation_run_id: int) -> None:
+    db = SessionLocal()
+    try:
+        evaluation_run = db.query(EvaluationRun).filter(EvaluationRun.id == evaluation_run_id).first()
+        if evaluation_run:
+            evaluation_run.status = "running"
+            db.commit()
+        await evaluate_candidate_response(response_id, db, evaluation_run_id=evaluation_run_id)
+    finally:
+        db.close()
 
 
 def get_evaluation_config_hash(provider: EvaluationProvider) -> str:
