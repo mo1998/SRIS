@@ -143,6 +143,21 @@ async function mockApi(page: Page, user = employerUser) {
       },
     })
   })
+  await page.route('**/api/reports/email/health', async (route) => {
+    await route.fulfill({
+      json: {
+        configured: true,
+        status: 'configured',
+        mail_from: 'interviews@example.com',
+        mail_server: 'smtp.example.com',
+        mail_port: 587,
+        tls_enabled: true,
+        ssl_enabled: false,
+        missing_settings: [],
+        checked_at: '2026-07-20T00:00:00Z',
+      },
+    })
+  })
   await page.route('**/api/interviews/10', async (route) => {
     await route.fulfill({ json: interview })
   })

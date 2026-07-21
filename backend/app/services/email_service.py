@@ -5,7 +5,7 @@ Email service for sending invitations and notifications
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from app.config import settings
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
 from html import escape
 
 
@@ -19,6 +19,39 @@ conf = ConnectionConfig(
     MAIL_STARTTLS=settings.MAIL_TLS,
     MAIL_SSL_TLS=settings.MAIL_SSL,
 )
+
+
+PLACEHOLDER_EMAIL_VALUES = {
+    "",
+    "noreply@yourdomain.com",
+    "your-email-password",
+    "smtp.gmail.com",
+}
+
+
+def get_email_health() -> Dict[str, object]:
+    missing_settings = []
+    if settings.MAIL_FROM in PLACEHOLDER_EMAIL_VALUES:
+        missing_settings.append("MAIL_FROM")
+    if settings.MAIL_PASSWORD in PLACEHOLDER_EMAIL_VALUES:
+        missing_settings.append("MAIL_PASSWORD")
+    if settings.MAIL_SERVER in {"", "smtp.gmail.com"}:
+        missing_settings.append("MAIL_SERVER")
+    if not settings.MAIL_PORT:
+        missing_settings.append("MAIL_PORT")
+
+    configured = len(missing_settings) == 0
+    return {
+        "configured": configured,
+        "status": "configured" if configured else "configuration_incomplete",
+        "mail_from": settings.MAIL_FROM,
+        "mail_server": settings.MAIL_SERVER,
+        "mail_port": settings.MAIL_PORT,
+        "tls_enabled": settings.MAIL_TLS,
+        "ssl_enabled": settings.MAIL_SSL,
+        "missing_settings": missing_settings,
+        "checked_at": datetime.utcnow(),
+    }
 
 
 def render_invitation_email(

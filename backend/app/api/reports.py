@@ -11,9 +11,10 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models import User, Interview, CandidateResponse, TeamMembership, TeamRole, UserRole
-from app.schemas import InterviewReport, CandidateReport, EvaluationAnalytics, EvaluationHealth, EvaluationRunAudit
+from app.schemas import InterviewReport, CandidateReport, EmailHealth, EvaluationAnalytics, EvaluationHealth, EvaluationRunAudit
 from app.api.auth import get_current_user, require_role, UserRole
 from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit, generate_interview_evaluation_analytics, get_evaluation_health
+from app.services.email_service import get_email_health
 
 router = APIRouter()
 
@@ -100,6 +101,17 @@ async def get_evaluation_provider_health(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     return await get_evaluation_health()
+
+
+@router.get("/email/health", response_model=EmailHealth)
+async def get_email_configuration_health(
+    current_user: User = Depends(get_current_user)
+):
+    """Get email configuration readiness without sending a message."""
+    if current_user.role not in [UserRole.EMPLOYER, UserRole.ADMIN]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    return get_email_health()
 
 
 @router.post("/interview/{interview_id}/evaluations", response_model=List[EvaluationRunAudit])

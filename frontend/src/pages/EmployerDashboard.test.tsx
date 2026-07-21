@@ -15,6 +15,7 @@ const apiMock = vi.hoisted(() => ({
   },
   reports: {
     getEvaluationHealth: vi.fn(),
+    getEmailHealth: vi.fn(),
   },
 }))
 
@@ -35,6 +36,7 @@ describe('EmployerDashboard', () => {
     apiMock.users.getMyMemberships.mockReset()
     apiMock.users.addMembership.mockReset()
     apiMock.reports.getEvaluationHealth.mockReset()
+    apiMock.reports.getEmailHealth.mockReset()
   })
 
   it('shows organization details and adds an existing team member', async () => {
@@ -60,6 +62,16 @@ describe('EmployerDashboard', () => {
         last_error: 'connection refused',
       },
     })
+    apiMock.reports.getEmailHealth.mockResolvedValue({
+      data: {
+        configured: false,
+        status: 'configuration_incomplete',
+        mail_from: 'noreply@yourdomain.com',
+        mail_server: 'smtp.gmail.com',
+        mail_port: 587,
+        missing_settings: ['MAIL_FROM', 'MAIL_PASSWORD'],
+      },
+    })
 
     renderDashboard()
 
@@ -70,6 +82,9 @@ describe('EmployerDashboard', () => {
     expect(screen.getByText(/deterministic_baseline/i)).toBeInTheDocument()
     expect(screen.getByText(/rubric-v1/i)).toBeInTheDocument()
     expect(screen.getByText(/cfg123/i)).toBeInTheDocument()
+    expect(screen.getByText(/email delivery health/i)).toBeInTheDocument()
+    expect(screen.getByText(/configuration_incomplete/i)).toBeInTheDocument()
+    expect(screen.getByText(/MAIL_FROM, MAIL_PASSWORD/i)).toBeInTheDocument()
     expect(screen.getByText('Team members: 1')).toBeInTheDocument()
     expect(screen.getByText('owner')).toBeInTheDocument()
 

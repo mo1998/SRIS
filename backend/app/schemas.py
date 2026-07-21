@@ -468,6 +468,18 @@ class EvaluationHealth(BaseModel):
     checked_at: datetime
 
 
+class EmailHealth(BaseModel):
+    configured: bool
+    status: str
+    mail_from: str
+    mail_server: str
+    mail_port: int
+    tls_enabled: bool
+    ssl_enabled: bool
+    missing_settings: List[str] = []
+    checked_at: datetime
+
+
 class EvaluationAnalytics(BaseModel):
     interview_id: int
     completed_responses: int
