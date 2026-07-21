@@ -28,6 +28,16 @@ jobs:
       - name: Run tests
         run: python -m pytest backend/tests -q
 
+      - name: Validate migrations
+        working-directory: backend
+        env:
+          DEBUG: 'True'
+          SECRET_KEY: test-secret-key-for-migration-check
+          DATABASE_URL: sqlite:////tmp/sris-ci-migration-check.db
+        run: |
+          rm -f /tmp/sris-ci-migration-check.db
+          python -m alembic upgrade head
+
   frontend:
     name: Frontend Tests And Build
     runs-on: ubuntu-latest

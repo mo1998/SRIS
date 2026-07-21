@@ -59,6 +59,7 @@ docker compose down              # Stop
 docker compose restart           # Restart
 docker compose config            # Validate compose files
 scripts/release_check.sh         # Backend, frontend, build, load CLI, compose checks
+DEBUG=True SECRET_KEY=test-secret-key DATABASE_URL=sqlite:////tmp/sris-migration-check.db conda run -n sris python -m alembic -c backend/alembic.ini upgrade head
 python scripts/load_test.py --base-url http://localhost:8000 --candidates 20 --concurrency 5
 npm run test:e2e --prefix frontend
 ```

@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_E2E=0
 RUN_COMPOSE=1
 RUN_LOAD_HELP=1
+RUN_MIGRATIONS=1
 BACKEND_ENV="sris"
 
 usage() {
@@ -17,6 +18,7 @@ Options:
   --with-e2e          Run Playwright E2E smoke tests. Requires browsers installed.
   --no-compose        Skip Docker Compose config validation.
   --no-load-help      Skip load-test CLI syntax/help validation.
+  --no-migrations     Skip Alembic migration validation.
   --backend-env NAME  Conda environment for backend checks. Default: sris.
   -h, --help          Show this help.
 EOF
@@ -34,6 +36,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-load-help)
       RUN_LOAD_HELP=0
+      shift
+      ;;
+    --no-migrations)
+      RUN_MIGRATIONS=0
       shift
       ;;
     --backend-env)
@@ -56,6 +62,20 @@ cd "$ROOT_DIR"
 
 echo "==> Backend tests"
 DEBUG=True conda run -n "$BACKEND_ENV" python -m pytest backend/tests -q
+
+if [[ "$RUN_MIGRATIONS" == "1" ]]; then
+  echo "==> Alembic migration chain"
+  migration_db="/tmp/sris-migration-check-$$.db"
+  rm -f "$migration_db"
+  (
+    cd backend
+    DEBUG=True \
+      SECRET_KEY="test-secret-key-for-migration-check" \
+      DATABASE_URL="sqlite:///$migration_db" \
+      conda run -n "$BACKEND_ENV" python -m alembic upgrade head
+  )
+  rm -f "$migration_db"
+fi
 
 echo "==> Frontend unit tests"
 npm --prefix frontend test -- --run

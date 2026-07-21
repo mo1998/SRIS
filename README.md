@@ -149,6 +149,13 @@ Validate Docker Compose configuration without starting services:
 docker compose config
 ```
 
+Validate the Alembic migration chain without local PostgreSQL credentials:
+
+```bash
+DEBUG=True SECRET_KEY=test-secret-key DATABASE_URL=sqlite:////tmp/sris-migration-check.db \
+   conda run -n sris python -m alembic -c backend/alembic.ini upgrade head
+```
+
 Check backup prerequisites without writing backup files:
 
 ```bash
