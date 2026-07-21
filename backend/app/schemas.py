@@ -492,3 +492,14 @@ class EvaluationAnalytics(BaseModel):
     fallback_count: int
     provider_counts: Dict[str, int]
     generated_at: datetime
+
+
+class AuditLogResponse(BaseModel):
+    id: int
+    actor_user_id: Optional[int] = None
+    action: str
+    target_type: str
+    target_id: Optional[int] = None
+    organization_id: Optional[int] = None
+    details: Optional[Dict] = None
+    created_at: datetime

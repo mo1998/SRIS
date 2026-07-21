@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models import TeamMembership, TeamRole, User
 from app.schemas import OrganizationResponse, PasswordChange, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
 from app.api.auth import get_current_user, get_password_hash, require_role, UserRole, verify_password
+from app.services.audit_service import create_audit_log
 
 router = APIRouter()
 
@@ -101,6 +102,14 @@ async def change_current_user_password(
 
     current_user.hashed_password = get_password_hash(password_data.new_password)
     current_user.token_version = (current_user.token_version or 0) + 1
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="user.password_changed",
+        target_type="user",
+        target_id=current_user.id,
+        details={"email": current_user.email},
+    )
     db.commit()
 
 
@@ -138,6 +147,14 @@ async def add_organization_member(
         role=requested_role,
     )
     db.add(new_membership)
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="team_membership.created",
+        target_type="team_membership",
+        organization_id=current_membership.organization_id,
+        details={"target_user_id": target_user.id, "target_email": target_user.email, "role": requested_role.value},
+    )
     db.commit()
     db.refresh(new_membership)
 

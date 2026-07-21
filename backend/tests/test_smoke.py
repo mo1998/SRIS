@@ -2,6 +2,9 @@ import os
 import json
 
 
+WAV_BYTES = b"RIFF\x24\x00\x00\x00WAVEfmt "
+
+
 def register_user(client, email="employer@example.com", role="employer"):
     response = client.post(
         "/api/auth/register",
@@ -297,6 +300,18 @@ def test_current_user_can_change_password(client):
         data={"username": "employer@example.com", "password": "New-strong-password2"},
     )
     assert new_login_response.status_code == 200, new_login_response.text
+
+    from app.database import SessionLocal
+    from app.models import AuditLog
+
+    db = SessionLocal()
+    try:
+        audit_log = db.query(AuditLog).filter(AuditLog.action == "user.password_changed").first()
+        assert audit_log is not None
+        assert audit_log.target_type == "user"
+        assert json.loads(audit_log.details)["email"] == "employer@example.com"
+    finally:
+        db.close()
 
 
 def test_password_change_revokes_existing_refresh_and_access_tokens(client):
@@ -596,6 +611,43 @@ def test_duplicate_organization_membership_is_rejected(client):
     assert duplicate_response.status_code == 400, duplicate_response.text
 
 
+def test_organization_owner_can_view_audit_logs_and_reviewer_cannot(client):
+    register_user(client)
+    owner_token = login_user(client)
+    register_user(client, email="reviewer@example.com", role="employee")
+    reviewer_token = login_user(client, email="reviewer@example.com")
+
+    add_member_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "reviewer@example.com", "role": "reviewer"},
+    )
+    assert add_member_response.status_code == 201, add_member_response.text
+
+    owner_response = client.get(
+        "/api/audit-logs/",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert owner_response.status_code == 200, owner_response.text
+    audit_logs = owner_response.json()
+    membership_log = next(log for log in audit_logs if log["action"] == "team_membership.created")
+    assert membership_log["details"]["target_email"] == "reviewer@example.com"
+    assert membership_log["details"]["role"] == "reviewer"
+
+    filtered_response = client.get(
+        "/api/audit-logs/?action=team_membership.created&target_type=team_membership",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert filtered_response.status_code == 200, filtered_response.text
+    assert len(filtered_response.json()) == 1
+
+    reviewer_response = client.get(
+        "/api/audit-logs/",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+    assert reviewer_response.status_code == 403, reviewer_response.text
+
+
 def test_same_organization_recruiter_can_manage_invitations(client, monkeypatch):
     async def noop_send_invitation_email(**kwargs):
         return None
@@ -763,6 +815,13 @@ def test_bulk_invitations_are_marked_sent(client, monkeypatch):
     assert len(invitations) == 2
     assert {invitation["status"] for invitation in invitations} == {"sent"}
     assert all(invitation["sent_at"] for invitation in invitations)
+
+    audit_response = client.get(
+        "/api/audit-logs/?action=invitation.bulk_created",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert audit_response.status_code == 200, audit_response.text
+    assert audit_response.json()[0]["details"]["created_count"] == 2
 
 
 def test_bulk_invitations_reject_batches_over_limit(client, monkeypatch):
@@ -1259,11 +1318,35 @@ def test_answer_audio_upload_rejects_oversized_file(client, monkeypatch):
             "question_id": interview["questions"][0]["id"],
             "answer_text": "Audio answer",
         },
-        files={"audio_file": ("answer.wav", b"too large", "audio/wav")},
+        files={"audio_file": ("answer.wav", WAV_BYTES, "audio/wav")},
     )
 
     assert response.status_code == 413, response.text
     assert response.json()["detail"] == "Audio file exceeds maximum size"
+
+
+def test_answer_audio_upload_rejects_mismatched_content(client):
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+    candidate_response = start_candidate_response(client, interview["id"])
+
+    response = client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "Audio answer",
+        },
+        files={"audio_file": ("answer.wav", b"not really a wav", "audio/wav")},
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == "Uploaded audio content does not match the file type"
 
 
 def test_same_organization_member_can_list_interview_responses(client):
@@ -1359,7 +1442,7 @@ def test_response_manager_can_delete_candidate_response_and_audio(client):
             "question_id": interview["questions"][0]["id"],
             "answer_text": "I listen and follow up.",
         },
-        files={"audio_file": ("answer.wav", b"audio", "audio/wav")},
+        files={"audio_file": ("answer.wav", WAV_BYTES, "audio/wav")},
     )
     assert answer_response.status_code == 200, answer_response.text
     audio_file_path = answer_response.json()["audio_file_path"]
