@@ -9,6 +9,7 @@ const EmployerDashboard: React.FC = () => {
   const [organization, setOrganization] = useState<any>(null)
   const [memberships, setMemberships] = useState<any[]>([])
   const [evaluationHealth, setEvaluationHealth] = useState<any>(null)
+  const [emailHealth, setEmailHealth] = useState<any>(null)
   const [memberEmail, setMemberEmail] = useState('')
   const [memberRole, setMemberRole] = useState('reviewer')
   const [teamError, setTeamError] = useState('')
@@ -22,16 +23,18 @@ const EmployerDashboard: React.FC = () => {
   
   const loadInterviews = async () => {
     try {
-      const [interviewsResponse, organizationResponse, membershipsResponse, evaluationHealthResponse] = await Promise.all([
+      const [interviewsResponse, organizationResponse, membershipsResponse, evaluationHealthResponse, emailHealthResponse] = await Promise.all([
         api.interviews.list(),
         api.users.getMyOrganization(),
         api.users.getMyMemberships(),
-        api.reports.getEvaluationHealth()
+        api.reports.getEvaluationHealth(),
+        api.reports.getEmailHealth()
       ])
       setInterviews(interviewsResponse.data)
       setOrganization(organizationResponse.data)
       setMemberships(membershipsResponse.data)
       setEvaluationHealth(evaluationHealthResponse.data)
+      setEmailHealth(emailHealthResponse.data)
     } catch (error) {
       console.error('Failed to load dashboard:', error)
     } finally {
@@ -166,6 +169,38 @@ const EmployerDashboard: React.FC = () => {
             </Row>
           ) : (
             <p className="text-muted mb-0">Evaluation health is unavailable.</p>
+          )}
+        </Card.Body>
+      </Card>
+
+      <Card className="mb-4">
+        <Card.Header>
+          <h5 className="mb-0">Email Delivery Health</h5>
+        </Card.Header>
+        <Card.Body>
+          {loading ? (
+            <p>Loading...</p>
+          ) : emailHealth ? (
+            <Row>
+              <Col md={3}>
+                <p className="mb-1"><strong>Status</strong></p>
+                <Badge bg={emailHealth.configured ? 'success' : 'warning'}>{emailHealth.status}</Badge>
+              </Col>
+              <Col md={3}>
+                <p className="mb-1"><strong>From</strong></p>
+                <p className="mb-0">{emailHealth.mail_from}</p>
+              </Col>
+              <Col md={3}>
+                <p className="mb-1"><strong>Server</strong></p>
+                <p className="mb-0">{emailHealth.mail_server}:{emailHealth.mail_port}</p>
+              </Col>
+              <Col md={3}>
+                <p className="mb-1"><strong>Missing</strong></p>
+                <p className="mb-0">{emailHealth.missing_settings?.length ? emailHealth.missing_settings.join(', ') : 'None'}</p>
+              </Col>
+            </Row>
+          ) : (
+            <p className="text-muted mb-0">Email health is unavailable.</p>
           )}
         </Card.Body>
       </Card>

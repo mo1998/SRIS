@@ -4,6 +4,7 @@ from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_sris.db"
 os.environ["SECRET_KEY"] = "test-secret-key"
+os.environ["DEBUG"] = "True"
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
