@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     
     # File Uploads
     UPLOAD_DIR: str = "uploads"
+    MAX_REQUEST_BODY_SIZE: int = int(os.getenv("MAX_REQUEST_BODY_SIZE", str(20 * 1024 * 1024)))
     MAX_AUDIO_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_AUDIO_EXTENSIONS: List[str] = [".wav", ".mp3", ".webm", ".m4a", ".ogg"]
     MAX_VIDEO_SIZE: int = 100 * 1024 * 1024  # 100MB

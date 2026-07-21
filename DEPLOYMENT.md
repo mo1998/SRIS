@@ -120,6 +120,7 @@ docker compose -f docker-compose.prod.yml up -d --scale evaluation-worker=${EVAL
 - [ ] Configure email SMTP settings
 - [ ] Setup SSL certificates for production
 - [ ] Update `FRONTEND_URL` and `ALLOWED_ORIGINS`
+- [ ] Confirm `MAX_REQUEST_BODY_SIZE` matches expected upload/request limits
 - [ ] Test backup script works
 
 ---
