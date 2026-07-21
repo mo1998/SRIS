@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models import User, Interview, InterviewQuestion, InterviewStatus, InterviewTemplate, RubricCriterion, TeamMembership, TeamRole, UserRole
 from app.schemas import InterviewCreate, InterviewFromTemplateCreate, InterviewResponse, InterviewTemplateResponse, InterviewUpdate, QuestionResponse
 from app.api.auth import get_current_user, require_role
+from app.services.audit_service import create_audit_log
 
 router = APIRouter()
 
@@ -298,7 +299,17 @@ async def delete_interview(
     """Delete an interview"""
     interview = get_interview_or_404(interview_id, db)
     require_interview_manager(interview, current_user, db)
-    
+
+    organization_id = interview.organization_id
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="interview.deleted",
+        target_type="interview",
+        target_id=interview.id,
+        organization_id=organization_id,
+        details={"title": interview.title},
+    )
     db.delete(interview)
     db.commit()
 

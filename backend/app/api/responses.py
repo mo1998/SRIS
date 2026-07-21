@@ -14,6 +14,7 @@ from app.config import settings
 from app.models import User, Interview, InterviewQuestion, InterviewStatus, Invitation, InvitationStatus, CandidateResponse, QuestionAnswer, TeamMembership, TeamRole, UserRole
 from app.schemas import CandidateResponseCreate, CandidateResponseSummary, QuestionAnswerSchema, QualityCheckResult
 from app.api.auth import get_current_user, require_role
+from app.services.audit_service import create_audit_log
 
 router = APIRouter()
 
@@ -380,6 +381,15 @@ async def delete_response(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
 
     require_response_management(candidate_response, current_user, db)
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="candidate_response.deleted",
+        target_type="candidate_response",
+        target_id=candidate_response.id,
+        organization_id=candidate_response.interview.organization_id if candidate_response.interview else None,
+        details={"interview_id": candidate_response.interview_id, "candidate_email": candidate_response.candidate_email},
+    )
     delete_answer_audio_files(candidate_response)
     db.delete(candidate_response)
     db.commit()

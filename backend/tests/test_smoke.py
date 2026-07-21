@@ -1,4 +1,5 @@
 import os
+import json
 
 
 def register_user(client, email="employer@example.com", role="employer"):
@@ -1182,6 +1183,18 @@ def test_invitation_can_be_revoked(client, monkeypatch):
     )
     assert start_response.status_code == 410, start_response.text
 
+    from app.database import SessionLocal
+    from app.models import AuditLog
+
+    db = SessionLocal()
+    try:
+        audit_log = db.query(AuditLog).filter(AuditLog.action == "invitation.revoked").first()
+        assert audit_log is not None
+        assert audit_log.target_id == invitation["id"]
+        assert json.loads(audit_log.details)["candidate_email"] == "candidate@example.com"
+    finally:
+        db.close()
+
     resend_response = client.post(
         f"/api/invitations/{invitation['id']}/resend",
         headers={"Authorization": f"Bearer {owner_token}"},
@@ -1359,6 +1372,18 @@ def test_response_manager_can_delete_candidate_response_and_audio(client):
     )
     assert delete_response.status_code == 204, delete_response.text
     assert not os.path.exists(audio_file_path)
+
+    from app.database import SessionLocal
+    from app.models import AuditLog
+
+    db = SessionLocal()
+    try:
+        audit_log = db.query(AuditLog).filter(AuditLog.action == "candidate_response.deleted").first()
+        assert audit_log is not None
+        assert audit_log.target_id == candidate_response["id"]
+        assert json.loads(audit_log.details)["candidate_email"] == "candidate@example.com"
+    finally:
+        db.close()
 
     detail_response = client.get(
         f"/api/responses/{candidate_response['id']}",
