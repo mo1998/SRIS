@@ -83,6 +83,18 @@ def test_health_check(client):
     assert response.headers["Referrer-Policy"] == "no-referrer"
     assert response.headers["Cross-Origin-Opener-Policy"] == "same-origin"
     assert response.headers["Permissions-Policy"] == "camera=(self), microphone=(self), geolocation=()"
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_operational_health_endpoints_are_not_cached(client):
+    register_user(client)
+    token = login_user(client)
+
+    for path in ["/api/reports/evaluation/health", "/api/reports/email/health"]:
+        response = client.get(path, headers={"Authorization": f"Bearer {token}"})
+
+        assert response.status_code == 200, response.text
+        assert response.headers["Cache-Control"] == "no-store"
 
 
 def test_register_and_login_employer(client):

@@ -8,7 +8,7 @@ import os
 import time
 import uuid
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -86,7 +86,8 @@ async def root():
     }
 
 @app.get("/health")
-async def health_check(request: Request):
+async def health_check(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
     return {
         "status": "healthy",
         "request_id": request.headers.get("X-Request-ID"),
