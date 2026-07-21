@@ -2,7 +2,7 @@
 Report generation routes
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
@@ -94,23 +94,27 @@ async def get_interview_report(
 
 @router.get("/evaluation/health", response_model=EvaluationHealth)
 async def get_evaluation_provider_health(
+    response: Response,
     current_user: User = Depends(get_current_user)
 ):
     """Get local evaluation provider health and fallback status."""
     if current_user.role not in [UserRole.EMPLOYER, UserRole.ADMIN]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
+    response.headers["Cache-Control"] = "no-store"
     return await get_evaluation_health()
 
 
 @router.get("/email/health", response_model=EmailHealth)
 async def get_email_configuration_health(
+    response: Response,
     current_user: User = Depends(get_current_user)
 ):
     """Get email configuration readiness without sending a message."""
     if current_user.role not in [UserRole.EMPLOYER, UserRole.ADMIN]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
+    response.headers["Cache-Control"] = "no-store"
     return get_email_health()
 
 
