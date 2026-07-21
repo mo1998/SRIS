@@ -188,6 +188,8 @@ Run a local HTTP load smoke against a running backend:
 python scripts/load_test.py --base-url http://localhost:8000 --candidates 20 --concurrency 5
 ```
 
+For final Phase 6 release-candidate verification, follow `PHASE6_RELEASE_RUNBOOK.md`. It covers production-like Docker startup, approved local LLM validation, SMTP smoke, backup/restore rehearsal, product smoke, and release decision gates.
+
 Optional ML and media dependencies live in `backend/requirements-ml.txt`. Install them only when implementing approved local AI/media features. Model weights must not be downloaded or run without explicit approval.
 
 ### Local LLM Evaluation

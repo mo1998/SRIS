@@ -96,6 +96,14 @@ async def create_invitation(
     )
     
     db.add(invitation)
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="invitation.created",
+        target_type="invitation",
+        organization_id=interview.organization_id,
+        details={"interview_id": interview.id, "candidate_email": invitation.candidate_email},
+    )
     db.commit()
     db.refresh(invitation)
     
@@ -183,6 +191,15 @@ async def create_bulk_invitations(
             custom_message=inv_data.custom_message,
         )
     
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="invitation.bulk_created",
+        target_type="interview",
+        target_id=interview.id,
+        organization_id=interview.organization_id,
+        details={"created_count": len(created_invitations)},
+    )
     db.commit()
     
     for inv in created_invitations:
@@ -352,6 +369,15 @@ async def resend_invitation(
     invitation.expires_at = datetime.utcnow() + timedelta(days=7)
     invitation.status = InvitationStatus.SENT
     invitation.sent_at = datetime.utcnow()
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="invitation.resent",
+        target_type="invitation",
+        target_id=invitation.id,
+        organization_id=interview.organization_id,
+        details={"interview_id": interview.id, "candidate_email": invitation.candidate_email},
+    )
     
     db.commit()
     

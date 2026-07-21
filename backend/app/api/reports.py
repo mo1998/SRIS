@@ -15,6 +15,7 @@ from app.schemas import InterviewReport, CandidateReport, EmailHealth, Evaluatio
 from app.api.auth import get_current_user, require_role, UserRole
 from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit, generate_interview_evaluation_analytics, get_evaluation_health
 from app.services.email_service import get_email_health
+from app.services.audit_service import create_audit_log
 
 router = APIRouter()
 
@@ -153,6 +154,15 @@ async def reevaluate_interview_responses(
     if not queued_runs:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No completed responses with answers to re-evaluate")
 
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="evaluation.batch_queued",
+        target_type="interview",
+        target_id=interview.id,
+        organization_id=interview.organization_id,
+        details={"queued_count": len(queued_runs)},
+    )
     db.commit()
     for run in queued_runs:
         enqueue_evaluation_run(run.response_id, run.id, background_tasks)
@@ -243,6 +253,15 @@ async def reevaluate_candidate_response(
     from app.services.evaluation_service import create_evaluation_run, enqueue_evaluation_run
 
     evaluation_run = create_evaluation_run(response_id, db)
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="evaluation.queued",
+        target_type="candidate_response",
+        target_id=response.id,
+        organization_id=response.interview.organization_id if response.interview else None,
+        details={"interview_id": response.interview_id},
+    )
     db.commit()
     enqueue_evaluation_run(response_id, evaluation_run.id, background_tasks)
     audit_runs = generate_candidate_evaluation_audit(response_id, db)

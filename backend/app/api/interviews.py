@@ -267,6 +267,15 @@ async def activate_interview(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview must have at least one question before activation")
     
     interview.status = InterviewStatus.ACTIVE
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="interview.activated",
+        target_type="interview",
+        target_id=interview.id,
+        organization_id=interview.organization_id,
+        details={"title": interview.title},
+    )
     db.commit()
     db.refresh(interview)
     
@@ -284,6 +293,15 @@ async def complete_interview(
     require_interview_manager(interview, current_user, db)
     
     interview.status = InterviewStatus.COMPLETED
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="interview.completed",
+        target_type="interview",
+        target_id=interview.id,
+        organization_id=interview.organization_id,
+        details={"title": interview.title},
+    )
     db.commit()
     db.refresh(interview)
     

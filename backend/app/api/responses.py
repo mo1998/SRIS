@@ -39,6 +39,21 @@ def validate_audio_size(content: bytes) -> None:
         )
 
 
+def validate_audio_content(extension: str, content: bytes) -> None:
+    signatures = {
+        ".wav": lambda data: data.startswith(b"RIFF") and data[8:12] == b"WAVE",
+        ".mp3": lambda data: data.startswith(b"ID3") or (len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0),
+        ".webm": lambda data: data.startswith(b"\x1a\x45\xdf\xa3"),
+        ".m4a": lambda data: len(data) >= 12 and data[4:8] == b"ftyp",
+        ".ogg": lambda data: data.startswith(b"OggS"),
+    }
+    if not signatures[extension](content):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded audio content does not match the file type",
+        )
+
+
 def require_interview_membership(interview: Interview, user: User, db: Session) -> None:
     if user.role == UserRole.ADMIN:
         return
@@ -196,9 +211,10 @@ async def submit_answer(
     # Save audio file if provided
     audio_path = None
     if audio_file:
-        validate_audio_filename(audio_file.filename)
+        extension = validate_audio_filename(audio_file.filename)
         content = await audio_file.read()
         validate_audio_size(content)
+        validate_audio_content(extension, content)
 
         os.makedirs("uploads/interviews/audio", exist_ok=True)
         audio_filename = f"{uuid.uuid4()}_{audio_file.filename}"

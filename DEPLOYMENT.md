@@ -66,6 +66,8 @@ python scripts/load_test.py --base-url http://localhost:8000 --candidates 20 --c
 npm run test:e2e --prefix frontend
 ```
 
+Use `PHASE6_RELEASE_RUNBOOK.md` for the final production-like Docker, local LLM, SMTP, product smoke, backup/restore, and release decision gates.
+
 ### Production
 ```bash
 ./deploy.sh production           # Deploy with SSL
