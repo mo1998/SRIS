@@ -266,13 +266,20 @@ cd SRIS
 cp .env.example .env
 ```
 
+For production hosts, start from the production template instead:
+
+```bash
+cp .env.production.example .env
+```
+
 2. **Edit `.env` file** with your settings:
 ```bash
-# Required settings
-SECRET_KEY=your-super-secret-key  # Run: openssl rand -hex 32
+# Required settings for local development
+SECRET_KEY=local-development-secret-key-change-before-production
 LOCAL_LLM_BASE_URL=http://localhost:8100/v1
 LOCAL_LLM_MODEL=qwen3-8b-awq
 EVALUATION_PROMPT_VERSION=rubric-v1
+EVALUATION_QUEUE_BACKEND=rq
 EVALUATION_QUEUE_BACKEND=rq
 
 # Email (for sending invitations)

@@ -63,6 +63,14 @@ cd "$ROOT_DIR"
 echo "==> Backend tests"
 DEBUG=True conda run -n "$BACKEND_ENV" python -m pytest backend/tests -q
 
+echo "==> Environment templates"
+for template in .env.example .env.production.example; do
+  test -s "$template"
+done
+grep -q '^DEBUG=True' .env.example
+grep -q '^DEBUG=False' .env.production.example
+grep -q '^EVALUATION_QUEUE_BACKEND=rq' .env.production.example
+
 if [[ "$RUN_MIGRATIONS" == "1" ]]; then
   echo "==> Alembic migration chain"
   migration_db="/tmp/sris-migration-check-$$.db"
