@@ -299,3 +299,19 @@ class EvaluationScore(Base):
     evaluation_run = relationship("EvaluationRun", back_populates="scores")
     question_answer = relationship("QuestionAnswer", back_populates="evaluation_scores")
     question = relationship("InterviewQuestion")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    action = Column(String(100), nullable=False, index=True)
+    target_type = Column(String(100), nullable=False, index=True)
+    target_id = Column(Integer, nullable=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    actor = relationship("User")
+    organization = relationship("Organization")

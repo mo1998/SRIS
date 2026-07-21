@@ -14,6 +14,7 @@ from app.models import User, Interview, Invitation, InvitationStatus, InterviewS
 from app.schemas import InvitationCreate, InvitationResponse, InvitationEmailPreview, InvitationPreviewRequest, InvitationVerificationResponse
 from app.api.auth import get_current_user
 from app.config import settings
+from app.services.audit_service import create_audit_log
 from app.services.email_service import render_invitation_email, send_invitation_email
 
 router = APIRouter()
@@ -297,6 +298,15 @@ async def revoke_invitation(
 
     invitation.status = InvitationStatus.REVOKED
     invitation.expires_at = datetime.utcnow()
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="invitation.revoked",
+        target_type="invitation",
+        target_id=invitation.id,
+        organization_id=interview.organization_id,
+        details={"interview_id": interview.id, "candidate_email": invitation.candidate_email},
+    )
 
     db.commit()
     db.refresh(invitation)
