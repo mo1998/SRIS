@@ -149,6 +149,12 @@ Validate Docker Compose configuration without starting services:
 docker compose config
 ```
 
+Check backup prerequisites without writing backup files:
+
+```bash
+./backup.sh --dry-run
+```
+
 When `DEBUG=False`, backend startup validates production guardrails: `SECRET_KEY` must be unique and long, `ALLOWED_ORIGINS` must not use wildcard or localhost origins, and `EVALUATION_QUEUE_BACKEND` must be `rq`.
 
 Run the CI-safe backend performance smoke test:
