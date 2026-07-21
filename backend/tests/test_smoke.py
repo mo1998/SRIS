@@ -1,3 +1,6 @@
+import os
+
+
 def register_user(client, email="employer@example.com", role="employer"):
     response = client.post(
         "/api/auth/register",
@@ -1295,6 +1298,84 @@ def test_candidate_can_access_own_response_details(client):
     )
     assert detail_response.status_code == 200, detail_response.text
     assert detail_response.json()["candidate_email"] == "candidate@example.com"
+
+
+def test_response_manager_can_delete_candidate_response_and_audio(client):
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+    candidate_response = start_candidate_response(client, interview["id"])
+
+    answer_response = client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "I listen and follow up.",
+        },
+        files={"audio_file": ("answer.wav", b"audio", "audio/wav")},
+    )
+    assert answer_response.status_code == 200, answer_response.text
+    audio_file_path = answer_response.json()["audio_file_path"]
+    assert audio_file_path
+    assert os.path.exists(audio_file_path)
+
+    delete_response = client.delete(
+        f"/api/responses/{candidate_response['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert delete_response.status_code == 204, delete_response.text
+    assert not os.path.exists(audio_file_path)
+
+    detail_response = client.get(
+        f"/api/responses/{candidate_response['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert detail_response.status_code == 404, detail_response.text
+
+
+def test_reviewer_candidate_and_cross_org_cannot_delete_candidate_response(client):
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+    candidate_response = start_candidate_response(client, interview["id"], email="candidate-delete@example.com")
+
+    register_user(client, email="delete-reviewer@example.com", role="employee")
+    reviewer_token = login_user(client, email="delete-reviewer@example.com")
+    add_member_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "delete-reviewer@example.com", "role": "reviewer"},
+    )
+    assert add_member_response.status_code == 201, add_member_response.text
+
+    register_user(client, email="candidate-delete@example.com", role="employee")
+    candidate_token = login_user(client, email="candidate-delete@example.com")
+
+    register_user(client, email="delete-other@example.com")
+    other_token = login_user(client, email="delete-other@example.com")
+
+    for token in [reviewer_token, candidate_token, other_token]:
+        delete_response = client.delete(
+            f"/api/responses/{candidate_response['id']}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert delete_response.status_code == 403, delete_response.text
+
+    owner_detail_response = client.get(
+        f"/api/responses/{candidate_response['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert owner_detail_response.status_code == 200, owner_detail_response.text
 
 
 def test_organization_member_can_view_interview_report_and_cross_org_cannot(client):

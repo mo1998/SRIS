@@ -11,11 +11,13 @@ import uuid
 
 from app.database import get_db
 from app.config import settings
-from app.models import User, Interview, InterviewQuestion, InterviewStatus, Invitation, InvitationStatus, CandidateResponse, QuestionAnswer, TeamMembership, UserRole
+from app.models import User, Interview, InterviewQuestion, InterviewStatus, Invitation, InvitationStatus, CandidateResponse, QuestionAnswer, TeamMembership, TeamRole, UserRole
 from app.schemas import CandidateResponseCreate, CandidateResponseSummary, QuestionAnswerSchema, QualityCheckResult
 from app.api.auth import get_current_user, require_role
 
 router = APIRouter()
+
+RESPONSE_MANAGER_ROLES = {TeamRole.OWNER, TeamRole.ADMIN, TeamRole.RECRUITER}
 
 
 def validate_audio_filename(filename: str) -> str:
@@ -61,6 +63,32 @@ def require_response_access(response: CandidateResponse, user: User, db: Session
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
 
     require_interview_membership(interview, user, db)
+
+
+def require_response_management(response: CandidateResponse, user: User, db: Session) -> None:
+    interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+
+    if user.role == UserRole.ADMIN:
+        return
+
+    membership = (
+        db.query(TeamMembership)
+        .filter(
+            TeamMembership.user_id == user.id,
+            TeamMembership.organization_id == interview.organization_id,
+        )
+        .first()
+    )
+    if not membership or membership.role not in RESPONSE_MANAGER_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient response management permissions")
+
+
+def delete_answer_audio_files(response: CandidateResponse) -> None:
+    for answer in response.question_answers:
+        if answer.audio_file_path and os.path.exists(answer.audio_file_path):
+            os.remove(answer.audio_file_path)
 
 
 @router.post("/", response_model=CandidateResponseSummary, status_code=status.HTTP_201_CREATED)
@@ -336,3 +364,22 @@ async def get_response_details(
     require_response_access(candidate_response, current_user, db)
     
     return candidate_response
+
+
+@router.delete("/{response_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_response(
+    response_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a candidate response and associated evaluation/report data."""
+
+    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
+
+    if not candidate_response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+
+    require_response_management(candidate_response, current_user, db)
+    delete_answer_audio_files(candidate_response)
+    db.delete(candidate_response)
+    db.commit()

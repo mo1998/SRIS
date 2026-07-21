@@ -11,6 +11,7 @@ const apiMock = vi.hoisted(() => ({
   },
   responses: {
     list: vi.fn(),
+    delete: vi.fn(),
   },
   invitations: {
     list: vi.fn(),
@@ -49,6 +50,7 @@ describe('InterviewDetail', () => {
     apiMock.interviews.get.mockReset()
     apiMock.interviews.update.mockReset()
     apiMock.responses.list.mockReset()
+    apiMock.responses.delete.mockReset()
     apiMock.invitations.list.mockReset()
     apiMock.invitations.createBulk.mockReset()
     apiMock.invitations.preview.mockReset()
@@ -132,6 +134,32 @@ describe('InterviewDetail', () => {
       expect(apiMock.reports.reevaluateInterview).toHaveBeenCalledWith(1)
     })
     expect(await screen.findByText('Queued 1 evaluation run')).toBeInTheDocument()
+  })
+
+  it('deletes a candidate response from the response table', async () => {
+    apiMock.responses.list.mockResolvedValue({
+      data: [
+        {
+          id: 99,
+          candidate_name: 'Candidate One',
+          candidate_email: 'candidate@example.com',
+          total_score: 90,
+          status: 'completed',
+          confidence_score: 80,
+        },
+      ],
+    })
+    apiMock.responses.delete.mockResolvedValue({ data: null })
+
+    renderPage()
+
+    expect(await screen.findByRole('button', { name: /delete/i })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /delete/i }))
+
+    await waitFor(() => {
+      expect(apiMock.responses.delete).toHaveBeenCalledWith(99)
+    })
+    expect(await screen.findByText('Candidate response deleted')).toBeInTheDocument()
   })
 
   it('shows rubric criteria for interview questions', async () => {
