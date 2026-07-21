@@ -375,6 +375,22 @@ const InterviewDetail: React.FC = () => {
       setBatchReevaluating(false)
     }
   }
+
+  const handleDeleteResponse = async (responseId: number) => {
+    if (!confirm('Delete this candidate response and all evaluation data?')) {
+      return
+    }
+
+    setError('')
+    setMessage('')
+    try {
+      await api.responses.delete(responseId)
+      setMessage('Candidate response deleted')
+      loadData()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete response')
+    }
+  }
   
   if (loading) {
     return <p>Loading...</p>
@@ -705,11 +721,16 @@ const InterviewDetail: React.FC = () => {
                         <td>{response.status}</td>
                         <td>{response.confidence_score?.toFixed(1) || 'N/A'}%</td>
                         <td>
-                          <Link to={`/employer/candidate/${response.id}`}>
-                            <Button variant="outline-primary" size="sm">
-                              <FiEye /> View Report
+                          <div className="d-flex gap-2">
+                            <Link to={`/employer/candidate/${response.id}`}>
+                              <Button variant="outline-primary" size="sm">
+                                <FiEye /> View Report
+                              </Button>
+                            </Link>
+                            <Button variant="outline-danger" size="sm" onClick={() => handleDeleteResponse(response.id)}>
+                              <FiTrash2 /> Delete
                             </Button>
-                          </Link>
+                          </div>
                         </td>
                       </tr>
                     ))}
