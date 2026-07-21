@@ -8,7 +8,8 @@ import os
 import time
 import uuid
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -49,6 +50,18 @@ app.add_middleware(
 async def request_observability_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     start_time = time.perf_counter()
+
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > settings.MAX_REQUEST_BODY_SIZE:
+        response = JSONResponse(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            content={"detail": "Request body exceeds maximum size"},
+        )
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Process-Time-Ms"] = "0"
+        for header, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(header, value)
+        return response
 
     response = await call_next(request)
 

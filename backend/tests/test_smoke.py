@@ -97,6 +97,23 @@ def test_operational_health_endpoints_are_not_cached(client):
         assert response.headers["Cache-Control"] == "no-store"
 
 
+def test_oversized_request_body_is_rejected(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MAX_REQUEST_BODY_SIZE", 16)
+
+    response = client.post(
+        "/api/auth/register",
+        headers={"Content-Length": "17", "X-Request-ID": "oversized-request"},
+        content=b"{}",
+    )
+
+    assert response.status_code == 413, response.text
+    assert response.json()["detail"] == "Request body exceeds maximum size"
+    assert response.headers["X-Request-ID"] == "oversized-request"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+
+
 def test_register_and_login_employer(client):
     user = register_user(client)
     token = login_user(client)
