@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     MIN_LIGHTING_SCORE: float = 0.6
     MAX_BACKGROUND_NOISE: float = 0.3
     
-    model_config = {"env_file": ".env", "case_sensitive": True}
+    model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
 
 
 settings = Settings()

@@ -73,6 +73,8 @@ docker compose -f docker-compose.prod.yml up -d --scale backend=4
 ### Database
 ```bash
 ./backup.sh                      # Backup database + uploads
+./backup.sh --dry-run            # Check backup prerequisites without writing files
+./backup.sh --verify backups/YYYYMMDD_HHMMSS
 docker compose up db-migrate     # Run migrations
 docker compose exec postgres psql -U postgres sris_db
 ```

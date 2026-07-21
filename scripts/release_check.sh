@@ -55,7 +55,7 @@ done
 cd "$ROOT_DIR"
 
 echo "==> Backend tests"
-conda run -n "$BACKEND_ENV" python -m pytest backend/tests -q
+DEBUG=True conda run -n "$BACKEND_ENV" python -m pytest backend/tests -q
 
 echo "==> Frontend unit tests"
 npm --prefix frontend test -- --run
@@ -73,6 +73,7 @@ if [[ "$RUN_COMPOSE" == "1" ]]; then
   echo "==> Docker Compose config"
   docker compose config >/tmp/sris-compose-config.txt
   docker compose -f docker-compose.prod.yml config >/tmp/sris-compose-prod-config.txt
+  ./backup.sh --dry-run
 fi
 
 if [[ "$RUN_E2E" == "1" ]]; then
