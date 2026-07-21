@@ -5,8 +5,9 @@
 ```bash
 # 1. Clone and configure
 git clone <repository-url> && cd SRIS
-cp .env.example .env
-# Edit .env with your settings (at minimum: SECRET_KEY and local LLM evaluation settings)
+cp .env.example .env                  # Local/development
+# or: cp .env.production.example .env # Production
+# Edit .env with your settings before deploying
 
 # 2. Deploy
 ./deploy.sh
@@ -43,6 +44,7 @@ SRIS/
 ├── docker-compose.yml       # Development compose
 ├── docker-compose.prod.yml  # Production compose
 ├── .env.example            # Environment template
+├── .env.production.example # Production environment template
 ├── deploy.sh               # Deployment script
 └── backup.sh               # Backup script
 ```
