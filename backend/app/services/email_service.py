@@ -2,11 +2,15 @@
 Email service for sending invitations and notifications
 """
 
+import logging
+
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from app.config import settings
 from datetime import datetime
 from typing import Dict, Optional
 from html import escape
+
+logger = logging.getLogger("sris.email")
 
 
 # Email configuration
@@ -131,6 +135,11 @@ async def send_invitation_email(
     custom_message: Optional[str] = None,
 ):
     """Send interview invitation email"""
+    health = get_email_health()
+    if not health["configured"]:
+        logger.warning("Email not configured — skipping send to %s", to_email)
+        return
+
     subject, html_content = render_invitation_email(
         candidate_name=candidate_name,
         interview_title=interview_title,
@@ -158,7 +167,11 @@ async def send_completion_email(
     passed: bool
 ):
     """Send interview completion email with results"""
-    
+    health = get_email_health()
+    if not health["configured"]:
+        logger.warning("Email not configured — skipping completion email to %s", to_email)
+        return
+
     result_text = "passed" if passed else "did not pass"
     html_content = f"""
     <html>

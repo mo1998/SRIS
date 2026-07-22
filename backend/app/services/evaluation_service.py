@@ -395,7 +395,7 @@ def create_evaluation_run(response_id: int, db: Session, status: str = "queued")
         response_id=response_id,
         provider=provider.name,
         provider_version=getattr(provider, "version", None),
-        model_name=settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else None,
+        model_name=settings.LOCAL_LLM_MODEL,
         config_hash=get_evaluation_config_hash(provider),
         status=status,
         started_at=datetime.utcnow(),

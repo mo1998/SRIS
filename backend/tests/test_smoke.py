@@ -1160,7 +1160,7 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert analytics["total_evaluation_runs"] == 3
     assert analytics["completed_runs"] == 3
     assert analytics["average_latest_score"] > 0
-    assert analytics["provider_counts"]["local_vllm"] == 3
+    assert analytics["provider_counts"]["deterministic_baseline"] == 3
 
     candidate_pdf_response = client.get(
         f"/api/reports/candidate/{candidate_response['id']}/pdf",
