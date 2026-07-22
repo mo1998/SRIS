@@ -58,8 +58,10 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-this-in-production}
       DEBUG: ${DEBUG:-False}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-mailpit}
       MAIL_FROM: ${MAIL_FROM:-noreply@sris.com}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-SRIS}
+      MAILPIT_API_URL: ${MAILPIT_API_URL:-http://mailpit:8025/api/v1/send}
       BREVO_API_KEY: ${BREVO_API_KEY:-}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-["http://localhost","http://frontend"]}
@@ -75,6 +77,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     networks:
       - sris-network
     healthcheck:
@@ -109,6 +113,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - sris-network
+    restart: unless-stopped
+
+  # Mailpit - Email testing UI (dev only)
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: sris-mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
     networks:
       - sris-network
     restart: unless-stopped

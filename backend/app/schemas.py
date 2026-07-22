@@ -471,6 +471,7 @@ class EvaluationHealth(BaseModel):
 class EmailHealth(BaseModel):
     configured: bool
     status: str
+    provider: str
     mail_from: str
     mail_from_name: str
     missing_settings: List[str] = []
