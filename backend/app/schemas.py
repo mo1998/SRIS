@@ -471,8 +471,10 @@ class EvaluationHealth(BaseModel):
 class EmailHealth(BaseModel):
     configured: bool
     status: str
+    provider: str
     mail_from: str
     mail_from_name: str
+    mailpit_api_url: str
     missing_settings: List[str] = []
     checked_at: datetime
 

@@ -25,10 +25,10 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT_ATTEMPTS: int = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
     LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
     
-    # Email (via Brevo API)
+    # Email (Mailpit)
     MAIL_FROM: str = os.getenv("MAIL_FROM", "noreply@sris.com")
     MAIL_FROM_NAME: str = os.getenv("MAIL_FROM_NAME", "SRIS")
-    BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
+    MAILPIT_API_URL: str = os.getenv("MAILPIT_API_URL", "http://localhost:8025/api/v1/send")
     INVITATION_RESEND_COOLDOWN_SECONDS: int = int(os.getenv("INVITATION_RESEND_COOLDOWN_SECONDS", "300"))
     MAX_BULK_INVITATIONS: int = int(os.getenv("MAX_BULK_INVITATIONS", "100"))
     
