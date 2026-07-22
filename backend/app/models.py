@@ -33,6 +33,14 @@ class InterviewStatus(enum.Enum):
     CANCELLED = "cancelled"
 
 
+class ReviewerDecision(enum.Enum):
+    PENDING = "pending"
+    SHORTLISTED = "shortlisted"
+    REJECTED = "rejected"
+    NEEDS_REVIEW = "needs_review"
+    HIRED = "hired"
+
+
 class InvitationStatus(enum.Enum):
     PENDING = "pending"
     SENT = "sent"
@@ -70,7 +78,7 @@ class User(Base):
 
     # Relationships
     created_interviews = relationship("Interview", back_populates="employer", foreign_keys="Interview.employer_id")
-    responses = relationship("CandidateResponse", back_populates="candidate")
+    responses = relationship("CandidateResponse", back_populates="candidate", foreign_keys="CandidateResponse.candidate_id")
     team_memberships = relationship("TeamMembership", back_populates="user", cascade="all, delete-orphan")
 
 
@@ -228,6 +236,11 @@ class CandidateResponse(Base):
     emotion_timeline = Column(Text, nullable=True)  # JSON of emotions over time
     confidence_score = Column(Float, nullable=True)
     
+    # Reviewer decision
+    reviewer_decision = Column(Enum(ReviewerDecision, values_callable=enum_values), default=ReviewerDecision.PENDING)
+    reviewer_decision_at = Column(DateTime, nullable=True)
+    reviewer_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     # Scoring
     total_score = Column(Float, nullable=True)
     passed = Column(Boolean, nullable=True)
@@ -238,7 +251,7 @@ class CandidateResponse(Base):
 
     # Relationships
     interview = relationship("Interview", back_populates="responses")
-    candidate = relationship("User", back_populates="responses")
+    candidate = relationship("User", back_populates="responses", foreign_keys=[candidate_id])
     invitation = relationship("Invitation")
     question_answers = relationship("QuestionAnswer", back_populates="response", cascade="all, delete-orphan")
     evaluation_runs = relationship("EvaluationRun", back_populates="response", cascade="all, delete-orphan")
@@ -315,3 +328,20 @@ class AuditLog(Base):
 
     actor = relationship("User")
     organization = relationship("Organization")
+
+
+class ReviewerScorecard(Base):
+    __tablename__ = "reviewer_scorecards"
+
+    id = Column(Integer, primary_key=True, index=True)
+    response_id = Column(Integer, ForeignKey("candidate_responses.id"), nullable=False, unique=True, index=True)
+    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    overall_score = Column(Float, nullable=True)
+    strengths = Column(Text, nullable=True)
+    weaknesses = Column(Text, nullable=True)
+    overall_comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    response = relationship("CandidateResponse")
+    reviewer = relationship("User", foreign_keys=[reviewer_id])

@@ -236,10 +236,7 @@ async def calculate_emotion_score(emotion_timeline: str) -> float:
     try:
         timeline = json.loads(emotion_timeline)
         
-        # Positive emotions that indicate confidence
         positive_emotions = ["happy", "neutral", "surprise"]
-        negative_emotions = ["fear", "disgust", "sad"]
-        
         positive_count = 0
         total_count = len(timeline)
         
@@ -323,7 +320,7 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
                         # Get most common emotion during answer time
                         emotions = [r.get("emotion", "neutral") for r in timeline]
                         answer.emotion_during_answer = max(set(emotions), key=emotions.count)
-                except:
+                except Exception:
                     pass
 
             # Weighted score
@@ -500,6 +497,7 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
         "lighting": response.lighting_score or 0.0,
         "dominant_emotion": response.dominant_emotion or "neutral",
         "confidence_score": response.confidence_score or 50.0,
+        "reviewer_decision": response.reviewer_decision.value if response.reviewer_decision else "pending",
         "answers": answer_details,
         "feedback": build_report_feedback(response),
         "started_at": response.started_at,
@@ -562,6 +560,7 @@ def generate_employer_report(interview_id: int, db: Session) -> Dict:
             "voice_quality": response.voice_quality_score or 0.0,
             "face_visibility": response.face_visibility_score or 0.0,
             "dominant_emotion": response.dominant_emotion or "neutral",
+            "reviewer_decision": response.reviewer_decision.value if response.reviewer_decision else "pending",
             "completed_at": response.completed_at,
             "evaluation_provider": evaluation_run.provider if evaluation_run else None,
             "evaluation_model": evaluation_run.model_name if evaluation_run else None,
