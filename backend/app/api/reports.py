@@ -11,9 +11,9 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models import User, Interview, CandidateResponse, TeamMembership, TeamRole, UserRole
-from app.schemas import InterviewReport, CandidateReport, EmailHealth, EvaluationAnalytics, EvaluationHealth, EvaluationRunAudit
+from app.schemas import InterviewReport, CandidateReport, EmailHealth, EvaluationAnalytics, EvaluationHealth, EvaluationRunAudit, AIDisclosure
 from app.api.auth import get_current_user, require_role, UserRole
-from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit, generate_interview_evaluation_analytics, get_evaluation_health
+from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit, generate_interview_evaluation_analytics, get_evaluation_health, get_ai_disclosure
 from app.services.email_service import get_email_health
 from app.services.audit_service import create_audit_log
 
@@ -117,6 +117,16 @@ async def get_email_configuration_health(
 
     response.headers["Cache-Control"] = "no-store"
     return get_email_health()
+
+
+@router.get("/ai-disclosure", response_model=AIDisclosure)
+async def get_ai_transparency_disclosure(
+    response: Response,
+    current_user: User = Depends(get_current_user)
+):
+    """Get AI transparency disclosure for candidate and employer reports."""
+    response.headers["Cache-Control"] = "no-store"
+    return get_ai_disclosure()
 
 
 @router.post("/interview/{interview_id}/evaluations", response_model=List[EvaluationRunAudit])

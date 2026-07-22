@@ -484,6 +484,12 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
             "emotion": answer.emotion_during_answer
         })
     
+    disclosure_text = (
+        "This report was generated with AI-assisted evaluation. "
+        "Scores and feedback are subject to human review. "
+        "Final hiring decisions are made by human reviewers."
+    )
+
     return {
         "response_id": response.id,
         "candidate_name": response.candidate_name,
@@ -498,6 +504,7 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
         "dominant_emotion": response.dominant_emotion or "neutral",
         "confidence_score": response.confidence_score or 50.0,
         "reviewer_decision": response.reviewer_decision.value if response.reviewer_decision else "pending",
+        "ai_disclosure": disclosure_text,
         "answers": answer_details,
         "feedback": build_report_feedback(response),
         "started_at": response.started_at,
@@ -713,3 +720,39 @@ async def get_evaluation_health() -> Dict[str, object]:
         health["last_error"] = str(exc)
 
     return health
+
+
+def get_ai_disclosure() -> Dict[str, object]:
+    provider = get_evaluation_provider()
+    from app.services.transcription_service import get_transcription_provider as get_trans_provider
+    trans_provider = get_trans_provider()
+
+    return {
+        "evaluation": {
+            "provider": provider.name,
+            "provider_version": getattr(provider, "version", None),
+            "purpose": "Automated scoring of candidate answers against rubric criteria and expected answers.",
+            "model": settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else "deterministic (no ML model)",
+            "human_review_available": True,
+            "human_review_description": "Employers can override AI scores, set reviewer decisions (shortlist/reject/hire), and add manual scorecards per candidate.",
+        },
+        "transcription": {
+            "provider": trans_provider.name,
+            "provider_version": getattr(trans_provider, "version", None),
+            "purpose": "Conversion of audio responses to text for evaluation and review.",
+            "model": "simulated (fake provider)" if trans_provider.name == "fake_transcriber" else "speech-to-text model",
+        },
+        "emotion_analysis": {
+            "enabled": False,
+            "purpose": "Not used for scoring or hiring decisions. Emotion timeline data may be collected for operational quality analysis only.",
+            "scoring_impact": "none",
+        },
+        "disclosure": (
+            "SRIS uses automated evaluation tools to assist employers in reviewing candidate responses. "
+            "All AI-generated scores and feedback are subject to human review. "
+            "Final hiring decisions are made by human reviewers. "
+            "Emotion and quality metrics are collected for operational diagnostics only "
+            "and are never used as a basis for scoring or hiring decisions."
+        ),
+        "last_updated": datetime.utcnow(),
+    }

@@ -1960,3 +1960,36 @@ def test_data_request_unauthorized(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 403
+
+
+def test_ai_disclosure_endpoint(client):
+    """Test the AI transparency disclosure endpoint."""
+    register_user(client)
+    token = login_user(client)
+
+    response = client.get(
+        "/api/reports/ai-disclosure",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "evaluation" in data
+    assert "transcription" in data
+    assert "emotion_analysis" in data
+    assert "disclosure" in data
+    assert data["emotion_analysis"]["scoring_impact"] == "none"
+    assert data["evaluation"]["human_review_available"] is True
+
+
+def test_ai_disclosure_in_candidate_report(client):
+    """Test that the candidate report includes AI disclosure."""
+    token, response_id = create_completed_response(client)
+
+    response = client.get(
+        f"/api/reports/candidate/{response_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data.get("ai_disclosure") is not None
+    assert "AI-assisted" in data["ai_disclosure"]
