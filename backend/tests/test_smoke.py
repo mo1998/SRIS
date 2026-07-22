@@ -1877,3 +1877,86 @@ def test_transcript_unauthorized(client):
         json={"transcript": "Should not work"},
     )
     assert update_response.status_code in (403, 404)
+
+
+def test_data_export_request_flow(client):
+    """Test requesting and processing a data export."""
+    register_user(client)
+    token = login_user(client)
+
+    export_response = client.post(
+        "/api/data-requests/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"request_type": "export"},
+    )
+    assert export_response.status_code == 201, export_response.text
+    request_id = export_response.json()["id"]
+    assert export_response.json()["status"] == "pending"
+
+    process_response = client.patch(
+        f"/api/data-requests/{request_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"status": "completed"},
+    )
+    assert process_response.status_code == 200, process_response.text
+    assert process_response.json()["status"] == "completed"
+    assert process_response.json()["file_path"] is not None
+
+    list_response = client.get(
+        "/api/data-requests/",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert list_response.status_code == 200, list_response.text
+    assert len(list_response.json()) >= 1
+
+
+def test_data_delete_request_flow(client):
+    """Test requesting and processing a data deletion."""
+    token, response_id = create_completed_response(client)
+
+    delete_response = client.post(
+        "/api/data-requests/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"request_type": "delete"},
+    )
+    assert delete_response.status_code == 201, delete_response.text
+    request_id = delete_response.json()["id"]
+
+    process_response = client.patch(
+        f"/api/data-requests/{request_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"status": "completed", "notes": "GDPR deletion request honored"},
+    )
+    assert process_response.status_code == 200, process_response.text
+    assert process_response.json()["status"] == "completed"
+
+
+def test_data_request_duplicate_delete_rejected(client):
+    """Test that duplicate delete requests are rejected."""
+    register_user(client)
+    token = login_user(client)
+
+    client.post(
+        "/api/data-requests/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"request_type": "delete"},
+    )
+
+    duplicate = client.post(
+        "/api/data-requests/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"request_type": "delete"},
+    )
+    assert duplicate.status_code == 400
+
+
+def test_data_request_unauthorized(client):
+    """Test that employees cannot list all data requests."""
+    register_user(client, email="employee@test.com", role="employee")
+    token = login_user(client, email="employee@test.com")
+
+    response = client.get(
+        "/api/data-requests/",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
