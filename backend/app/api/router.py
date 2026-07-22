@@ -3,7 +3,7 @@ API Router configuration
 """
 
 from fastapi import APIRouter
-from app.api import audit, auth, data_requests, decisions, transcripts, users, interviews, invitations, responses, reports
+from app.api import audit, auth, data_requests, decisions, transcripts, users, interviews, invitations, responses, reports, webhooks
 
 api_router = APIRouter()
 
@@ -18,3 +18,4 @@ api_router.include_router(transcripts.router, prefix="/responses", tags=["Transc
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit Logs"])
 api_router.include_router(data_requests.router, prefix="/data-requests", tags=["Data Requests"])
+api_router.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])

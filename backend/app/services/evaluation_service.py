@@ -385,6 +385,25 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
         except Exception as exc:
             print(f"Completion email failed: {exc}")
 
+    # Fire webhooks
+    try:
+        from app.services.webhook_service import fire_event, build_event_payload
+        org_id = interview.organization_id if interview else None
+        payload = build_event_payload(
+            "evaluation.completed",
+            evaluation_run.id,
+            "evaluation_run",
+            {
+                "response_id": response.id,
+                "interview_id": response.interview_id,
+                "total_score": response.total_score,
+                "passed": response.passed,
+            },
+        )
+        await fire_event("evaluation.completed", payload, org_id)
+    except Exception as exc:
+        print(f"Webhook fire failed: {exc}")
+
 
 def create_evaluation_run(response_id: int, db: Session, status: str = "queued") -> EvaluationRun:
     provider = get_evaluation_provider()

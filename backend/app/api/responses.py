@@ -344,6 +344,25 @@ async def complete_interview_response(
     if has_audio:
         enqueue_transcription(response_id, background_tasks)
 
+    from app.services.webhook_service import fire_event, build_event_payload
+    try:
+        payload = build_event_payload(
+            "response.completed",
+            candidate_response.id,
+            "candidate_response",
+            {
+                "interview_id": candidate_response.interview_id,
+                "candidate_name": candidate_response.candidate_name,
+                "total_score": candidate_response.total_score,
+                "passed": candidate_response.passed,
+            },
+        )
+        interview = db.query(Interview).filter(Interview.id == candidate_response.interview_id).first()
+        org_id = interview.organization_id if interview else None
+        await fire_event("response.completed", payload, org_id)
+    except Exception as exc:
+        print(f"Webhook fire failed: {exc}")
+
     return candidate_response
 
 

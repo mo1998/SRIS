@@ -72,6 +72,25 @@ async def set_reviewer_decision(
 
     db.commit()
 
+    from app.services.webhook_service import fire_event, build_event_payload
+    try:
+        payload = build_event_payload(
+            "reviewer.decision_made",
+            candidate_response.id,
+            "candidate_response",
+            {
+                "decision": new_decision,
+                "previous_decision": old_decision,
+                "set_by": current_user.id,
+                "interview_id": candidate_response.interview_id,
+            },
+        )
+        interview = candidate_response.interview
+        org_id = interview.organization_id if interview else None
+        await fire_event("reviewer.decision_made", payload, org_id)
+    except Exception as exc:
+        print(f"Webhook fire failed: {exc}")
+
     return {
         "response_id": response_id,
         "reviewer_decision": new_decision,
