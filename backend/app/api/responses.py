@@ -334,11 +334,16 @@ async def complete_interview_response(
     db.refresh(candidate_response)
     
     from app.services.evaluation_service import create_evaluation_run, enqueue_evaluation_run
+    from app.services.transcription_service import enqueue_transcription
 
     evaluation_run = create_evaluation_run(response_id, db)
     db.commit()
     enqueue_evaluation_run(response_id, evaluation_run.id, background_tasks)
-    
+
+    has_audio = any(answer.audio_file_path for answer in candidate_response.question_answers)
+    if has_audio:
+        enqueue_transcription(response_id, background_tasks)
+
     return candidate_response
 
 
