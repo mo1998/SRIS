@@ -324,6 +324,8 @@ class QuestionAnswerSchema(BaseModel):
     question_id: int
     answer_text: Optional[str] = None
     audio_file_path: Optional[str] = None
+    transcript: Optional[str] = None
+    transcript_updated_at: Optional[datetime] = None
     score: Optional[float] = None
     feedback: Optional[str] = None
     feedback_en: Optional[str] = None
@@ -331,6 +333,10 @@ class QuestionAnswerSchema(BaseModel):
     evidence: Optional[dict] = None
     emotion_during_answer: Optional[str] = None
     time_taken_seconds: Optional[int] = None
+
+
+class TranscriptUpdate(BaseModel):
+    transcript: str
 
 
 class ReportQuestionAnswerSchema(QuestionAnswerSchema):

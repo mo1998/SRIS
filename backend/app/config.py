@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     DEFAULT_INTERVIEW_DURATION: int = 30  # minutes
     MAX_INTERVIEW_ATTEMPTS: int = 3
     
+    # Transcription
+    TRANSCRIPTION_PROVIDER: str = os.getenv("TRANSCRIPTION_PROVIDER", "fake")
+    TRANSCRIPTION_QUEUE_BACKEND: str = os.getenv("TRANSCRIPTION_QUEUE_BACKEND", "background")
+    TRANSCRIPTION_QUEUE_NAME: str = os.getenv("TRANSCRIPTION_QUEUE_NAME", "transcription")
+
     # Quality Thresholds
     MIN_VOICE_CONFIDENCE: float = 0.7
     MIN_FACE_VISIBILITY: float = 0.8

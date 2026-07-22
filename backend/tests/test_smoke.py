@@ -1826,3 +1826,54 @@ def test_reviewer_decision_appears_in_interview_report(client):
     report = report_response.json()
     assert len(report["candidates"]) > 0
     assert report["candidates"][0].get("reviewer_decision") is not None
+
+
+def test_transcript_update_and_read(client):
+    """Test updating and reading a transcript for an answer."""
+    token, response_id = create_completed_response(client)
+
+    resp_detail = client.get(
+        f"/api/responses/{response_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp_detail.status_code == 200
+    answers = resp_detail.json().get("question_answers", [])
+    assert len(answers) > 0
+    question_id = answers[0]["question_id"]
+
+    update_response = client.put(
+        f"/api/responses/{response_id}/answers/{question_id}/transcript",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"transcript": "Candidate explained how they handle upset customers by listening and empathizing."},
+    )
+    assert update_response.status_code == 200, update_response.text
+    data = update_response.json()
+    assert data["transcript"] == "Candidate explained how they handle upset customers by listening and empathizing."
+
+    get_response = client.get(
+        f"/api/responses/{response_id}/answers/{question_id}/transcript",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert get_response.status_code == 200, get_response.text
+    assert get_response.json()["transcript"] == "Candidate explained how they handle upset customers by listening and empathizing."
+
+
+def test_transcript_unauthorized(client):
+    """Test that unauthorized users cannot modify transcripts."""
+    token, response_id = create_completed_response(client)
+
+    register_user(client, email="employee@test.com", role="employee")
+    employee_token = login_user(client, email="employee@test.com")
+
+    resp_detail = client.get(
+        f"/api/responses/{response_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    question_id = resp_detail.json()["question_answers"][0]["question_id"]
+
+    update_response = client.put(
+        f"/api/responses/{response_id}/answers/{question_id}/transcript",
+        headers={"Authorization": f"Bearer {employee_token}"},
+        json={"transcript": "Should not work"},
+    )
+    assert update_response.status_code in (403, 404)
