@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = '008_add_evaluation_runs'
-down_revision = '007_add_revoked_invitation_status'
+down_revision = '007_revoked_invitation_status'
 branch_labels = None
 depends_on = None
 

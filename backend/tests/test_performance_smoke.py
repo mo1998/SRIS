@@ -1,7 +1,7 @@
 import time
 
 from app.config import settings
-from backend.tests.test_smoke import create_interview, login_user, register_user
+from test_smoke import create_interview, login_user, register_user
 
 
 def test_completed_interview_flow_performance_smoke(client, monkeypatch):

@@ -34,6 +34,19 @@ const Register: React.FC = () => {
       return
     }
     
+    if (!/[a-z]/.test(formData.password)) {
+      setError('Password must include a lowercase letter')
+      return
+    }
+    if (!/[A-Z]/.test(formData.password)) {
+      setError('Password must include an uppercase letter')
+      return
+    }
+    if (!/[0-9]/.test(formData.password)) {
+      setError('Password must include a number')
+      return
+    }
+    
     setLoading(true)
     
     try {
@@ -41,7 +54,12 @@ const Register: React.FC = () => {
       await register(registerData)
       navigate('/')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Registration failed')
+      const detail = err.response?.data?.detail
+      if (Array.isArray(detail)) {
+        setError(detail.map((d: any) => d.msg).join('; ') || 'Registration failed')
+      } else {
+        setError(detail || 'Registration failed')
+      }
     } finally {
       setLoading(false)
     }

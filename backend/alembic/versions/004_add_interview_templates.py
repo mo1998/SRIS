@@ -1,7 +1,7 @@
 """Add interview templates
 
 Revision ID: 004_add_interview_templates
-Revises: 003_scope_interviews_to_organizations
+Revises: 003_scope_interviews_org
 Create Date: 2026-07-17 00:00:00.000000
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = '004_add_interview_templates'
-down_revision = '003_scope_interviews_to_organizations'
+down_revision = '003_scope_interviews_org'
 branch_labels = None
 depends_on = None
 

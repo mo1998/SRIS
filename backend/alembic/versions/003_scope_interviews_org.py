@@ -1,6 +1,6 @@
 """Scope interviews to organizations
 
-Revision ID: 003_scope_interviews_to_organizations
+Revision ID: 003_scope_interviews_org
 Revises: 002_add_organizations
 Create Date: 2026-07-17 00:00:00.000000
 
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = '003_scope_interviews_to_organizations'
+revision = '003_scope_interviews_org'
 down_revision = '002_add_organizations'
 branch_labels = None
 depends_on = None

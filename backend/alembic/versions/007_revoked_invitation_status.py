@@ -1,6 +1,6 @@
 """Add revoked invitation status
 
-Revision ID: 007_add_revoked_invitation_status
+Revision ID: 007_revoked_invitation_status
 Revises: 006_add_template_rubric_criteria
 Create Date: 2026-07-18 00:00:00.000000
 
@@ -8,7 +8,7 @@ Create Date: 2026-07-18 00:00:00.000000
 from alembic import op
 
 
-revision = '007_add_revoked_invitation_status'
+revision = '007_revoked_invitation_status'
 down_revision = '006_add_template_rubric_criteria'
 branch_labels = None
 depends_on = None

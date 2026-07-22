@@ -21,7 +21,12 @@ const Login: React.FC = () => {
       await login(email, password)
       navigate('/')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed')
+      const detail = err.response?.data?.detail
+      if (Array.isArray(detail)) {
+        setError(detail.map((d: any) => d.msg).join('; ') || 'Login failed')
+      } else {
+        setError(detail || 'Login failed')
+      }
     } finally {
       setLoading(false)
     }
