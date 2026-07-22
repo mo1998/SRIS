@@ -2,6 +2,7 @@
 Pydantic schemas for API validation
 """
 
+import json
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Dict
 from datetime import datetime
@@ -546,3 +547,49 @@ class AuditLogResponse(BaseModel):
     organization_id: Optional[int] = None
     details: Optional[Dict] = None
     created_at: datetime
+
+
+class DataRequestTypeEnum(str, Enum):
+    export = "export"
+    delete = "delete"
+
+
+class DataRequestStatusEnum(str, Enum):
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    rejected = "rejected"
+
+
+class DataExportRequestCreate(BaseModel):
+    request_type: DataRequestTypeEnum
+
+
+class DataExportRequestProcess(BaseModel):
+    status: DataRequestStatusEnum
+    notes: Optional[str] = None
+
+
+class DataExportRequestResponse(BaseModel):
+    id: int
+    requester_email: str
+    request_type: DataRequestTypeEnum
+    status: DataRequestStatusEnum
+    details: Optional[Dict] = None
+    file_path: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    processed_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+    @field_validator("details", mode="before")
+    @classmethod
+    def parse_details(cls, value):
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                return {"raw": value}
+        return value

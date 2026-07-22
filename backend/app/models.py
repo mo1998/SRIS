@@ -347,3 +347,33 @@ class ReviewerScorecard(Base):
 
     response = relationship("CandidateResponse")
     reviewer = relationship("User", foreign_keys=[reviewer_id])
+
+
+class DataRequestType(enum.Enum):
+    EXPORT = "export"
+    DELETE = "delete"
+
+
+class DataRequestStatus(enum.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+
+
+class DataExportRequest(Base):
+    __tablename__ = "data_export_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    requester_email = Column(String(255), nullable=False, index=True)
+    request_type = Column(Enum(DataRequestType, values_callable=enum_values), nullable=False)
+    status = Column(Enum(DataRequestStatus, values_callable=enum_values), default=DataRequestStatus.PENDING)
+    details = Column(Text, nullable=True)
+    file_path = Column(String(500), nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    processed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    processed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    processor = relationship("User", foreign_keys=[processed_by])
