@@ -463,6 +463,7 @@ class CandidateReport(BaseModel):
     dominant_emotion: str
     confidence_score: float
     reviewer_decision: Optional[ReviewerDecisionEnum] = None
+    ai_disclosure: Optional[str] = None
     answers: List[ReportQuestionAnswerSchema]
     feedback: str
     evaluation_provider: Optional[str] = None
@@ -511,6 +512,14 @@ class EvaluationHealth(BaseModel):
     fallback_provider: Optional[str] = None
     last_error: Optional[str] = None
     checked_at: datetime
+
+
+class AIDisclosure(BaseModel):
+    evaluation: Dict
+    transcription: Dict
+    emotion_analysis: Dict
+    disclosure: str
+    last_updated: datetime
 
 
 class EmailHealth(BaseModel):
