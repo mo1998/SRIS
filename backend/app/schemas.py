@@ -472,10 +472,7 @@ class EmailHealth(BaseModel):
     configured: bool
     status: str
     mail_from: str
-    mail_server: str
-    mail_port: int
-    tls_enabled: bool
-    ssl_enabled: bool
+    mail_from_name: str
     missing_settings: List[str] = []
     checked_at: datetime
 

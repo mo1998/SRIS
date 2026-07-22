@@ -3,22 +3,19 @@ from app.services.email_service import get_email_health
 
 
 def test_email_health_reports_placeholder_configuration(monkeypatch):
-    monkeypatch.setattr(settings, "MAIL_FROM", "noreply@yourdomain.com")
-    monkeypatch.setattr(settings, "MAIL_PASSWORD", "your-email-password")
-    monkeypatch.setattr(settings, "MAIL_SERVER", "smtp.gmail.com")
+    monkeypatch.setattr(settings, "BREVO_API_KEY", "")
+    monkeypatch.setattr(settings, "MAIL_FROM", "noreply@sris.com")
 
     health = get_email_health()
 
     assert health["configured"] is False
     assert health["status"] == "configuration_incomplete"
-    assert set(health["missing_settings"]) == {"MAIL_FROM", "MAIL_PASSWORD", "MAIL_SERVER"}
+    assert set(health["missing_settings"]) == {"BREVO_API_KEY", "MAIL_FROM"}
 
 
-def test_email_health_reports_configured_smtp(monkeypatch):
+def test_email_health_reports_configured(monkeypatch):
+    monkeypatch.setattr(settings, "BREVO_API_KEY", "xkeysib-1234567890abcdef")
     monkeypatch.setattr(settings, "MAIL_FROM", "interviews@example.com")
-    monkeypatch.setattr(settings, "MAIL_PASSWORD", "smtp-secret")
-    monkeypatch.setattr(settings, "MAIL_SERVER", "smtp.example.com")
-    monkeypatch.setattr(settings, "MAIL_PORT", 587)
 
     health = get_email_health()
 

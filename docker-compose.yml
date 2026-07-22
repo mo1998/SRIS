@@ -59,9 +59,8 @@ services:
       DEBUG: ${DEBUG:-False}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:-noreply@sris.com}
-      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_SERVER: ${MAIL_SERVER:-smtp.gmail.com}
-      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-SRIS}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-["http://localhost","http://frontend"]}
       EVALUATION_QUEUE_BACKEND: ${EVALUATION_QUEUE_BACKEND:-rq}

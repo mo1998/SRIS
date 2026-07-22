@@ -25,13 +25,10 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT_ATTEMPTS: int = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
     LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
     
-    # Email (for invitations)
+    # Email (via Brevo API)
     MAIL_FROM: str = os.getenv("MAIL_FROM", "noreply@sris.com")
-    MAIL_PASSWORD: str = os.getenv("MAIL_PASSWORD", "")
-    MAIL_SERVER: str = os.getenv("MAIL_SERVER", "smtp.gmail.com")
-    MAIL_PORT: int = 587
-    MAIL_TLS: bool = True
-    MAIL_SSL: bool = False
+    MAIL_FROM_NAME: str = os.getenv("MAIL_FROM_NAME", "SRIS")
+    BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
     INVITATION_RESEND_COOLDOWN_SECONDS: int = int(os.getenv("INVITATION_RESEND_COOLDOWN_SECONDS", "300"))
     MAX_BULK_INVITATIONS: int = int(os.getenv("MAX_BULK_INVITATIONS", "100"))
     
