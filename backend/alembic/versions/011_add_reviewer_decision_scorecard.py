@@ -19,7 +19,6 @@ def upgrade() -> None:
     op.add_column('candidate_responses', sa.Column('reviewer_decision', sa.String(50), server_default='pending', nullable=False))
     op.add_column('candidate_responses', sa.Column('reviewer_decision_at', sa.DateTime(), nullable=True))
     op.add_column('candidate_responses', sa.Column('reviewer_decision_by', sa.Integer(), nullable=True))
-    op.create_foreign_key('fk_candidate_responses_reviewer_decision_by', 'candidate_responses', 'users', ['reviewer_decision_by'], ['id'])
     op.create_index(op.f('ix_candidate_responses_reviewer_decision'), 'candidate_responses', ['reviewer_decision'], unique=False)
 
     op.create_table(
@@ -47,7 +46,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_reviewer_scorecards_id'), table_name='reviewer_scorecards')
     op.drop_table('reviewer_scorecards')
     op.drop_index(op.f('ix_candidate_responses_reviewer_decision'), table_name='candidate_responses')
-    op.drop_constraint('fk_candidate_responses_reviewer_decision_by', 'candidate_responses', type_='foreignkey')
     op.drop_column('candidate_responses', 'reviewer_decision_by')
     op.drop_column('candidate_responses', 'reviewer_decision_at')
     op.drop_column('candidate_responses', 'reviewer_decision')
