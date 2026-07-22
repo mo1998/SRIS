@@ -1,200 +1,174 @@
 # Smart Remote Interview System (SRIS)
 
-An AI-powered remote interview platform that enables employers to create interviews, invite candidates, and receive AI-evaluated results with emotion detection, voice denoising, and quality assessment.
+SRIS is a production-oriented remote interview platform for structured hiring workflows. It supports employer organizations, role-based interview creation, candidate invitations, candidate response collection, local-first evaluation, evidence-linked reports, operational health checks, and release-readiness automation.
 
-## Features
+This README is written for future coding tools and agents. It explains what has already been implemented, how the project is structured, what methodology was used, and which rules must be preserved when continuing development.
 
-### For Employers
-- ✅ Create interviews with custom questions and expected answers
-- ✅ Set interview duration, pass scores, and maximum attempts
-- ✅ Invite candidates via email (single or bulk invitations)
-- ✅ Real-time candidate ranking and performance reports
-- ✅ PDF report generation for interview results
-- ✅ View quality metrics (voice, background, face visibility, lighting)
-- ✅ Emotion and confidence analysis for each candidate
+Current status: implementation is complete through the Phase 6 release-hardening milestone. The remaining release work is environment-gated rehearsal: approved local LLM runtime smoke, real SMTP smoke, backup/restore rehearsal, and production-like Docker product smoke. Those gates are documented in [PHASE6_RELEASE_RUNBOOK.md](PHASE6_RELEASE_RUNBOOK.md).
 
-### For Candidates/Employees
-- ✅ Receive interview invitations via email with unique links
-- ✅ AI-conducted interviews with real-time quality feedback
-- ✅ Voice recording and text answer submission
-- ✅ Real-time quality metrics display (voice, background, face, lighting)
-- ✅ Emotion detection and confidence tracking
-- ✅ Personal performance reports after completion
+## Product Scope Implemented
 
-### AI/ML Features
-- 🤖 **Answer Evaluation**: Local LLM-first structured scoring with deterministic fallback
-- 🧾 **Evaluation Audit Trail**: Persisted runs, scores, rubric evidence, prompt version, config hash, and re-evaluation history
-- 📊 **Evaluation Operations**: Provider health, fallback status, batch re-evaluation, and interview-level analytics
-- 🎤 **Voice Denoising**: Audio quality enhancement using noisereduce
-- 😊 **Emotion Detection**: Real-time facial emotion analysis
-- 📹 **Face Detection**: Face visibility and positioning validation
-- 🌅 **Background Quality**: Background appropriateness assessment
-- 💡 **Lighting Detection**: Environment lighting quality checks
+### Authentication, Accounts, And Organizations
 
-## Technology Stack
+- User registration and login with JWT access/refresh tokens.
+- Token refresh and token-version revocation after password changes.
+- Password complexity validation.
+- Failed-login rate limiting with retry headers.
+- Employer registration creates an organization and owner membership.
+- Team membership roles: owner, admin, recruiter, reviewer.
+- Organization-scoped authorization for interviews, invitations, responses, reports, evaluations, and audit logs.
+- Account profile and password update endpoints.
+
+### Interview Builder And Templates
+
+- Interview CRUD for employer organizations.
+- Draft, active, completed, and cancelled interview statuses.
+- Built-in interview templates.
+- Question weights, expected answers, and rubric criteria.
+- Interview activation guard requiring at least one question.
+- Organization member visibility and manager-only mutation controls.
+
+### Invitations And Candidate Pipeline
+
+- Single and bulk invitations.
+- Invitation status lifecycle: pending/sent/accepted/completed/expired/revoked.
+- Public invitation token verification.
+- Invitation email preview.
+- Resend cooldown and retry-after behavior.
+- Revoke flow that prevents token use.
+- Bulk invitation size limit.
+- Email health endpoint and SMTP configuration checks.
+
+### Candidate Response Experience
+
+- Candidate response start flow with max-attempt enforcement.
+- Text answer submission and optional audio upload.
+- Audio upload extension, size, and content-signature validation.
+- Quality metric submission.
+- Emotion/confidence data capture as operational metadata.
+- Completion flow that queues evaluation and updates invitation status.
+- Candidate self-access to own response/report.
+
+Important: emotion and quality fields exist as metadata, but hiring-critical scoring is driven by rubric/evaluation evidence. Do not expand emotion/personality traits into candidate scoring.
+
+### Evaluation Engine
+
+- Local-first evaluation provider architecture.
+- `local_vllm` OpenAI-compatible provider configuration.
+- Deterministic rubric-aware fallback evaluator.
+- Persisted `EvaluationRun` records with provider, model, prompt version, config hash, status, timestamps, raw summary, and errors.
+- Persisted `EvaluationScore` records with per-answer scores, bilingual feedback, and evidence JSON.
+- Single candidate re-evaluation and batch interview re-evaluation.
+- Evaluation health endpoint with fallback status.
+- Interview-level evaluation analytics.
+- Redis/RQ worker support for durable evaluation jobs.
+
+No model weights may be downloaded or run without explicit user approval. See the model approval rules below.
+
+### Reports And Exports
+
+- Employer interview report with ranking, pass rate, provider/model metadata, and evaluation state.
+- Candidate report with question-level answers, feedback, evidence, and evaluation metadata.
+- Evaluation audit history endpoint per candidate response.
+- PDF report generation.
+- Access control for employer, organization member, candidate, and cross-organization cases.
+
+### Audit, Security, And Operations
+
+- Durable audit logs for sensitive actions.
+- Audit log listing endpoint at `GET /api/audit-logs/`.
+- Audit visibility restricted to system admins and organization owners/admins.
+- Audit filters for action, target type/id, actor, organization, skip, and limit.
+- Audit coverage includes password changes, team membership changes, interview activation/completion/deletion, invitation creation/bulk creation/resend/revoke, response deletion, and evaluation queueing.
+- Request IDs and process timing headers.
+- Security headers on API responses.
+- No-store cache headers on health endpoints.
+- Configurable max request body size.
+- Production configuration guardrails when `DEBUG=False`.
+- Backup dry-run and verification support.
+- Load-test CLI for local HTTP smoke tests.
+- Release readiness script for local validation.
+
+## Architecture
 
 ### Backend
-- **Framework**: FastAPI (Python)
-- **Database**: PostgreSQL
-- **Cache**: Redis
-- **AI/ML**: Local OpenAI-compatible LLM endpoint, deterministic fallback evaluator, OpenCV, MediaPipe, DeepFace, noisereduce
-- **Authentication**: JWT with python-jose
-- **Email**: FastAPI-mail
-- **PDF Generation**: ReportLab
+
+- FastAPI application in [backend/app](backend/app).
+- SQLAlchemy models in [backend/app/models.py](backend/app/models.py).
+- Alembic migrations in [backend/alembic/versions](backend/alembic/versions).
+- Pydantic schemas in [backend/app/schemas.py](backend/app/schemas.py).
+- Modular routers in [backend/app/api](backend/app/api).
+- Business services in [backend/app/services](backend/app/services).
+- RQ worker entrypoint in [backend/app/worker.py](backend/app/worker.py).
+- PostgreSQL is the production source of truth.
+- SQLite is used for local/CI migration validation and backend tests.
+- Redis/RQ is required for production evaluation queueing.
 
 ### Frontend
-- **Framework**: React + TypeScript
-- **Build Tool**: Vite
-- **UI Library**: React-Bootstrap
-- **State Management**: Zustand
-- **Routing**: React Router v6
-- **Video/Audio**: WebRTC, MediaRecorder API
-- **Charts**: Chart.js + react-chartjs-2
 
-## Project Structure
+- React 18 + TypeScript + Vite in [frontend](frontend).
+- React Router for page routing.
+- Zustand for auth state.
+- Axios API client with auth behavior.
+- React Bootstrap-based UI currently in place.
+- Vitest and Testing Library for component/page tests.
+- Playwright release-candidate E2E smoke using mocked API responses.
 
-```
-SRIS/
-├── backend/
-│   ├── app/
-│   │   ├── api/              # API routes
-│   │   │   ├── auth.py       # Authentication endpoints
-│   │   │   ├── users.py      # User management
-│   │   │   ├── interviews.py # Interview CRUD
-│   │   │   ├── invitations.py # Invitation system
-│   │   │   ├── responses.py  # Candidate responses
-│   │   │   ├── reports.py    # Report generation
-│   │   │   └── router.py     # Router configuration
-│   │   ├── services/         # Business logic
-│   │   │   ├── email_service.py
-│   │   │   ├── evaluation_service.py
-│   │   │   └── report_service.py
-│   │   ├── main.py           # FastAPI app
-│   │   ├── models.py         # SQLAlchemy models
-│   │   ├── schemas.py        # Pydantic schemas
-│   │   ├── database.py       # DB configuration
-│   │   └── config.py         # App settings
-│   ├── requirements.txt
-│   └── .env.example
-├── frontend/
-│   ├── src/
-│   │   ├── components/       # React components
-│   │   │   └── Navbar.tsx
-│   │   ├── pages/            # Page components
-│   │   │   ├── Login.tsx
-│   │   │   ├── Register.tsx
-│   │   │   ├── EmployerDashboard.tsx
-│   │   │   ├── CreateInterview.tsx
-│   │   │   ├── InterviewDetail.tsx
-│   │   │   ├── InterviewRoom.tsx
-│   │   │   ├── CandidateReport.tsx
-│   │   │   └── MyResults.tsx
-│   │   ├── services/         # API service
-│   │   │   └── api.ts
-│   │   ├── store/            # State management
-│   │   │   └── authStore.ts
-│   │   ├── App.tsx
-│   │   ├── main.tsx
-│   │   └── index.css
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── index.html
-└── README.md
-```
+### CI/CD And Release Checks
 
-## Setup Instructions
+- GitHub Actions workflow in [.github/workflows/ci.yml](.github/workflows/ci.yml).
+- CI jobs:
+  - backend tests
+  - Alembic migration validation
+  - frontend tests and production build
+  - Playwright release-candidate E2E smoke
+  - Docker Compose config validation
+- Local release bundle: [scripts/release_check.sh](scripts/release_check.sh).
+- Release-candidate environment gates: [PHASE6_RELEASE_RUNBOOK.md](PHASE6_RELEASE_RUNBOOK.md).
 
-### Prerequisites
+## Development Methodology Used
 
-**For Local Development:**
-- Conda
-- Python 3.11 through the `sris` Conda environment
-- Node.js 18+
-- PostgreSQL 14+
-- Redis (optional)
+The project was built in small production-style slices:
 
-**For Docker Deployment (Recommended):**
-- Docker 24+
-- Docker Compose V2+
-- 4GB+ RAM
-- 20GB+ disk space
+1. Start from a concrete failing behavior, feature gap, or hardening requirement.
+2. Read only the local code path needed to form a falsifiable hypothesis.
+3. Implement the smallest useful change.
+4. Immediately run the focused test or command that can disprove the change.
+5. Expand tests only after the focused check passes.
+6. Run the full release bundle before committing significant slices.
+7. Commit to a feature branch.
+8. Push, open a PR, wait for CI, merge only when green, and sync `main`.
 
----
+This methodology should continue. Avoid broad rewrites unless a phase explicitly calls for them.
 
-### Local Development Workflow
+## Hard Rules For Future Agents
 
-Use the dedicated Conda environment for backend work:
+- Do not download, install, or run model weights without explicit user approval.
+- Do not add cloud AI dependencies for release-critical evaluation without approval.
+- Keep local AI optional and behind provider/service interfaces.
+- AI decisions must be explainable, auditable, and human-reviewable.
+- Do not use emotion, personality, voice traits, or biometric inference for hiring scores.
+- Use Alembic migrations for schema changes. Do not rely on production `create_all`.
+- Preserve organization-scoped authorization on every protected route.
+- Add or update tests for every behavior change.
+- Run focused validation immediately after edits, then full validation before PRs.
+- Keep release claims aligned with implemented behavior.
+- Do not commit secrets or real `.env` files.
+- Do not revert unrelated user or agent changes unless explicitly asked.
 
-```bash
-conda activate sris
-cd backend
-python -m pip install -r requirements-dev.txt
-python -m pytest -q
-```
+## Model Approval Gate
 
-Run frontend checks from the repository root:
+Before any model is downloaded or run, ask the user for explicit approval and include:
 
-```bash
-npm install --prefix frontend
-npm run test:run --prefix frontend
-npm run build --prefix frontend
-npm run test:e2e --prefix frontend
-```
+- Model name and source.
+- License.
+- Approximate download size.
+- Expected CPU/GPU/RAM requirements.
+- Purpose in SRIS.
+- Whether it sends telemetry or needs account tokens.
+- How to disable or remove it.
 
-The Playwright E2E smoke suite uses mocked API responses and validates the release-candidate employer and employee report flows without needing a live backend.
-
-Validate Docker Compose configuration without starting services:
-
-```bash
-docker compose config
-```
-
-Validate the Alembic migration chain without local PostgreSQL credentials:
-
-```bash
-DEBUG=True SECRET_KEY=test-secret-key DATABASE_URL=sqlite:////tmp/sris-migration-check.db \
-   conda run -n sris python -m alembic -c backend/alembic.ini upgrade head
-```
-
-Check backup prerequisites without writing backup files:
-
-```bash
-./backup.sh --dry-run
-```
-
-When `DEBUG=False`, backend startup validates production guardrails: `SECRET_KEY` must be unique and long, `ALLOWED_ORIGINS` must not use wildcard or localhost origins, and `EVALUATION_QUEUE_BACKEND` must be `rq`.
-
-Run the CI-safe backend performance smoke test:
-
-```bash
-conda run -n sris python -m pytest backend/tests/test_performance_smoke.py -q
-```
-
-Run the full release readiness check bundle:
-
-```bash
-scripts/release_check.sh
-```
-
-Add `--with-e2e` when Playwright browsers are installed locally:
-
-```bash
-scripts/release_check.sh --with-e2e
-```
-
-Run a local HTTP load smoke against a running backend:
-
-```bash
-python scripts/load_test.py --base-url http://localhost:8000 --candidates 20 --concurrency 5
-```
-
-For final Phase 6 release-candidate verification, follow `PHASE6_RELEASE_RUNBOOK.md`. It covers production-like Docker startup, approved local LLM validation, SMTP smoke, backup/restore rehearsal, product smoke, and release decision gates.
-
-Optional ML and media dependencies live in `backend/requirements-ml.txt`. Install them only when implementing approved local AI/media features. Model weights must not be downloaded or run without explicit approval.
-
-### Local LLM Evaluation
-
-SRIS is configured to use a local OpenAI-compatible endpoint for interview evaluation. The default tested path is vLLM serving Qwen3 AWQ:
+Current configured local LLM path:
 
 ```bash
 export EVALUATION_PROVIDER=local_vllm
@@ -205,553 +179,238 @@ export LOCAL_LLM_MODEL=qwen3-8b-awq
 export EVALUATION_PROMPT_VERSION=rubric-v1
 ```
 
-Example vLLM launch command, after the model is already approved and available locally:
+The vLLM process should only be started after the selected model is approved and already available locally.
 
-```bash
-CUDA_VISIBLE_DEVICES=0 /home/ubuntu/anaconda3/envs/sris/bin/python \
-   -m vllm.entrypoints.openai.api_server \
-   --host 0.0.0.0 \
-   --port 8100 \
-   --model /home/mrazek/SRIS/models/qwen3-8b-awq \
-   --served-model-name qwen3-8b-awq \
-   --max-model-len 4096 \
-   --gpu-memory-utilization 0.60 \
-   --max-num-seqs 8 \
-   --trust-remote-code
+## Repository Structure
+
+```text
+SRIS/
+├── backend/
+│   ├── alembic/                 # Alembic env and migration versions
+│   ├── app/
+│   │   ├── api/                 # FastAPI routers
+│   │   ├── services/            # Email, evaluation, audit, report services
+│   │   ├── config.py            # Settings and production guardrails
+│   │   ├── database.py          # Engine/session setup
+│   │   ├── main.py              # FastAPI app, middleware, health
+│   │   ├── models.py            # SQLAlchemy models
+│   │   ├── schemas.py           # Pydantic schemas
+│   │   └── worker.py            # RQ worker entrypoint
+│   ├── requirements-dev.txt
+│   └── requirements.txt
+├── frontend/
+│   ├── e2e/                     # Playwright release smoke
+│   ├── src/                     # React app
+│   ├── package.json
+│   └── vite.config.ts
+├── scripts/
+│   ├── load_test.py
+│   └── release_check.sh
+├── docker/
+├── .github/workflows/ci.yml
+├── DEPLOYMENT.md
+├── PHASE6_RELEASE_RUNBOOK.md
+├── PROJECT_BUILD_PLAN.md
+├── backup.sh
+├── deploy.sh
+├── docker-compose.yml
+└── docker-compose.prod.yml
 ```
 
-Evaluation behavior:
+## Local Setup
 
-- Completion and re-evaluation queue an `evaluation_runs` row, then process scoring through the configured evaluation queue.
-- Local/test mode can use FastAPI background tasks with `EVALUATION_QUEUE_BACKEND=background`; Docker deployments use Redis/RQ with the `evaluation-worker` service.
-- Audit history is available at `GET /api/reports/candidate/{response_id}/evaluations`.
-- Employers/admins can re-evaluate a candidate response or batch re-evaluate completed responses for an interview.
-- Candidate and interview reports show persisted evidence, model metadata, prompt version/config hash, score deltas, and fallback state.
-- If local vLLM is unavailable, SRIS falls back to deterministic rubric-aware scoring and records fallback evidence.
+### Backend
 
-Operational checks:
+Use the existing Conda environment:
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:8000/api/reports/evaluation/health
+conda activate sris
+python -m pip install -r backend/requirements-dev.txt
+python -m pytest backend/tests -q
 ```
 
-The Employer Dashboard also displays evaluation health, provider/model, fallback provider, prompt version, and config hash.
+Tests set their own SQLite database URL through [backend/tests/conftest.py](backend/tests/conftest.py).
 
-### Phase 5 Acceptance Checklist
+### Frontend
 
-Run these checks before treating local AI evaluation as release-ready:
+```bash
+npm install --prefix frontend
+npm run test:run --prefix frontend
+npm run build --prefix frontend
+```
+
+Run Playwright E2E smoke when browsers are installed:
+
+```bash
+npm run test:e2e --prefix frontend
+```
+
+### Full Local Release Check
 
 ```bash
 scripts/release_check.sh
 ```
 
-Manual acceptance:
-
-- Start the local vLLM endpoint only after model-use approval.
-- Complete a candidate interview and confirm the response returns immediately while evaluation status is visible in the audit trail.
-- Confirm candidate report JSON, PDF, and UI include provider, model, prompt version/config hash, rubric evidence, and bilingual feedback.
-- Trigger single and batch re-evaluation and verify new audit runs plus score deltas.
-- Stop vLLM and confirm health shows fallback status and evaluations record deterministic fallback evidence.
-
----
-
-### 🐳 Option 1: Docker Deployment (Production Ready)
-
-This is the **recommended** way to deploy the Smart Remote Interview System.
-
-#### Quick Start (Development)
-
-1. **Clone and configure**:
-```bash
-git clone <repository-url>
-cd SRIS
-cp .env.example .env
-```
-
-For production hosts, start from the production template instead:
+Add local E2E when Playwright browsers are available:
 
 ```bash
-cp .env.production.example .env
+scripts/release_check.sh --with-e2e
 ```
 
-2. **Edit `.env` file** with your settings:
-```bash
-# Required settings for local development
-SECRET_KEY=local-development-secret-key-change-before-production
-LOCAL_LLM_BASE_URL=http://localhost:8100/v1
-LOCAL_LLM_MODEL=qwen3-8b-awq
-EVALUATION_PROMPT_VERSION=rubric-v1
-EVALUATION_QUEUE_BACKEND=rq
-EVALUATION_QUEUE_BACKEND=rq
+The release check currently validates:
 
-# Email (for sending invitations)
-MAIL_FROM=noreply@yourdomain.com
-MAIL_PASSWORD=your-email-password
-```
+- backend tests
+- environment templates
+- Alembic migration chain with SQLite
+- frontend unit tests
+- frontend production build
+- load-test CLI help/syntax
+- Docker Compose config
+- backup dry-run
+- optional Playwright E2E smoke
 
-3. **Deploy with one command**:
-```bash
-./deploy.sh
-```
+## Useful Commands
 
-That's it! The system will:
-- ✅ Build all Docker images
-- ✅ Start PostgreSQL, Redis, Backend, and Frontend
-- ✅ Run database migrations automatically
-- ✅ Health check all services
-
-**Access the application:**
-- Frontend: http://localhost
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
-
-#### Production Deployment
-
-1. **Update `.env` for production**:
-```bash
-# Generate secure keys
-openssl rand -hex 32  # For SECRET_KEY
-openssl rand -hex 16  # For POSTGRES_PASSWORD, REDIS_PASSWORD
-
-# Update .env with production values
-SECRET_KEY=<generated-key>
-POSTGRES_PASSWORD=<strong-password>
-REDIS_PASSWORD=<strong-password>
-LOCAL_LLM_BASE_URL=http://localhost:8100/v1
-LOCAL_LLM_MODEL=qwen3-8b-awq
-EVALUATION_PROMPT_VERSION=rubric-v1
-EVALUATION_QUEUE_BACKEND=rq
-FRONTEND_URL=https://yourdomain.com
-ALLOWED_ORIGINS=["https://yourdomain.com"]
-```
-
-2. **Setup SSL certificate** (Let's Encrypt recommended):
-```bash
-# Install certbot
-sudo apt install certbot
-
-# Generate certificate
-sudo certbot certonly --standalone -d yourdomain.com
-
-# Copy certificates to docker directory
-mkdir -p docker/nginx/ssl
-sudo cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem docker/nginx/ssl/
-sudo cp /etc/letsencrypt/live/yourdomain.com/privkey.pem docker/nginx/ssl/
-sudo chmod 644 docker/nginx/ssl/*.pem
-```
-
-3. **Deploy to production**:
-```bash
-./deploy.sh production
-```
-
-This will:
-- ✅ Build optimized production images
-- ✅ Enable SSL/HTTPS
-- ✅ Start multiple backend replicas for load balancing
-- ✅ Configure resource limits
-- ✅ Enable auto-restart
-
-**Access the application:**
-- Frontend: https://yourdomain.com
-- Backend API: https://yourdomain.com/api
-- API Documentation: https://yourdomain.com/api/docs
-
-#### Docker Services Overview
-
-| Service | Container Name | Port | Description |
-|---------|---------------|------|-------------|
-| PostgreSQL | sris-postgres | 5432 | Primary database |
-| Redis | sris-redis | 6379 | Cache and session storage |
-| Backend | sris-backend | 8000 | FastAPI application |
-| Frontend | sris-frontend | 80/443 | React app with Nginx |
-| Migration | sris-migrate | - | Database migrations |
-
-#### Docker Management Commands
-
-**View logs**:
-```bash
-# All services
-docker compose logs -f
-
-# Specific service
-docker compose logs -f backend
-docker compose logs -f frontend
-```
-
-**Stop services**:
-```bash
-docker compose down
-```
-
-**Restart services**:
-```bash
-docker compose restart
-```
-
-**Rebuild after code changes**:
-```bash
-./deploy.sh  # or ./deploy.sh production
-```
-
-**Database backup**:
-```bash
-./backup.sh
-```
-
-**Database restore**:
-```bash
-gunzip -c backups/YYYYMMDD_HHMMSS/database.sql.gz | \
-  docker compose exec -T postgres psql -U postgres sris_db
-```
-
-**Run database migrations manually**:
-```bash
-docker compose up db-migrate
-```
-
-**Scale backend** (production only):
-```bash
-docker compose -f docker-compose.prod.yml up -d --scale backend=4
-```
-
-**Update to latest version**:
-```bash
-git pull
-./deploy.sh production
-```
-
-#### Environment Variables Reference
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SECRET_KEY` | **Required** | JWT signing key (use `openssl rand -hex 32`) |
-| `DATABASE_URL` | Auto-set | PostgreSQL connection string |
-| `REDIS_URL` | Auto-set | Redis connection string |
-| `OPENAI_API_KEY` | **Required** | OpenAI API key for answer evaluation |
-| `MAIL_FROM` | noreply@sris.com | Email sender address |
-| `MAIL_PASSWORD` | - | SMTP password |
-| `MAIL_SERVER` | smtp.gmail.com | SMTP server |
-| `MAIL_PORT` | 587 | SMTP port |
-| `FRONTEND_URL` | http://localhost | Frontend URL for CORS |
-| `DEBUG` | False | Enable debug mode |
-| `POSTGRES_USER` | postgres | Database username |
-| `POSTGRES_PASSWORD` | **Change me** | Database password |
-| `REDIS_PASSWORD` | **Change me** | Redis password |
-
----
-
-### Option 2: Local Development Setup
-
-### Backend Setup
-
-1. **Create virtual environment**:
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-2. **Install dependencies**:
-```bash
-pip install -r requirements.txt
-```
-
-3. **Setup PostgreSQL**:
-```sql
-CREATE DATABASE sris_db;
-CREATE USER postgres WITH PASSWORD 'postgres';
-GRANT ALL PRIVILEGES ON DATABASE sris_db TO postgres;
-```
-
-4. **Configure environment**:
-```bash
-cp .env.example .env
-# Edit .env with your settings:
-# - DATABASE_URL
-# - OPENAI_API_KEY (for AI evaluation)
-# - Email settings
-```
-
-5. **Run the backend**:
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-
-The API will be available at `http://localhost:8000`
-API Documentation: `http://localhost:8000/docs`
-
-### Frontend Setup
-
-1. **Install dependencies**:
-```bash
-cd frontend
-npm install
-```
-
-2. **Run development server**:
-```bash
-npm run dev
-```
-
-The frontend will be available at `http://localhost:3000`
-
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login (OAuth2 compatible)
-- `GET /api/auth/me` - Get current user
-- `POST /api/auth/refresh` - Refresh access token
-
-### Interviews
-- `POST /api/interviews/` - Create interview
-- `GET /api/interviews/` - List employer's interviews
-- `GET /api/interviews/{id}` - Get interview details
-- `PUT /api/interviews/{id}` - Update interview
-- `POST /api/interviews/{id}/activate` - Activate interview
-- `POST /api/interviews/{id}/complete` - Complete interview
-- `DELETE /api/interviews/{id}` - Delete interview
-- `GET /api/interviews/{id}/questions` - Get questions
-- `POST /api/interviews/{id}/questions` - Add question
-
-### Invitations
-- `POST /api/invitations/` - Create invitation
-- `POST /api/invitations/bulk` - Bulk create invitations
-- `GET /api/invitations/{interview_id}` - List invitations
-- `GET /api/invitations/verify/{token}` - Verify invitation token
-- `POST /api/invitations/{id}/resend` - Resend invitation
-
-### Responses
-- `POST /api/responses/` - Start interview response
-- `POST /api/responses/{id}/answer` - Submit answer
-- `POST /api/responses/{id}/quality` - Submit quality metrics
-- `POST /api/responses/{id}/emotion` - Submit emotion data
-- `POST /api/responses/{id}/complete` - Complete interview
-- `GET /api/responses/interview/{id}` - List responses (employer)
-- `GET /api/responses/{id}` - Get response details
-
-### Reports
-- `GET /api/reports/interview/{id}` - Get interview report
-- `GET /api/reports/candidate/{id}` - Get candidate report
-- `GET /api/reports/interview/{id}/pdf` - Download interview PDF
-- `GET /api/reports/candidate/{id}/pdf` - Download candidate PDF
-- `GET /api/reports/my-results` - Get employee's results
-
-## Usage Guide
-
-### For Employers
-
-1. **Register** as an employer
-2. **Create Interview**:
-   - Set title, description, duration
-   - Add questions with expected answers
-   - Configure pass score and max attempts
-3. **Activate Interview** to make it available
-4. **Invite Candidates**:
-   - Single invitation via email
-   - Bulk upload (CSV format: email, name)
-5. **Monitor Progress**: View real-time candidate responses
-6. **View Reports**: 
-   - Ranked candidate list
-   - Individual performance reports
-   - Download PDF reports
-
-### For Candidates
-
-1. **Receive Invitation** via email
-2. **Click Interview Link** to start
-3. **Setup Check**: Ensure camera, microphone, lighting, background
-4. **Answer Questions**:
-   - Type or record audio answers
-   - View real-time quality metrics
-   - See emotion detection feedback
-5. **Complete Interview**: AI evaluates all responses
-6. **View Results**: Access personal performance report
-
-## AI Evaluation System
-
-### Answer Scoring
-- Uses OpenAI GPT-3.5-turbo for semantic answer evaluation
-- Compares candidate answers to expected answers
-- Considers: key points, accuracy, completeness, clarity
-- Returns score (0-100) with detailed feedback
-
-### Quality Metrics
-1. **Voice Quality** (0-100):
-   - Audio clarity
-   - Background noise level
-   - Speech consistency
-
-2. **Background Quality** (0-100):
-   - Professional appropriateness
-   - Distractions
-   - Cleanliness
-
-3. **Face Visibility** (0-100):
-   - Face detection confidence
-   - Positioning (centered)
-   - Size in frame
-
-4. **Lighting** (0-100):
-   - Brightness level
-   - Evenness
-   - No harsh shadows
-
-### Emotion Detection
-- Real-time facial expression analysis
-- Emotions tracked: happy, neutral, confident, nervous, stressed
-- Timeline recording throughout interview
-- Dominant emotion extraction
-- Confidence score calculation
-
-## Configuration
-
-### Environment Variables
+### Git And PR Workflow
 
 ```bash
-# Application
-SECRET_KEY=your-secret-key
-DEBUG=True
-
-# Database
-DATABASE_URL=postgresql://user:pass@localhost/sris_db
-REDIS_URL=redis://localhost:6379
-
-# Email
-MAIL_FROM=noreply@sris.com
-MAIL_PASSWORD=your-password
-MAIL_SERVER=smtp.gmail.com
-MAIL_PORT=587
-
-# OpenAI
-OPENAI_API_KEY=your-openai-key
-
-# Frontend
-FRONTEND_URL=http://localhost:3000
+git status --short --branch
+git switch -c feature/<slice-name>
+# edit, test, commit
+git push -u origin feature/<slice-name>
+conda run -n sris gh pr create --repo mo1998/SRIS --base main --head feature/<slice-name> --title "<Title>" --body "<Body>"
+conda run -n sris gh pr checks <PR_NUMBER> --repo mo1998/SRIS --watch
+conda run -n sris gh pr merge <PR_NUMBER> --repo mo1998/SRIS --merge --delete-branch
+git switch main
+git pull --ff-only
+git fetch origin --prune
 ```
 
-### Quality Thresholds
+The GitHub CLI is installed in the `sris` Conda environment, so use `conda run -n sris gh ...`.
 
-```python
-MIN_VOICE_CONFIDENCE = 0.7
-MIN_FACE_VISIBILITY = 0.8
-MIN_LIGHTING_SCORE = 0.6
-MAX_BACKGROUND_NOISE = 0.3
-```
+### Migration Check
 
-## Database Models
-
-- **User**: Employers, employees, admins
-- **Interview**: Interview configuration
-- **InterviewQuestion**: Questions with expected answers
-- **Invitation**: Candidate invitations with tokens
-- **CandidateResponse**: Interview responses with metrics
-- **QuestionAnswer**: Individual question answers
-
-## Security Features
-
-- JWT-based authentication
-- Password hashing with bcrypt
-- Role-based access control
-- Secure invitation tokens (UUID)
-- CORS protection
-- Input validation with Pydantic
-
-## Future Enhancements
-
-- [ ] Real-time video streaming with WebRTC
-- [ ] Advanced voice denoising with deep learning
-- [ ] Live proctoring features
-- [ ] Multi-language support
-- [ ] Coding question evaluation
-- [ ] Interview question templates
-- [ ] Advanced analytics dashboard
-- [ ] Mobile app (React Native)
-- [ ] Integration with ATS systems
-- [ ] Automated scheduling
-
-## Troubleshooting
-
-### Docker Issues
-
-**Build fails**:
 ```bash
-# Clean Docker cache
-docker system prune -a
-
-# Rebuild without cache
-docker compose build --no-cache
+DEBUG=True SECRET_KEY=test-secret-key DATABASE_URL=sqlite:////tmp/sris-migration-check.db \
+  conda run -n sris python -m alembic -c backend/alembic.ini upgrade head
 ```
 
-**Container won't start**:
+### Docker Compose Validation
+
 ```bash
-# Check logs
-docker compose logs backend
-
-# Verify .env file exists
-ls -la .env
-
-# Check Docker is running
-docker info
+docker compose config
+docker compose -f docker-compose.prod.yml config
 ```
 
-**Database connection errors**:
+### Backup Checks
+
 ```bash
-# Restart PostgreSQL
-docker compose restart postgres
-
-# Check PostgreSQL is ready
-docker compose exec postgres pg_isready -U postgres
+./backup.sh --dry-run
+./backup.sh --verify backups/<backup-directory>
 ```
 
-**Port already in use**:
+### Load Smoke
+
 ```bash
-# Find what's using the port
-sudo lsof -i :8000  # or :80, :5432
-
-# Stop the conflicting service
-# Or change port in .env file
+python scripts/load_test.py --base-url http://localhost:8000 --candidates 20 --concurrency 5
 ```
 
-### Backend Issues
-- **Database connection error**: Check DATABASE_URL and PostgreSQL is running
-- **Email not sending**: Verify SMTP credentials in .env
-- **OpenAI errors**: Ensure OPENAI_API_KEY is set and has credits
+## API Areas
 
-### Frontend Issues
-- **API connection error**: Ensure backend is running on port 8000
-- **Camera/mic not working**: Check browser permissions and HTTPS
-- **Build errors**: Run `npm install` and check Node.js version
+- `/api/auth`: register, login, refresh, current user.
+- `/api/users`: profile, password, organization membership, admin user access.
+- `/api/interviews`: interview CRUD, templates, status transitions, questions.
+- `/api/invitations`: single/bulk invite, preview, verify, revoke, resend.
+- `/api/responses`: candidate response lifecycle, answers, quality, emotion, completion, deletion.
+- `/api/reports`: reports, PDFs, evaluation health, email health, evaluation audit, analytics, re-evaluation.
+- `/api/audit-logs`: filtered audit log listing for admins and organization owners/admins.
+- `/health`: operational health with no-store cache and security/request headers.
 
-## Monitoring & Logging
+## Environment Configuration
 
-### View Real-time Logs
-```bash
-docker compose logs -f
-```
+Use [.env.example](.env.example) for local development and [.env.production.example](.env.production.example) for production-style deployments.
 
-### Check Service Health
-```bash
-docker compose ps
-```
+Important settings:
 
-### Resource Usage
-```bash
-docker stats
-```
+- `DEBUG`
+- `SECRET_KEY`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `ALLOWED_ORIGINS`
+- `FRONTEND_URL`
+- `EVALUATION_PROVIDER`
+- `EVALUATION_QUEUE_BACKEND`
+- `LOCAL_LLM_BASE_URL`
+- `LOCAL_LLM_MODEL`
+- `EVALUATION_PROMPT_VERSION`
+- `MAIL_FROM`, `MAIL_PASSWORD`, `MAIL_SERVER`, `MAIL_PORT`, `MAIL_TLS`, `MAIL_SSL`
+- `MAX_REQUEST_BODY_SIZE`
+- `MAX_BULK_INVITATIONS`
+- `INVITATION_RESEND_COOLDOWN_SECONDS`
 
-### Database Queries
-```bash
-docker compose exec postgres psql -U postgres sris_db -c "SELECT * FROM users;"
-```
+When `DEBUG=False`, startup validates production guardrails:
 
-## License
+- `SECRET_KEY` must be unique and at least 32 characters.
+- `ALLOWED_ORIGINS` must not include wildcard or localhost origins.
+- `EVALUATION_QUEUE_BACKEND` must be `rq`.
 
-MIT License
+## Testing Map
 
-## Support
+Backend tests live in [backend/tests](backend/tests):
 
-For issues, questions, or contributions, please open a GitHub issue.
+- [backend/tests/test_smoke.py](backend/tests/test_smoke.py): API, authorization, lifecycle, security, reports, audit, upload, and release smoke coverage.
+- [backend/tests/test_evaluation_service.py](backend/tests/test_evaluation_service.py): scoring/provider behavior.
+- [backend/tests/test_email_service.py](backend/tests/test_email_service.py): email rendering and health.
+- [backend/tests/test_report_service.py](backend/tests/test_report_service.py): report generation helpers.
+- [backend/tests/test_config.py](backend/tests/test_config.py): production settings guardrails.
+- [backend/tests/test_performance_smoke.py](backend/tests/test_performance_smoke.py): CI-safe performance smoke.
 
----
+Frontend tests live beside pages/components under [frontend/src](frontend/src). E2E smoke lives in [frontend/e2e/release-candidate.spec.ts](frontend/e2e/release-candidate.spec.ts).
+
+## Release State
+
+Code, docs, tests, and CI are complete through Phase 6 release hardening.
+
+Completed PR sequence includes:
+
+- Request observability and security headers.
+- Login rate limiting and password complexity.
+- Production config guardrails.
+- Audio upload validation.
+- Invitation resend throttle and bulk limits.
+- Token revocation after password change.
+- Backup dry-run and verification.
+- Email and evaluation health endpoints.
+- Candidate response deletion.
+- Migration validation.
+- Environment template readiness.
+- Health cache-control.
+- Request body size limiting.
+- Durable audit logs.
+- Audit log visibility and expanded audit coverage.
+- Audio content signature validation.
+- Phase 6 release runbook.
+
+Environment-gated checks still require real infrastructure or explicit permission:
+
+- approved local LLM/vLLM runtime smoke
+- real SMTP smoke
+- backup/restore rehearsal into a clean target
+- production-like Docker product smoke
+
+Follow [PHASE6_RELEASE_RUNBOOK.md](PHASE6_RELEASE_RUNBOOK.md) for those gates.
+
+## Roadmap Context
+
+[PROJECT_BUILD_PLAN.md](PROJECT_BUILD_PLAN.md) remains the strategic roadmap. Some future roadmap items are still not fully implemented, especially deeper transcription provider work, reviewer scorecards, data retention workflows, integrations, and a full modern UI rebuild. Future agents should treat the plan as direction, not as a claim that every later phase is complete.
+
+Recommended next code phases after release rehearsal:
+
+1. Transcription provider interface and fake-provider contract tests.
+2. Transcript review/edit in reports.
+3. Reviewer scorecards and human decision states.
+4. Data retention policy and candidate export/delete workflows.
+5. Modern UI rebuild with domain-specific SaaS design tokens.
+6. Webhooks and integration automation.
+
+Keep each slice small, tested, PR-based, and aligned with the approval gates above.
