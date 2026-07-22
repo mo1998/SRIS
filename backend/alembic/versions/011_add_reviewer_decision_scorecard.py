@@ -18,7 +18,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column('candidate_responses', sa.Column('reviewer_decision', sa.String(50), server_default='pending', nullable=False))
     op.add_column('candidate_responses', sa.Column('reviewer_decision_at', sa.DateTime(), nullable=True))
-    op.add_column('candidate_responses', sa.Column('reviewer_decision_by', sa.Integer(), sa.ForeignKey('users.id'), nullable=True))
+    op.add_column('candidate_responses', sa.Column('reviewer_decision_by', sa.Integer(), nullable=True))
     op.create_index(op.f('ix_candidate_responses_reviewer_decision'), 'candidate_responses', ['reviewer_decision'], unique=False)
 
     op.create_table(
