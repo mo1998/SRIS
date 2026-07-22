@@ -118,7 +118,23 @@ async def create_invitation(
         expires_at=expires_at,
         custom_message=invitation_data.custom_message,
     )
-    
+
+    from app.services.webhook_service import fire_event, build_event_payload
+    try:
+        payload = build_event_payload(
+            "invitation.sent",
+            invitation.id,
+            "invitation",
+            {
+                "interview_id": interview.id,
+                "candidate_email": invitation.candidate_email,
+                "candidate_name": invitation.candidate_name,
+            },
+        )
+        await fire_event("invitation.sent", payload, interview.organization_id)
+    except Exception as exc:
+        print(f"Webhook fire failed: {exc}")
+
     return invitation
 
 
@@ -204,6 +220,23 @@ async def create_bulk_invitations(
     
     for inv in created_invitations:
         db.refresh(inv)
+    
+    from app.services.webhook_service import fire_event, build_event_payload
+    try:
+        for inv in created_invitations:
+            payload = build_event_payload(
+                "invitation.sent",
+                inv.id,
+                "invitation",
+                {
+                    "interview_id": interview.id,
+                    "candidate_email": inv.candidate_email,
+                    "candidate_name": inv.candidate_name,
+                },
+            )
+            await fire_event("invitation.sent", payload, interview.organization_id)
+    except Exception as exc:
+        print(f"Webhook fire failed: {exc}")
     
     return created_invitations
 

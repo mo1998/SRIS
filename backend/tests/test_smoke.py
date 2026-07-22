@@ -1993,3 +1993,109 @@ def test_ai_disclosure_in_candidate_report(client):
     data = response.json()
     assert data.get("ai_disclosure") is not None
     assert "AI-assisted" in data["ai_disclosure"]
+
+
+def test_webhook_create_and_list(client):
+    """Test webhook CRUD operations."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+
+    activate_response = client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert activate_response.status_code == 200
+
+    create_response = client.post(
+        "/api/webhooks/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "url": "https://hooks.example.com/sris",
+            "events": ["evaluation.completed", "response.completed"],
+            "description": "Test webhook",
+            "retry_count": 3,
+            "timeout_seconds": 10,
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    data = create_response.json()
+    assert data["url"] == "https://hooks.example.com/sris"
+    assert data["secret"] is not None
+    webhook_id = data["id"]
+
+    list_response = client.get(
+        "/api/webhooks/",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert list_response.status_code == 200, list_response.text
+    webhooks = list_response.json()
+    assert len(webhooks) >= 1
+    assert webhooks[0]["url"] == "https://hooks.example.com/sris"
+
+    get_response = client.get(
+        f"/api/webhooks/{webhook_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert get_response.status_code == 200
+    assert get_response.json()["description"] == "Test webhook"
+
+    update_response = client.put(
+        f"/api/webhooks/{webhook_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"description": "Updated webhook"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["description"] == "Updated webhook"
+
+
+def test_webhook_deliveries_endpoint(client):
+    """Test deliveries list endpoint returns successfully."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    create_response = client.post(
+        "/api/webhooks/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "url": "https://hooks.example.com/sris",
+            "events": ["evaluation.completed"],
+        },
+    )
+    webhook_id = create_response.json()["id"]
+
+    deliveries_response = client.get(
+        f"/api/webhooks/{webhook_id}/deliveries",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert deliveries_response.status_code == 200
+
+    delete_response = client.delete(
+        f"/api/webhooks/{webhook_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert delete_response.status_code == 204
+
+
+def test_webhook_unauthorized(client):
+    """Test that employees cannot manage webhooks."""
+    register_user(client, email="employee@test.com", role="employee")
+    token = login_user(client, email="employee@test.com")
+
+    response = client.post(
+        "/api/webhooks/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "url": "https://hooks.example.com/sris",
+            "events": ["evaluation.completed"],
+        },
+    )
+    assert response.status_code == 403

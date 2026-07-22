@@ -377,3 +377,47 @@ class DataExportRequest(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     processor = relationship("User", foreign_keys=[processed_by])
+
+
+class WebhookStatus(enum.Enum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+    FAILING = "failing"
+
+
+class Webhook(Base):
+    __tablename__ = "webhooks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    url = Column(String(1024), nullable=False)
+    secret = Column(String(255), nullable=False)
+    events = Column(Text, nullable=False)  # Comma-separated event types
+    description = Column(String(500), nullable=True)
+    status = Column(Enum(WebhookStatus, values_callable=enum_values), default=WebhookStatus.ACTIVE)
+    retry_count = Column(Integer, default=3)
+    timeout_seconds = Column(Integer, default=10)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    organization = relationship("Organization")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class WebhookDelivery(Base):
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    webhook_id = Column(Integer, ForeignKey("webhooks.id"), nullable=False, index=True)
+    event_type = Column(String(100), nullable=False, index=True)
+    payload = Column(Text, nullable=False)
+    response_status = Column(Integer, nullable=True)
+    response_body = Column(Text, nullable=True)
+    status = Column(String(50), default="pending")  # pending, delivered, failed
+    attempt = Column(Integer, default=1)
+    next_retry_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    webhook = relationship("Webhook")

@@ -602,3 +602,77 @@ class DataExportRequestResponse(BaseModel):
             except (json.JSONDecodeError, TypeError):
                 return {"raw": value}
         return value
+
+
+class WebhookEventEnum(str, Enum):
+    INTERVIEW_COMPLETED = "interview.completed"
+    RESPONSE_COMPLETED = "response.completed"
+    EVALUATION_COMPLETED = "evaluation.completed"
+    INVITATION_SENT = "invitation.sent"
+    INVITATION_ACCEPTED = "invitation.accepted"
+    REVIEWER_DECISION_MADE = "reviewer.decision_made"
+    TEST = "test"
+
+
+class WebhookCreate(BaseModel):
+    url: str = Field(..., max_length=1024)
+    events: List[WebhookEventEnum]
+    description: Optional[str] = Field(None, max_length=500)
+    retry_count: int = Field(default=3, ge=0, le=10)
+    timeout_seconds: int = Field(default=10, ge=1, le=60)
+
+
+class WebhookUpdate(BaseModel):
+    url: Optional[str] = Field(None, max_length=1024)
+    events: Optional[List[WebhookEventEnum]] = None
+    description: Optional[str] = Field(None, max_length=500)
+    status: Optional[str] = None  # active, disabled
+    retry_count: Optional[int] = Field(None, ge=0, le=10)
+    timeout_seconds: Optional[int] = Field(None, ge=1, le=60)
+
+
+class WebhookResponse(BaseModel):
+    id: int
+    organization_id: int
+    url: str
+    events: List[str]
+    description: Optional[str] = None
+    status: str
+    retry_count: int
+    timeout_seconds: int
+    created_by: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+    @field_validator("events", mode="before")
+    @classmethod
+    def parse_events(cls, value):
+        if isinstance(value, str):
+            return [e.strip() for e in value.split(",") if e.strip()]
+        return value
+
+
+class WebhookSecretResponse(BaseModel):
+    id: int
+    url: str
+    secret: str
+    message: str = "Save this secret - it will not be shown again."
+
+
+class WebhookDeliveryResponse(BaseModel):
+    id: int
+    webhook_id: int
+    event_type: str
+    status: str
+    attempt: int
+    response_status: Optional[int] = None
+    response_body: Optional[str] = None
+    next_retry_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
