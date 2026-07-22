@@ -1632,3 +1632,197 @@ def test_create_interview_from_template(client):
     assert len(interview["questions"]) == 2
     assert interview["questions"][0]["weight"] == 1.5
     assert interview["questions"][0]["rubric_criteria"][0]["name"] == "Clarity"
+
+
+def create_completed_response(client):
+    """Helper: create interview, invite candidate, complete response.
+    Returns (token, response_id).
+    """
+    register_user(client)
+    token = login_user(client)
+
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+
+    activate_response = client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    invite_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "interview_id": interview_id,
+            "candidate_email": "candidate@test.com",
+            "candidate_name": "Test Candidate",
+        },
+    )
+    assert invite_response.status_code == 201, invite_response.text
+    invite = invite_response.json()
+
+    verify_response = client.get(f"/api/invitations/verify/{invite['unique_token']}")
+    assert verify_response.status_code == 200, verify_response.text
+
+    start_response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview_id,
+            "candidate_email": "candidate@test.com",
+            "candidate_name": "Test Candidate",
+            "invitation_token": invite["unique_token"],
+        },
+    )
+    assert start_response.status_code == 201, start_response.text
+    response_id = start_response.json()["id"]
+
+    answer_response = client.post(
+        f"/api/responses/{response_id}/answer",
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "I listen carefully and empathize with the customer.",
+            "time_taken_seconds": 120,
+        },
+    )
+    assert answer_response.status_code == 200, answer_response.text
+
+    complete_response = client.post(f"/api/responses/{response_id}/complete")
+    assert complete_response.status_code == 200, complete_response.text
+
+    return token, response_id
+
+
+def test_reviewer_decision_flow(client):
+    """Test setting reviewer decision and scorecard."""
+    token, response_id = create_completed_response(client)
+
+    # Set decision to shortlisted
+    decision_response = client.put(
+        f"/api/responses/{response_id}/decision",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"decision": "shortlisted"},
+    )
+    assert decision_response.status_code == 200, decision_response.text
+    decision = decision_response.json()
+    assert decision["reviewer_decision"] == "shortlisted"
+    assert decision["response_id"] == response_id
+
+    # Check that candidate report includes decision
+    report_response = client.get(
+        f"/api/reports/candidate/{response_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert report_response.status_code == 200, report_response.text
+    assert report_response.json()["reviewer_decision"] == "shortlisted"
+
+    # Change decision to hired
+    decision_response = client.put(
+        f"/api/responses/{response_id}/decision",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"decision": "hired"},
+    )
+    assert decision_response.status_code == 200, decision_response.text
+    assert decision_response.json()["reviewer_decision"] == "hired"
+
+
+def test_reviewer_scorecard_crud(client):
+    """Test creating, reading, and updating a reviewer scorecard."""
+    token, response_id = create_completed_response(client)
+
+    # Create scorecard
+    create_response = client.post(
+        f"/api/responses/{response_id}/scorecard",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "overall_score": 85.0,
+            "strengths": "Good communication skills, empathetic",
+            "weaknesses": "Could provide more specific examples",
+            "overall_comment": "Strong candidate for the role",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    scorecard = create_response.json()
+    assert scorecard["overall_score"] == 85.0
+    assert scorecard["strengths"] == "Good communication skills, empathetic"
+    assert scorecard["response_id"] == response_id
+
+    # Read scorecard
+    get_response = client.get(
+        f"/api/responses/{response_id}/scorecard",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert get_response.status_code == 200, get_response.text
+    assert get_response.json()["overall_score"] == 85.0
+
+    # Update scorecard
+    update_response = client.post(
+        f"/api/responses/{response_id}/scorecard",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "overall_score": 90.0,
+            "strengths": "Good communication skills, empathetic, great problem solver",
+            "weaknesses": "",
+            "overall_comment": "Excellent candidate",
+        },
+    )
+    assert update_response.status_code == 201, update_response.text
+    assert update_response.json()["overall_score"] == 90.0
+    assert update_response.json()["strengths"] == "Good communication skills, empathetic, great problem solver"
+
+
+def test_reviewer_decision_unauthorized(client):
+    """Test that unauthorized users cannot set decisions."""
+    token, response_id = create_completed_response(client)
+
+    # Employee should not be able to set decisions
+    register_user(client, email="employee@test.com", role="employee")
+    employee_token = login_user(client, email="employee@test.com")
+
+    decision_response = client.put(
+        f"/api/responses/{response_id}/decision",
+        headers={"Authorization": f"Bearer {employee_token}"},
+        json={"decision": "shortlisted"},
+    )
+    assert decision_response.status_code == 403
+
+
+def test_reviewer_decision_invalid_value(client):
+    """Test that invalid decision values are rejected."""
+    token, response_id = create_completed_response(client)
+
+    decision_response = client.put(
+        f"/api/responses/{response_id}/decision",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"decision": "invalid_value"},
+    )
+    assert decision_response.status_code == 422
+
+
+def test_reviewer_decision_appears_in_interview_report(client):
+    """Test that reviewer decision is included in the interview report."""
+    token, response_id = create_completed_response(client)
+
+    response = client.get(
+        f"/api/reports/interview/{response_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+
+    # Interview report endpoint expects interview_id, not response_id
+    # Get the interview ID from the response
+    resp_detail = client.get(
+        f"/api/responses/{response_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp_detail.status_code == 200, resp_detail.text
+    interview_id = resp_detail.json()["interview_id"]
+
+    report_response = client.get(
+        f"/api/reports/interview/{interview_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert report_response.status_code == 200, report_response.text
+    report = report_response.json()
+    assert len(report["candidates"]) > 0
+    assert report["candidates"][0].get("reviewer_decision") is not None

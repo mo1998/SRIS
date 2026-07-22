@@ -249,6 +249,14 @@ class InvitationStatusEnum(str, Enum):
     revoked = "revoked"
 
 
+class ReviewerDecisionEnum(str, Enum):
+    pending = "pending"
+    shortlisted = "shortlisted"
+    rejected = "rejected"
+    needs_review = "needs_review"
+    hired = "hired"
+
+
 class InvitationCreate(BaseModel):
     interview_id: int
     candidate_email: EmailStr
@@ -352,6 +360,7 @@ class CandidateResponseSummary(BaseModel):
     total_score: Optional[float] = None
     passed: Optional[bool] = None
     status: str
+    reviewer_decision: Optional[ReviewerDecisionEnum] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     question_answers: List[QuestionAnswerSchema] = []
@@ -376,6 +385,33 @@ class EmotionRecord(BaseModel):
     timestamp: float
 
 
+# Reviewer schemas
+class ReviewerDecisionUpdate(BaseModel):
+    decision: ReviewerDecisionEnum
+
+
+class ReviewerScorecardCreate(BaseModel):
+    overall_score: Optional[float] = Field(None, ge=0.0, le=100.0)
+    strengths: Optional[str] = Field(None, max_length=5000)
+    weaknesses: Optional[str] = Field(None, max_length=5000)
+    overall_comment: Optional[str] = Field(None, max_length=5000)
+
+
+class ReviewerScorecardResponse(BaseModel):
+    id: int
+    response_id: int
+    reviewer_id: int
+    overall_score: Optional[float] = None
+    strengths: Optional[str] = None
+    weaknesses: Optional[str] = None
+    overall_comment: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 # Report schemas
 class InterviewReportCandidate(BaseModel):
     response_id: int
@@ -388,6 +424,7 @@ class InterviewReportCandidate(BaseModel):
     voice_quality: float
     face_visibility: float
     dominant_emotion: str
+    reviewer_decision: Optional[ReviewerDecisionEnum] = None
     completed_at: Optional[datetime] = None
     evaluation_provider: Optional[str] = None
     evaluation_model: Optional[str] = None
@@ -418,6 +455,7 @@ class CandidateReport(BaseModel):
     lighting: float
     dominant_emotion: str
     confidence_score: float
+    reviewer_decision: Optional[ReviewerDecisionEnum] = None
     answers: List[ReportQuestionAnswerSchema]
     feedback: str
     evaluation_provider: Optional[str] = None
