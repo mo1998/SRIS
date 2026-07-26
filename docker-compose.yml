@@ -45,6 +45,54 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # Local Qwen/vLLM OpenAI-compatible model server
+  local-model:
+    image: ${LOCAL_MODEL_IMAGE:-vllm/vllm-openai:latest}
+    container_name: sris-local-model
+    profiles:
+      - model
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
+      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8100"
+      - --model
+      - /models/qwen3-8b-awq
+      - --served-model-name
+      - ${LOCAL_MODEL_SERVED_NAME:-qwen3-8b-awq}
+      - --max-model-len
+      - "${LOCAL_MODEL_MAX_MODEL_LEN:-4096}"
+      - --gpu-memory-utilization
+      - "${LOCAL_MODEL_GPU_MEMORY_UTILIZATION:-0.50}"
+      - --max-num-seqs
+      - "${LOCAL_MODEL_MAX_NUM_SEQS:-8}"
+      - --trust-remote-code
+    ports:
+      - "${LOCAL_MODEL_PORT:-8100}:8100"
+    volumes:
+      - ${LOCAL_MODEL_PATH:-./models/qwen3-8b-awq}:/models/qwen3-8b-awq:ro
+    networks:
+      - sris-network
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8100/v1/models', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+
   # Backend API
   backend:
     build:
@@ -66,6 +114,10 @@ services:
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-SRIS}
       EVALUATION_QUEUE_BACKEND: rq
       EVALUATION_QUEUE_NAME: ${EVALUATION_QUEUE_NAME:-evaluation}
+      EVALUATION_PROVIDER: ${EVALUATION_PROVIDER:-local_vllm}
+      EVALUATION_PROMPT_VERSION: ${EVALUATION_PROMPT_VERSION:-rubric-v1}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://local-model:8100/v1}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3-8b-awq}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -116,7 +168,7 @@ services:
       EVALUATION_QUEUE_BACKEND: rq
       EVALUATION_QUEUE_NAME: ${EVALUATION_QUEUE_NAME:-evaluation}
       EVALUATION_PROMPT_VERSION: ${EVALUATION_PROMPT_VERSION:-rubric-v1}
-      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://host.docker.internal:8100/v1}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://local-model:8100/v1}
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3-8b-awq}
     volumes:
       - backend_uploads:/app/uploads
