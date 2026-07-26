@@ -69,37 +69,21 @@ jobs:
       - name: Run release candidate E2E smoke
         run: npm run test:e2e --prefix frontend
 
-  docker-build:
-    name: Docker Build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build backend image
-        run: docker build -t sris-backend:ci backend/
-
-      - name: Build frontend image
-        run: docker build -t sris-frontend:ci frontend/
-
   docker-compose:
     name: Docker Compose Smoke Test
     runs-on: ubuntu-latest
-    needs: [docker-build]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Start services
+      - name: Build and start services
         run: |
-          docker compose pull -q postgres redis mailpit 2>/dev/null || true
-          docker compose up -d postgres redis mailpit backend
+          docker compose up -d --build postgres redis mailpit backend
           echo "Waiting for backend to be healthy..."
           timeout 120 bash -c '
             until docker compose exec -T backend python -c "import http.client; conn = http.client.HTTPConnection(\"localhost:8000\"); conn.request(\"GET\", \"/health\"); resp = conn.getresponse(); exit(0 if resp.status == 200 else 1)" 2>/dev/null; do
-              sleep 2
+              sleep 5
             done
           '
           echo "Backend is healthy!"

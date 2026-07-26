@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Smart Remote Interview System - Docker Compose Configuration
 # Docker-internal URLs are hardcoded; env vars control only secrets/ports.
 
