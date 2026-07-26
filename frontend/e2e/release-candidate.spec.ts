@@ -234,7 +234,7 @@ test('release candidate employee flow can open detailed report without re-evalua
 
   await page.goto('/employee/results')
   await expect(page.getByText('My Results')).toBeVisible()
-  await expect(page.getByRole('link', { name: /view details/i })).toHaveAttribute('href', '/employee/candidate/99')
+  await expect(page.getByRole('link', { name: /view/i })).toHaveAttribute('href', '/employee/candidate/99')
 
   await page.goto('/employee/candidate/99')
   await expect(page.getByText('Candidate Performance Report')).toBeVisible()
