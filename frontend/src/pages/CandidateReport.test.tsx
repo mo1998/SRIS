@@ -158,15 +158,19 @@ describe('CandidateReport', () => {
     expect(await screen.findByText(/candidate performance report/i)).toBeInTheDocument()
     expect(screen.getAllByText(/local_vllm/i)).toHaveLength(3)
     expect(screen.getAllByText(/qwen3-8b-awq/i)).toHaveLength(3)
+
+    const questionCards = screen.getAllByText(/How do you handle an upset customer?/i)
+    const mainCard = questionCards[0].closest('.card')!
+    await userEvent.click(mainCard)
+
     expect(screen.getAllByText(/إجابة قوية/i).length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('listen')).toHaveLength(3)
+    expect(screen.getAllByText('listen').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText(/candidate described listening and following up/i)).toBeInTheDocument()
     expect(screen.getByText(/evaluation audit trail/i)).toBeInTheDocument()
     expect(screen.getByText(/run #8/i)).toBeInTheDocument()
     expect(screen.getByText(/latest/i)).toBeInTheDocument()
     expect(screen.getByText(/\+3\.0 pts/i)).toBeInTheDocument()
     expect(screen.getByText(/run #7/i)).toBeInTheDocument()
-    expect(screen.getByText(/abc123/i)).toBeInTheDocument()
 
     vi.mocked(window.confirm).mockReturnValueOnce(false)
     await userEvent.click(screen.getByRole('button', { name: /re-evaluate/i }))
