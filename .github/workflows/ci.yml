@@ -94,6 +94,7 @@ jobs:
 
       - name: Start services
         run: |
+          docker compose pull -q postgres redis mailpit 2>/dev/null || true
           docker compose up -d postgres redis mailpit backend
           echo "Waiting for backend to be healthy..."
           timeout 120 bash -c '
