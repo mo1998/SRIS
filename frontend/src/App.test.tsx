@@ -7,7 +7,7 @@ describe('App routing', () => {
 
     render(<App />)
 
-    expect(await screen.findByRole('button', { name: /login/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument()
     expect(screen.getByText(/don't have an account/i)).toBeInTheDocument()
   })
 })

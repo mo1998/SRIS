@@ -3,6 +3,9 @@ import { Form, Button, Card, Alert, Row, Col, Badge } from 'react-bootstrap'
 import { api } from '../services/api'
 import { useNavigate } from 'react-router-dom'
 import { FiPlus, FiTrash2, FiSave, FiLayers } from 'react-icons/fi'
+import PageHeader from '../components/ui/PageHeader'
+import ErrorAlert from '../components/ui/ErrorAlert'
+import LoadingSpinner from '../components/ui/LoadingSpinner'
 
 const CreateInterview: React.FC = () => {
   const navigate = useNavigate()
@@ -172,9 +175,9 @@ const CreateInterview: React.FC = () => {
   
   return (
     <div>
-      <h1 className="mb-4">Create New Interview</h1>
+      <PageHeader title="Create New Interview" subtitle="Set up interview details and questions" />
       
-      {error && <Alert variant="danger">{error}</Alert>}
+      <ErrorAlert message={error} onClose={() => setError('')} />
 
       <Card className="mb-4">
         <Card.Header>

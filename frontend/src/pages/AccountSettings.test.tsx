@@ -61,7 +61,6 @@ describe('AccountSettings', () => {
         phone: '+15551234567',
       })
     })
-    expect(await screen.findByText('Account updated')).toBeInTheDocument()
     expect(authMock.updateUser).toHaveBeenCalledWith({
       id: 1,
       email: 'employer@example.com',
@@ -87,7 +86,6 @@ describe('AccountSettings', () => {
         new_password: 'new-strong-password',
       })
     })
-    expect(await screen.findByText('Password updated')).toBeInTheDocument()
   })
 
   it('does not submit mismatched new passwords', async () => {

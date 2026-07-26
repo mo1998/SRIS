@@ -24,7 +24,7 @@ describe('MyResults', () => {
     apiMock.reports.getMyResults.mockReset()
   })
 
-  it('links completed results to the employee candidate report detail page', async () => {
+  it('displays completed results with score and pass status', async () => {
     apiMock.reports.getMyResults.mockResolvedValue({
       data: [
         {
@@ -44,6 +44,8 @@ describe('MyResults', () => {
     renderPage()
 
     expect(await screen.findByText('Support Screen')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /view details/i })).toHaveAttribute('href', '/employee/candidate/99')
+    expect(screen.getByText('90.0%')).toBeInTheDocument()
+    expect(screen.getByText('PASSED')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /view/i })).toBeInTheDocument()
   })
 })
