@@ -154,6 +154,8 @@ services:
     container_name: sris-migrate
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/sris_db
+      SECRET_KEY: ${SECRET_KEY:-ci-test-secret-key-not-for-production}
+      DEBUG: "True"
     command: python -m alembic upgrade head
     depends_on:
       postgres:
