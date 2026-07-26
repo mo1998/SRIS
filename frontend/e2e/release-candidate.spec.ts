@@ -212,7 +212,7 @@ test('release candidate employer flow shows dashboard, interview detail, and aud
 
   await page.goto('/employer/dashboard')
   await expect(page.getByText('Employer Dashboard')).toBeVisible()
-  await expect(page.getByText('Evaluation Agent Health')).toBeVisible()
+  await expect(page.getByText('Evaluation Agent')).toBeVisible()
   await expect(page.getByText('local_vllm_available')).toBeVisible()
 
   await page.goto('/employer/interviews/10')
@@ -233,7 +233,7 @@ test('release candidate employee flow can open detailed report without re-evalua
   await mockApi(page, employeeUser)
 
   await page.goto('/employee/results')
-  await expect(page.getByText('My Interview Results')).toBeVisible()
+  await expect(page.getByText('My Results')).toBeVisible()
   await expect(page.getByRole('link', { name: /view details/i })).toHaveAttribute('href', '/employee/candidate/99')
 
   await page.goto('/employee/candidate/99')
