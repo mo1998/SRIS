@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Table, Badge, Button } from 'react-bootstrap'
 import { api } from '../services/api'
 import { FiEye } from 'react-icons/fi'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import PageHeader from '../components/ui/PageHeader'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
@@ -71,11 +71,13 @@ const MyResults: React.FC = () => {
                   <td className="text-muted small">
                     {result.completed_at ? new Date(result.completed_at).toLocaleDateString() : 'N/A'}
                   </td>
-                  <td>
-                    <Button variant="outline-primary" size="sm" onClick={() => navigate(`/employee/candidate/${result.response_id}`)}>
-                      <FiEye className="me-1" /> View
-                    </Button>
-                  </td>
+                    <td>
+                      <Link to={`/employee/candidate/${result.response_id}`}>
+                        <Button variant="outline-primary" size="sm">
+                          <FiEye className="me-1" /> View
+                        </Button>
+                      </Link>
+                    </td>
                 </tr>
               ))}
             </tbody>
