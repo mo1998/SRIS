@@ -69,13 +69,45 @@ jobs:
       - name: Run release candidate E2E smoke
         run: npm run test:e2e --prefix frontend
 
-  docker-config:
-    name: Docker Compose Config
+  docker-compose:
+    name: Docker Compose Smoke Test
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate Docker Compose config
+      - name: Build and start services
+        run: |
+          docker compose build postgres redis mailpit backend db-migrate
+          docker compose up -d postgres redis mailpit
+          echo "Waiting for postgres and redis to be healthy..."
+          timeout 60 bash -c '
+            until docker compose exec -T postgres pg_isready -U postgres 2>/dev/null; do sleep 2; done
+          '
+          echo "Running migrations..."
+          docker compose run --rm db-migrate 2>&1
+          echo "Starting backend..."
+          docker compose up -d backend
+          echo "Waiting for backend to be healthy..."
+          timeout 120 bash -c '
+            until docker compose exec -T backend python -c "import http.client; conn = http.client.HTTPConnection(\"localhost:8000\"); conn.request(\"GET\", \"/health\"); resp = conn.getresponse(); exit(0 if resp.status == 200 else 1)" 2>/dev/null; do
+              sleep 5
+            done
+          '
+          echo "Backend is healthy!"
+
+      - name: Smoke test API
+        run: |
+          BACKEND_URL="http://localhost:$(docker compose port backend 8000 | cut -d: -f2)"
+          echo "Backend available at $BACKEND_URL"
+          curl -sf "$BACKEND_URL/health" | python -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='healthy'; print('API health OK')"
+          curl -sf "$BACKEND_URL/api/auth/register" -X POST -H "Content-Type: application/json" -d '{"email":"ci@test.com","password":"Strong-password1","full_name":"CI Test","role":"employer","company_name":"CI Test Co"}' | python -c "import sys,json; d=json.load(sys.stdin); assert d['email']=='ci@test.com'; print('User creation OK')"
+          echo "API smoke test passed!"
+
+      - name: Validate Compose Config
         run: docker compose config
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v

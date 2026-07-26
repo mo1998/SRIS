@@ -2,7 +2,7 @@
 
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from alembic import context
 import os
 import sys
@@ -39,7 +39,7 @@ def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
-    
+
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",
@@ -47,9 +47,11 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        connection.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(64) NOT NULL, PRIMARY KEY (version_num))"))
+        connection.commit()
         context.configure(
             connection=connection,
-            target_metadata=target_metadata
+            target_metadata=target_metadata,
         )
 
         with context.begin_transaction():

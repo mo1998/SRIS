@@ -1,6 +1,5 @@
-version: '3.8'
-
 # Smart Remote Interview System - Docker Compose Configuration
+# Docker-internal URLs are hardcoded; env vars control only secrets/ports.
 
 services:
   # PostgreSQL Database
@@ -53,17 +52,19 @@ services:
       dockerfile: Dockerfile
     container_name: sris-backend
     environment:
+      # Docker-internal URLs (hardcoded for container networking)
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/sris_db
       REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
+      MAILPIT_API_URL: http://mailpit:8025/api/v1/send
+      FRONTEND_URL: http://localhost:80
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS_DOCKER:-["http://localhost","http://localhost:80","http://frontend","http://localhost:3000","http://localhost:5173"]}
+      # App config
       SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-this-in-production}
-      DEBUG: ${DEBUG:-False}
+      DEBUG: ${DEBUG:-True}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:-noreply@sris.com}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-SRIS}
-      MAILPIT_API_URL: ${MAILPIT_API_URL:-http://mailpit:8025/api/v1/send}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-["http://localhost","http://frontend"]}
-      EVALUATION_QUEUE_BACKEND: ${EVALUATION_QUEUE_BACKEND:-rq}
+      EVALUATION_QUEUE_BACKEND: rq
       EVALUATION_QUEUE_NAME: ${EVALUATION_QUEUE_NAME:-evaluation}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
@@ -77,6 +78,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      db-migrate:
+        condition: service_completed_successfully
     networks:
       - sris-network
     healthcheck:
@@ -98,6 +101,7 @@ services:
       - sris-network
     restart: unless-stopped
 
+  # RQ Worker for AI evaluation
   evaluation-worker:
     build:
       context: ./backend
@@ -112,7 +116,7 @@ services:
       EVALUATION_QUEUE_BACKEND: rq
       EVALUATION_QUEUE_NAME: ${EVALUATION_QUEUE_NAME:-evaluation}
       EVALUATION_PROMPT_VERSION: ${EVALUATION_PROMPT_VERSION:-rubric-v1}
-      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:8100/v1}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://host.docker.internal:8100/v1}
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3-8b-awq}
     volumes:
       - backend_uploads:/app/uploads
@@ -125,6 +129,8 @@ services:
     networks:
       - sris-network
     restart: unless-stopped
+    profiles:
+      - worker
 
   # Frontend (React + Nginx)
   frontend:
@@ -134,14 +140,13 @@ services:
     container_name: sris-frontend
     ports:
       - "${FRONTEND_PORT:-80}:80"
-      - "443:443"
     depends_on:
       - backend
     networks:
       - sris-network
     restart: unless-stopped
 
-  # Database Migration Service
+  # Database Migration Service (runs once on startup)
   db-migrate:
     build:
       context: ./backend
@@ -149,6 +154,8 @@ services:
     container_name: sris-migrate
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/sris_db
+      SECRET_KEY: ${SECRET_KEY:-ci-test-secret-key-not-for-production}
+      DEBUG: "True"
     command: python -m alembic upgrade head
     depends_on:
       postgres:
@@ -157,6 +164,7 @@ services:
       - sris-network
     volumes:
       - backend_uploads:/app/uploads
+    restart: "no"
 
 # Volumes
 volumes:
