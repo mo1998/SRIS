@@ -104,7 +104,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/sris_db
       REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
       MAILPIT_API_URL: http://mailpit:8025/api/v1/send
-      FRONTEND_URL: http://localhost:80
+      FRONTEND_URL: http://localhost:8081
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS_DOCKER:-["http://localhost","http://localhost:80","http://frontend","http://localhost:3000","http://localhost:5173"]}
       # App config
       SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-this-in-production}
