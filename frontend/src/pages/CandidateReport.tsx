@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAuth } from '../store/authStore'
 import { FiArrowLeft, FiDownload } from 'react-icons/fi'
+import InterviewFeedbackCard from '../components/ui/InterviewFeedbackCard'
 
 const CandidateReport: React.FC = () => {
   const { responseId } = useParams<{ responseId: string }>()
@@ -81,26 +82,9 @@ const CandidateReport: React.FC = () => {
     if (score >= 60) return 'score-medium'
     return 'score-low'
   }
-  
+
   const getEmotionClass = (emotion: string) => {
     return `emotion-${emotion.toLowerCase()}`
-  }
-
-  const renderEvidenceList = (items?: string[]) => {
-    if (!items || items.length === 0) return <span className="text-muted">None</span>
-    return (
-      <ul className="mb-0 ps-3">
-        {items.map((item) => <li key={item}>{item}</li>)}
-      </ul>
-    )
-  }
-
-  const getEvidenceItems = (answer: any, primaryKey: string, fallbackKey: string) => {
-    return answer.evidence?.[primaryKey] || answer.evidence?.[fallbackKey]
-  }
-
-  const getScoreEvidenceItems = (score: any, primaryKey: string, fallbackKey: string) => {
-    return score.evidence?.[primaryKey] || score.evidence?.[fallbackKey]
   }
 
   const formatDateTime = (value?: string) => {
@@ -243,71 +227,32 @@ const CandidateReport: React.FC = () => {
         </Col>
       </Row>
       
-      <Card>
-        <Card.Header>
-          <h5 className="mb-0">Question-by-Question Breakdown</h5>
+      <Card className="border-0">
+        <Card.Header className="bg-transparent px-0 pt-0 border-bottom-0">
+          <h5 className="mb-0 fw-semibold">Question-by-Question Breakdown</h5>
         </Card.Header>
-        <Card.Body>
-          <Table striped bordered responsive>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Question</th>
-                <th>Score</th>
-                <th>Emotion</th>
-                <th>Feedback</th>
-                <th>Evidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.answers.map((answer: any, idx: number) => (
-                <tr key={idx}>
-                  <td>{idx + 1}</td>
-                  <td style={{ maxWidth: '300px' }}>{answer.question}</td>
-                  <td>
-                    <Badge bg={answer.score >= 80 ? 'success' : answer.score >= 60 ? 'warning' : 'danger'}>
-                      {answer.score?.toFixed(1) || 0}%
-                    </Badge>
-                  </td>
-                  <td>
-                    {answer.emotion && (
-                      <span className={`emotion-badge ${getEmotionClass(answer.emotion)}`}>
-                        {answer.emotion}
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ maxWidth: '300px' }}>{answer.feedback}</td>
-                  <td style={{ minWidth: '260px' }}>
-                    {answer.feedback_ar && (
-                      <p className="mb-2"><strong>Arabic:</strong> {answer.feedback_ar}</p>
-                    )}
-                    {getEvidenceItems(answer, 'matched_criteria', 'matched_keywords') && (
-                      <div className="mb-2">
-                        <strong>Matched Criteria</strong>
-                        {renderEvidenceList(getEvidenceItems(answer, 'matched_criteria', 'matched_keywords'))}
-                      </div>
-                    )}
-                    {getEvidenceItems(answer, 'missing_criteria', 'missing_keywords') && (
-                      <div className="mb-2">
-                        <strong>Missing Criteria</strong>
-                        {renderEvidenceList(getEvidenceItems(answer, 'missing_criteria', 'missing_keywords'))}
-                      </div>
-                    )}
-                    {answer.evidence?.evidence && (
-                      <p className="mb-0"><strong>Evidence:</strong> {answer.evidence.evidence}</p>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+        <Card.Body className="px-0 pb-0">
+          {report.answers.map((answer: any, idx: number) => (
+            <InterviewFeedbackCard
+              key={idx}
+              questionNumber={idx + 1}
+              questionText={answer.question || `Question ${idx + 1}`}
+              expectedAnswer={answer.expected_answer}
+              answerText={answer.answer_text}
+              score={answer.score ?? 0}
+              emotion={answer.emotion}
+              feedbackEn={answer.feedback_en || answer.feedback}
+              feedbackAr={answer.feedback_ar}
+              evidence={answer.evidence}
+            />
+          ))}
         </Card.Body>
       </Card>
 
-      <Card className="mt-4">
-        <Card.Header>
+      <Card className="mt-4 border-0">
+        <Card.Header className="bg-transparent px-0 pt-0 border-bottom-0">
           <div className="d-flex justify-content-between align-items-center">
-            <h5 className="mb-0">Evaluation Audit Trail</h5>
+            <h5 className="mb-0 fw-semibold">Evaluation Audit Trail</h5>
             {canManageEvaluations && (
               <Button variant="outline-primary" size="sm" onClick={handleReevaluate} disabled={reevaluating}>
                 {reevaluating ? 'Re-evaluating...' : 'Re-evaluate'}
@@ -315,7 +260,7 @@ const CandidateReport: React.FC = () => {
             )}
           </div>
         </Card.Header>
-        <Card.Body>
+        <Card.Body className="px-0">
           {evaluationAudit.length === 0 ? (
             <p className="text-muted mb-0">No evaluation runs recorded.</p>
           ) : (
@@ -330,7 +275,7 @@ const CandidateReport: React.FC = () => {
                     </Badge>
                   </Accordion.Header>
                   <Accordion.Body>
-                    <Row className="mb-3">
+                    <Row className="mb-4 g-3">
                       <Col md={6}>
                         <p className="mb-1"><strong>Provider:</strong> {run.provider}</p>
                         <p className="mb-1"><strong>Model:</strong> {run.model_name || 'N/A'}</p>
@@ -346,42 +291,17 @@ const CandidateReport: React.FC = () => {
                       </Col>
                     </Row>
                     {run.error && <p className="text-danger"><strong>Error:</strong> {run.error}</p>}
-                    <Table size="sm" bordered responsive>
-                      <thead>
-                        <tr>
-                          <th>Question</th>
-                          <th>Score</th>
-                          <th>Feedback</th>
-                          <th>Evidence</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {run.scores.map((score: any) => (
-                          <tr key={score.id}>
-                            <td style={{ maxWidth: '260px' }}>{score.question || `Question ${score.question_id}`}</td>
-                            <td>{score.score.toFixed(1)}%</td>
-                            <td style={{ maxWidth: '280px' }}>{score.feedback_en || 'N/A'}</td>
-                            <td style={{ minWidth: '240px' }}>
-                              {getScoreEvidenceItems(score, 'matched_criteria', 'matched_keywords') && (
-                                <div className="mb-2">
-                                  <strong>Matched</strong>
-                                  {renderEvidenceList(getScoreEvidenceItems(score, 'matched_criteria', 'matched_keywords'))}
-                                </div>
-                              )}
-                              {getScoreEvidenceItems(score, 'missing_criteria', 'missing_keywords') && (
-                                <div className="mb-2">
-                                  <strong>Missing</strong>
-                                  {renderEvidenceList(getScoreEvidenceItems(score, 'missing_criteria', 'missing_keywords'))}
-                                </div>
-                              )}
-                              {score.evidence?.provider_fallback_from && (
-                                <p className="mb-0"><strong>Fallback:</strong> {score.evidence.provider_fallback_from}</p>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
+                    {run.scores.map((score: any, sIdx: number) => (
+                      <InterviewFeedbackCard
+                        key={score.id}
+                        questionNumber={sIdx + 1}
+                        questionText={score.question || `Question ${score.question_id}`}
+                        score={score.score}
+                        feedbackEn={score.feedback_en}
+                        feedbackAr={score.feedback_ar}
+                        evidence={score.evidence}
+                      />
+                    ))}
                   </Accordion.Body>
                 </Accordion.Item>
               ))}
