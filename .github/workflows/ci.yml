@@ -77,26 +77,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build backend image
-        uses: docker/build-push-action@v6
-        with:
-          context: backend
-          push: false
-          tags: sris-backend:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: docker build -t sris-backend:ci backend/
 
       - name: Build frontend image
-        uses: docker/build-push-action@v6
-        with:
-          context: frontend
-          push: false
-          tags: sris-frontend:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: docker build -t sris-frontend:ci frontend/
 
   docker-compose:
     name: Docker Compose Smoke Test
