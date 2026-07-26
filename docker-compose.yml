@@ -180,6 +180,12 @@ services:
         condition: service_healthy
     networks:
       - sris-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os, redis; redis.from_url(os.environ['REDIS_URL']).ping()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     profiles:
       - worker
