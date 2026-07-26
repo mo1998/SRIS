@@ -181,6 +181,32 @@ export EVALUATION_PROMPT_VERSION=rubric-v1
 
 The vLLM process should only be started after the selected model is approved and already available locally.
 
+Run the approved local Qwen model in Docker with the `model` profile:
+
+```bash
+LOCAL_MODEL_PATH=./models/qwen3-8b-awq \
+LOCAL_MODEL_PORT=8100 \
+LOCAL_MODEL_GPU_MEMORY_UTILIZATION=0.50 \
+CUDA_VISIBLE_DEVICES=0 \
+docker compose --profile model up -d local-model
+```
+
+The container exposes an OpenAI-compatible endpoint at `http://localhost:8100/v1` and mounts the model directory read-only at `/models/qwen3-8b-awq`. It uses the same serving parameters as the native command: model length `4096`, GPU memory utilization `0.50`, max sequences `8`, served model name `qwen3-8b-awq`, and `--trust-remote-code`.
+
+Verify the model server:
+
+```bash
+curl http://localhost:8100/v1/models
+```
+
+If you already have a local vLLM image and want to avoid pulling the default image, override `LOCAL_MODEL_IMAGE`, for example:
+
+```bash
+LOCAL_MODEL_IMAGE=vllm-service:latest docker compose --profile model up -d local-model
+```
+
+If vLLM reports that free GPU memory is slightly lower than the requested utilization, lower `LOCAL_MODEL_GPU_MEMORY_UTILIZATION`, for example `0.48`.
+
 ## Repository Structure
 
 ```text
