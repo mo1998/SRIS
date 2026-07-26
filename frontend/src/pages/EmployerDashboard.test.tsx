@@ -76,13 +76,13 @@ describe('EmployerDashboard', () => {
     renderDashboard()
 
     expect(await screen.findByText('SRIS Test Co')).toBeInTheDocument()
-    expect(screen.getByText(/evaluation agent health/i)).toBeInTheDocument()
+    expect(screen.getByText(/evaluation agent/i)).toBeInTheDocument()
     expect(screen.getByText(/local_vllm_unavailable_using_fallback/i)).toBeInTheDocument()
     expect(screen.getByText(/qwen3-8b-awq/i)).toBeInTheDocument()
     expect(screen.getByText(/deterministic_baseline/i)).toBeInTheDocument()
     expect(screen.getByText(/rubric-v1/i)).toBeInTheDocument()
     expect(screen.getByText(/cfg123/i)).toBeInTheDocument()
-    expect(screen.getByText(/email delivery health/i)).toBeInTheDocument()
+    expect(screen.getByText(/email delivery/i)).toBeInTheDocument()
     expect(screen.getByText(/configuration_incomplete/i)).toBeInTheDocument()
     expect(screen.getByText(/MAIL_FROM, MAIL_PASSWORD/i)).toBeInTheDocument()
     expect(screen.getByText('Team members: 1')).toBeInTheDocument()
@@ -97,7 +97,6 @@ describe('EmployerDashboard', () => {
         role: 'reviewer',
       })
     })
-    expect(await screen.findByText('Team member added')).toBeInTheDocument()
     expect(screen.getByText('reviewer')).toBeInTheDocument()
   })
 })

@@ -2,6 +2,8 @@ import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './store/authStore'
 import Navbar from './components/Navbar'
+import AppLayout from './components/layout/AppLayout'
+import LoadingSpinner from './components/ui/LoadingSpinner'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import EmployerDashboard from './pages/EmployerDashboard'
@@ -16,19 +18,30 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; roles?: string[] }> 
   const { isAuthenticated, isLoading, user } = useAuth()
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return <LoadingSpinner />
   }
-  
+
   if (!isAuthenticated) {
     return <Navigate to="/login" />
   }
-  
+
   if (roles && user && !roles.includes(user.role)) {
     return <Navigate to="/" />
   }
-  
+
   return <>{children}</>
 }
+
+const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <>
+    <Navbar />
+    <div className="container mt-4">{children}</div>
+  </>
+)
+
+const AuthenticatedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <AppLayout>{children}</AppLayout>
+)
 
 const AppRoutes: React.FC = () => {
   const { isAuthenticated, isLoading, user } = useAuth()
@@ -36,73 +49,77 @@ const AppRoutes: React.FC = () => {
   if (isLoading) {
     return (
       <Router>
-        <Navbar />
-        <div className="container mt-4">Loading...</div>
+        <LoadingSpinner />
       </Router>
     )
   }
-  
+
   return (
     <Router>
-      <Navbar />
-      <div className="container mt-4">
-        <Routes>
-          <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login />} />
-          <Route path="/register" element={isAuthenticated ? <Navigate to="/" /> : <Register />} />
-          
-          <Route path="/" element={
-            isAuthenticated ? (
-              user?.role === 'employer' ? <Navigate to="/employer/dashboard" /> : <Navigate to="/employee/results" />
-            ) : (
-              <Navigate to="/login" />
-            )
-          } />
-          
-          <Route path="/employer/dashboard" element={
-            <ProtectedRoute roles={['employer']}>
-              <EmployerDashboard />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/employer/interviews/create" element={
-            <ProtectedRoute roles={['employer']}>
-              <CreateInterview />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/employer/interviews/:id" element={
-            <ProtectedRoute roles={['employer']}>
-              <InterviewDetail />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/employer/candidate/:responseId" element={
-            <ProtectedRoute roles={['employer']}>
-              <CandidateReport />
-            </ProtectedRoute>
-          } />
+      <Routes>
+        <Route path="/login" element={
+          isAuthenticated ? <Navigate to="/" /> : (
+            <PublicLayout><Login /></PublicLayout>
+          )
+        } />
+        <Route path="/register" element={
+          isAuthenticated ? <Navigate to="/" /> : (
+            <PublicLayout><Register /></PublicLayout>
+          )
+        } />
 
-          <Route path="/account/settings" element={
-            <ProtectedRoute>
-              <AccountSettings />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/interview/:token" element={<InterviewRoom />} />
-          
-          <Route path="/employee/results" element={
-            <ProtectedRoute roles={['employee']}>
-              <MyResults />
-            </ProtectedRoute>
-          } />
+        <Route path="/" element={
+          isAuthenticated ? (
+            user?.role === 'employer' ? <Navigate to="/employer/dashboard" /> : <Navigate to="/employee/results" />
+          ) : (
+            <Navigate to="/login" />
+          )
+        } />
 
-          <Route path="/employee/candidate/:responseId" element={
-            <ProtectedRoute roles={['employee']}>
-              <CandidateReport />
-            </ProtectedRoute>
-          } />
-        </Routes>
-      </div>
+        <Route path="/employer/dashboard" element={
+          <ProtectedRoute roles={['employer']}>
+            <AuthenticatedLayout><EmployerDashboard /></AuthenticatedLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/employer/interviews/create" element={
+          <ProtectedRoute roles={['employer']}>
+            <AuthenticatedLayout><CreateInterview /></AuthenticatedLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/employer/interviews/:id" element={
+          <ProtectedRoute roles={['employer']}>
+            <AuthenticatedLayout><InterviewDetail /></AuthenticatedLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/employer/candidate/:responseId" element={
+          <ProtectedRoute roles={['employer']}>
+            <AuthenticatedLayout><CandidateReport /></AuthenticatedLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/account/settings" element={
+          <ProtectedRoute>
+            <AuthenticatedLayout><AccountSettings /></AuthenticatedLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/interview/:token" element={<InterviewRoom />} />
+
+        <Route path="/employee/results" element={
+          <ProtectedRoute roles={['employee']}>
+            <AuthenticatedLayout><MyResults /></AuthenticatedLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/employee/candidate/:responseId" element={
+          <ProtectedRoute roles={['employee']}>
+            <AuthenticatedLayout><CandidateReport /></AuthenticatedLayout>
+          </ProtectedRoute>
+        } />
+      </Routes>
     </Router>
   )
 }
