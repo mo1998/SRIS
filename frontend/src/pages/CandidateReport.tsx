@@ -244,6 +244,7 @@ const CandidateReport: React.FC = () => {
               feedbackEn={answer.feedback_en || answer.feedback}
               feedbackAr={answer.feedback_ar}
               evidence={answer.evidence}
+              videoUrl={answer.video_file_path ? answer.video_file_path.replace(/^uploads\//, '/static/') : undefined}
             />
           ))}
         </Card.Body>

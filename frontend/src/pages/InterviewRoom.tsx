@@ -3,13 +3,14 @@ import { Container, Row, Col, Card, Button, Alert, ProgressBar, Form } from 'rea
 import { useParams, useNavigate } from 'react-router-dom'
 import Webcam from 'react-webcam'
 import { api } from '../services/api'
-import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiCheck, FiArrowRight } from 'react-icons/fi'
+import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiCheck, FiArrowRight, FiCamera } from 'react-icons/fi'
 
 const InterviewRoom: React.FC = () => {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
   const webcamRef = useRef<Webcam>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const videoRecorderRef = useRef<MediaRecorder | null>(null)
   
   const [invitation, setInvitation] = useState<any>(null)
   const [interview, setInterview] = useState<any>(null)
@@ -19,6 +20,9 @@ const InterviewRoom: React.FC = () => {
   const [answerText, setAnswerText] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
+  const [isVideoRecording, setIsVideoRecording] = useState(false)
+  const [videoChunks, setVideoChunks] = useState<Blob[]>([])
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [step, setStep] = useState<'verification' | 'setup' | 'interview' | 'complete'>('verification')
@@ -134,6 +138,53 @@ const InterviewRoom: React.FC = () => {
       setIsRecording(false)
     }
   }
+
+  const startVideoRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+        ? 'video/webm;codecs=vp9,opus'
+        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? 'video/webm;codecs=vp8,opus'
+        : 'video/webm'
+      const mediaRecorder = new MediaRecorder(stream, { mimeType })
+      videoRecorderRef.current = mediaRecorder
+
+      const chunks: Blob[] = []
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data)
+        }
+      }
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' })
+        setVideoChunks(chunks)
+        setVideoPreviewUrl(URL.createObjectURL(blob))
+        stream.getTracks().forEach(track => track.stop())
+      }
+
+      mediaRecorder.start()
+      setIsVideoRecording(true)
+    } catch (err) {
+      console.error('Failed to start video recording:', err)
+    }
+  }
+
+  const stopVideoRecording = () => {
+    if (videoRecorderRef.current && videoRecorderRef.current.state !== 'inactive') {
+      videoRecorderRef.current.stop()
+      setIsVideoRecording(false)
+    }
+  }
+
+  const clearVideo = () => {
+    if (videoPreviewUrl) {
+      URL.revokeObjectURL(videoPreviewUrl)
+    }
+    setVideoChunks([])
+    setVideoPreviewUrl(null)
+  }
   
   const submitAnswer = async () => {
     if (!responseId || isSubmittingAnswer) return
@@ -141,15 +192,21 @@ const InterviewRoom: React.FC = () => {
     const currentQuestion = questions[currentQuestionIndex]
     const draftKey = getDraftKey(currentQuestion?.id)
     let audioBlob: File | undefined
+    let videoBlob: File | undefined
     
     if (audioChunks.length > 0) {
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       audioBlob = new File([blob], `answer_${currentQuestion.id}.webm`)
     }
+    
+    if (videoChunks.length > 0) {
+      const blob = new Blob(videoChunks, { type: 'video/webm' })
+      videoBlob = new File([blob], `answer_${currentQuestion.id}.webm`)
+    }
 
     setError('')
     setAnswerError('')
-    setUploadProgress(audioBlob ? 0 : 100)
+    setUploadProgress(audioBlob || videoBlob ? 0 : 100)
     setIsSubmittingAnswer(true)
     
     try {
@@ -158,6 +215,7 @@ const InterviewRoom: React.FC = () => {
         currentQuestion.id,
         answerText,
         audioBlob,
+        videoBlob,
         undefined,
         (progressEvent: any) => {
           if (!progressEvent.total) {
@@ -174,6 +232,7 @@ const InterviewRoom: React.FC = () => {
       
       setAnswerText('')
       setAudioChunks([])
+      clearVideo()
       
       if (currentQuestionIndex < questions.length - 1) {
         setCurrentQuestionIndex(currentQuestionIndex + 1)
@@ -442,13 +501,31 @@ const InterviewRoom: React.FC = () => {
                 <Button
                   variant={isRecording ? 'danger' : 'outline-primary'}
                   onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isSubmittingAnswer}
+                  disabled={isSubmittingAnswer || isVideoRecording}
                 >
                   {isRecording ? <FiMicOff className="me-2" /> : <FiMic className="me-2" />}
-                  {isRecording ? 'Stop Recording' : 'Record Audio'}
+                  {isRecording ? 'Stop Audio' : 'Record Audio'}
                 </Button>
+                <Button
+                  variant={isVideoRecording ? 'danger' : 'outline-secondary'}
+                  onClick={isVideoRecording ? stopVideoRecording : startVideoRecording}
+                  disabled={isSubmittingAnswer || isRecording}
+                >
+                  {isVideoRecording ? <FiVideoOff className="me-2" /> : <FiCamera className="me-2" />}
+                  {isVideoRecording ? 'Stop Video' : 'Record Video'}
+                </Button>
+                {videoPreviewUrl && !isVideoRecording && (
+                  <Button variant="outline-danger" size="sm" onClick={clearVideo}>
+                    Remove Video
+                  </Button>
+                )}
               </div>
               {audioChunks.length > 0 && <Alert variant="info">Audio recording is ready and will upload with this answer.</Alert>}
+              {videoPreviewUrl && !isVideoRecording && (
+                <div className="mb-3">
+                  <video src={videoPreviewUrl} controls style={{ width: '100%', maxHeight: 320, borderRadius: 8 }} />
+                </div>
+              )}
               {isSubmittingAnswer && (
                 <div className="mb-3">
                   <div className="d-flex justify-content-between mb-1">
@@ -467,7 +544,7 @@ const InterviewRoom: React.FC = () => {
                 >
                   Previous
                 </Button>
-                <Button variant="primary" onClick={submitAnswer} disabled={isSubmittingAnswer || (!answerText.trim() && audioChunks.length === 0)}>
+                <Button variant="primary" onClick={submitAnswer} disabled={isSubmittingAnswer || (!answerText.trim() && audioChunks.length === 0 && videoChunks.length === 0)}>
                   {currentQuestionIndex < questions.length - 1 ? (
                     <>
                       {answerError ? 'Retry Submission' : 'Next'} <FiArrowRight className="ms-2" />

@@ -265,6 +265,7 @@ class QuestionAnswer(Base):
     question_id = Column(Integer, ForeignKey("interview_questions.id"), nullable=False)
     answer_text = Column(Text, nullable=True)  # Transcribed text answer
     audio_file_path = Column(String(500), nullable=True)
+    video_file_path = Column(String(500), nullable=True)
     transcript = Column(Text, nullable=True)  # Auto-generated transcript from audio
     transcript_updated_at = Column(DateTime, nullable=True)
     score = Column(Float, nullable=True)  # Score for this answer

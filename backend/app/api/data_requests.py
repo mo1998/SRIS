@@ -219,6 +219,7 @@ def generate_export_file(data_request: DataExportRequest, db: Session) -> str:
                 "feedback": answer.feedback,
                 "time_taken_seconds": answer.time_taken_seconds,
                 "audio_file_path": answer.audio_file_path,
+                "video_file_path": answer.video_file_path,
                 "evaluation_scores": [
                     {
                         "score": s.score,
@@ -267,8 +268,11 @@ def delete_candidate_data(data_request: DataExportRequest, db: Session) -> None:
         for answer in response.question_answers:
             if answer.audio_file_path and os.path.exists(answer.audio_file_path):
                 os.remove(answer.audio_file_path)
+            if answer.video_file_path and os.path.exists(answer.video_file_path):
+                os.remove(answer.video_file_path)
             answer.answer_text = "[Deleted per data request]"
             answer.audio_file_path = None
+            answer.video_file_path = None
             answer.transcript = None
 
         response.candidate_name = "[Deleted]"

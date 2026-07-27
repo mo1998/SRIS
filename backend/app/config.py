@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     MAX_AUDIO_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_AUDIO_EXTENSIONS: List[str] = [".wav", ".mp3", ".webm", ".m4a", ".ogg"]
     MAX_VIDEO_SIZE: int = 100 * 1024 * 1024  # 100MB
+    ALLOWED_VIDEO_EXTENSIONS: List[str] = [".webm", ".mp4", ".mov"]
     
     # Interview Settings
     DEFAULT_INTERVIEW_DURATION: int = 30  # minutes

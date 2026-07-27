@@ -42,13 +42,17 @@ export const api = {
   // Responses
   responses: {
     start: (data: any) => axios.post(`${API_URL}/responses/`, data),
-    submitAnswer: (responseId: number, questionId: number, answerText: string, audioFile?: File, timeTaken?: number, onUploadProgress?: (progressEvent: any) => void) => {
+    submitAnswer: (responseId: number, questionId: number, answerText: string, audioFile?: File, videoFile?: File, timeTaken?: number, onUploadProgress?: (progressEvent: any) => void) => {
+      const hasFile = !!(audioFile || videoFile)
       const formData = new FormData()
       if (audioFile) {
         formData.append('audio_file', audioFile)
       }
-      return axios.post(`${API_URL}/responses/${responseId}/answer`, audioFile ? formData : null, {
-        ...(audioFile ? { headers: { 'Content-Type': 'multipart/form-data' } } : {}),
+      if (videoFile) {
+        formData.append('video_file', videoFile)
+      }
+      return axios.post(`${API_URL}/responses/${responseId}/answer`, hasFile ? formData : null, {
+        ...(hasFile ? { headers: { 'Content-Type': 'multipart/form-data' } } : {}),
         params: {
           question_id: questionId,
           answer_text: answerText,
