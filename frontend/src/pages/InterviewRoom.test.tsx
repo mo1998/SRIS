@@ -238,7 +238,7 @@ describe('InterviewRoom token verification', () => {
     await userEvent.click(screen.getByRole('button', { name: /submit & complete/i }))
 
     await waitFor(() => {
-      expect(apiMock.responses.submitAnswer).toHaveBeenCalledWith(99, 20, 'I would listen and follow up.', undefined, undefined, expect.any(Function))
+      expect(apiMock.responses.submitAnswer).toHaveBeenCalledWith(99, 20, 'I would listen and follow up.', undefined, undefined, undefined, expect.any(Function))
     })
     expect(apiMock.responses.submitQuality).not.toHaveBeenCalled()
     expect(apiMock.responses.submitEmotion).not.toHaveBeenCalled()

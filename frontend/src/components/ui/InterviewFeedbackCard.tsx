@@ -26,6 +26,7 @@ interface InterviewFeedbackCardProps {
   feedbackEn?: string
   feedbackAr?: string
   evidence?: Evidence | null
+  videoUrl?: string
   defaultExpanded?: boolean
 }
 
@@ -70,6 +71,7 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
   feedbackEn,
   feedbackAr,
   evidence,
+  videoUrl,
   defaultExpanded = false,
 }) => {
   const [expanded, setExpanded] = useState(defaultExpanded)
@@ -135,6 +137,12 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
                 <p className="mb-0 mt-1 p-3 bg-light rounded border-start border-4" style={{ borderLeftColor: '#6366f1', fontSize: '0.9rem' }}>
                   {answerText}
                 </p>
+              </div>
+            )}
+            {videoUrl && (
+              <div className="mb-3">
+                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>Recorded Video</small>
+                <video src={videoUrl} controls style={{ width: '100%', maxHeight: 400, borderRadius: 8 }} className="mt-1" />
               </div>
             )}
 

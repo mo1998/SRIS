@@ -101,10 +101,30 @@ def require_response_management(response: CandidateResponse, user: User, db: Ses
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient response management permissions")
 
 
-def delete_answer_audio_files(response: CandidateResponse) -> None:
+def validate_video_filename(filename: str) -> str:
+    extension = os.path.splitext(filename or "")[1].lower()
+    if extension not in settings.ALLOWED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported video file type",
+        )
+    return extension
+
+
+def validate_video_size(content: bytes) -> None:
+    if len(content) > settings.MAX_VIDEO_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Video file exceeds maximum size",
+        )
+
+
+def delete_answer_media_files(response: CandidateResponse) -> None:
     for answer in response.question_answers:
         if answer.audio_file_path and os.path.exists(answer.audio_file_path):
             os.remove(answer.audio_file_path)
+        if answer.video_file_path and os.path.exists(answer.video_file_path):
+            os.remove(answer.video_file_path)
 
 
 @router.post("/", response_model=CandidateResponseSummary, status_code=status.HTTP_201_CREATED)
@@ -185,6 +205,7 @@ async def submit_answer(
     question_id: int,
     answer_text: str,
     audio_file: Optional[UploadFile] = File(None),
+    video_file: Optional[UploadFile] = File(None),
     time_taken_seconds: int = None,
     db: Session = Depends(get_db)
 ):
@@ -223,12 +244,27 @@ async def submit_answer(
         with open(audio_path, "wb") as f:
             f.write(content)
     
+    # Save video file if provided
+    video_path = None
+    if video_file:
+        extension = validate_video_filename(video_file.filename)
+        content = await video_file.read()
+        validate_video_size(content)
+
+        os.makedirs("uploads/interviews/video", exist_ok=True)
+        video_filename = f"{uuid.uuid4()}_{video_file.filename}"
+        video_path = f"uploads/interviews/video/{video_filename}"
+        
+        with open(video_path, "wb") as f:
+            f.write(content)
+    
     # Create answer
     answer = QuestionAnswer(
         response_id=response_id,
         question_id=question_id,
         answer_text=answer_text,
         audio_file_path=audio_path,
+        video_file_path=video_path,
         time_taken_seconds=time_taken_seconds
     )
     
@@ -340,8 +376,11 @@ async def complete_interview_response(
     db.commit()
     enqueue_evaluation_run(response_id, evaluation_run.id, background_tasks)
 
-    has_audio = any(answer.audio_file_path for answer in candidate_response.question_answers)
-    if has_audio:
+    has_media = any(
+        answer.audio_file_path or answer.video_file_path
+        for answer in candidate_response.question_answers
+    )
+    if has_media:
         enqueue_transcription(response_id, background_tasks)
 
     from app.services.webhook_service import fire_event, build_event_payload
@@ -430,6 +469,6 @@ async def delete_response(
         organization_id=candidate_response.interview.organization_id if candidate_response.interview else None,
         details={"interview_id": candidate_response.interview_id, "candidate_email": candidate_response.candidate_email},
     )
-    delete_answer_audio_files(candidate_response)
+    delete_answer_media_files(candidate_response)
     db.delete(candidate_response)
     db.commit()
