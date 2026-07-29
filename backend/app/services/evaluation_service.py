@@ -500,7 +500,9 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
             "feedback_en": evaluation_score.feedback_en if evaluation_score else None,
             "feedback_ar": evaluation_score.feedback_ar if evaluation_score else None,
             "evidence": parse_evidence_json(evaluation_score.evidence_json) if evaluation_score else None,
-            "emotion": answer.emotion_during_answer
+            "emotion": answer.emotion_during_answer,
+            "video_file_path": answer.video_file_path,
+            "audio_file_path": answer.audio_file_path
         })
     
     disclosure_text = (
