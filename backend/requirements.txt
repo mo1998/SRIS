@@ -35,3 +35,6 @@ pillow==10.2.0
 deepface==0.0.100
 tf-keras==2.21.0
 opencv-python==4.10.0.84
+
+# Speech-to-Text (faster-whisper, multilingual AR/EN)
+faster-whisper==1.2.1
