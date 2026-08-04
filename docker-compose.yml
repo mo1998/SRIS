@@ -118,6 +118,7 @@ services:
       EVALUATION_PROMPT_VERSION: ${EVALUATION_PROMPT_VERSION:-rubric-v1}
       LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://local-model:8100/v1}
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3-8b-awq}
+      EMOTION_ANALYSIS_PROVIDER: ${EMOTION_ANALYSIS_PROVIDER:-deepface}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -170,6 +171,7 @@ services:
       EVALUATION_PROMPT_VERSION: ${EVALUATION_PROMPT_VERSION:-rubric-v1}
       LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://local-model:8100/v1}
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3-8b-awq}
+      EMOTION_ANALYSIS_PROVIDER: ${EMOTION_ANALYSIS_PROVIDER:-deepface}
     volumes:
       - backend_uploads:/app/uploads
       - backend_logs:/app/logs

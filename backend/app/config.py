@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     TRANSCRIPTION_QUEUE_BACKEND: str = os.getenv("TRANSCRIPTION_QUEUE_BACKEND", "background")
     TRANSCRIPTION_QUEUE_NAME: str = os.getenv("TRANSCRIPTION_QUEUE_NAME", "transcription")
 
+    # Emotion Analysis
+    EMOTION_ANALYSIS_PROVIDER: str = os.getenv("EMOTION_ANALYSIS_PROVIDER", "disabled")
+    EMOTION_FRAME_SAMPLE_SECONDS: float = float(os.getenv("EMOTION_FRAME_SAMPLE_SECONDS", "1.0"))
+    EMOTION_MAX_FRAMES: int = int(os.getenv("EMOTION_MAX_FRAMES", "60"))
+
     # Quality Thresholds
     MIN_VOICE_CONFIDENCE: float = 0.7
     MIN_FACE_VISIBILITY: float = 0.8
