@@ -27,6 +27,11 @@ reportlab==4.0.9
 fpdf2==2.7.7
 
 # Utilities
-python-dotenv==1.0.0
+python-dotenv==1.1.0
 httpx==0.26.0
 pillow==10.2.0
+
+# Emotion Analysis (DeepFace facial emotion detection)
+deepface==0.0.100
+tf-keras==2.21.0
+opencv-python==4.10.0.84

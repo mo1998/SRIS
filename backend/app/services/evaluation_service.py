@@ -203,6 +203,11 @@ def get_evaluation_provider() -> EvaluationProvider:
     return local_vllm_provider
 
 
+def get_emotion_provider_name() -> str:
+    from app.services.emotion_service import get_emotion_provider
+    return get_emotion_provider().name
+
+
 def parse_llm_json(content: str) -> Dict[str, object]:
     cleaned = re.sub(r"<think>.*?</think>", "", content or "", flags=re.DOTALL).strip()
     start = cleaned.find("{")
@@ -281,12 +286,22 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
     total_score = 0.0
     total_weight = 0.0
 
+    emotion_samples_by_answer = {}
+
     try:
         # Evaluate each answer
         for answer in answers:
             question = db.query(InterviewQuestion).filter(InterviewQuestion.id == answer.question_id).first()
             if not question:
                 continue
+
+            # Analyze facial emotion from recorded video (if available)
+            if answer.video_file_path:
+                from app.services.emotion_service import get_emotion_provider, serialize_timeline
+                emotion_result = await get_emotion_provider().analyze_video(answer.video_file_path)
+                if emotion_result and emotion_result.timeline:
+                    answer.emotion_during_answer = emotion_result.dominant_emotion
+                    emotion_samples_by_answer[answer.id] = serialize_timeline(emotion_result.timeline)
 
             # Score the answer
             if answer.answer_text and question.expected_answer:
@@ -312,8 +327,9 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
                 evidence_json=json.dumps(result.evidence, ensure_ascii=False),
             ))
 
-            # Calculate emotion during this answer
-            if response.emotion_timeline:
+            # Calculate emotion during this answer (legacy frontend-submitted timeline,
+            # only when video-based facial analysis produced no result)
+            if response.emotion_timeline and answer.id not in emotion_samples_by_answer:
                 try:
                     timeline = json.loads(response.emotion_timeline)
                     if timeline:
@@ -340,7 +356,19 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
         response.total_score = 0.0
     
     # Calculate emotion/confidence score
-    if response.emotion_timeline:
+    if emotion_samples_by_answer:
+        # Aggregate per-answer facial emotion samples into a response timeline
+        all_samples = []
+        for answer_id in sorted(emotion_samples_by_answer):
+            all_samples.extend(emotion_samples_by_answer[answer_id])
+        if all_samples:
+            response.emotion_timeline = json.dumps(all_samples, ensure_ascii=False)
+            from collections import Counter
+            dominant = Counter(s.get("emotion", "neutral") for s in all_samples).most_common(1)
+            if dominant:
+                response.dominant_emotion = dominant[0][0]
+            response.confidence_score = await calculate_emotion_score(response.emotion_timeline)
+    elif response.emotion_timeline:
         response.confidence_score = await calculate_emotion_score(response.emotion_timeline)
     
     # Calculate overall quality score
@@ -764,8 +792,9 @@ def get_ai_disclosure() -> Dict[str, object]:
             "model": "simulated (fake provider)" if trans_provider.name == "fake_transcriber" else "speech-to-text model",
         },
         "emotion_analysis": {
-            "enabled": False,
-            "purpose": "Not used for scoring or hiring decisions. Emotion timeline data may be collected for operational quality analysis only.",
+            "enabled": get_emotion_provider_name() != "disabled",
+            "provider": get_emotion_provider_name(),
+            "purpose": "Facial expression analysis of recorded interview video using DeepFace (open source). Emotion data is collected for operational quality analysis only.",
             "scoring_impact": "none",
         },
         "disclosure": (
