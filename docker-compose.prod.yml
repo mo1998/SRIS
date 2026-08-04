@@ -104,6 +104,8 @@ services:
       LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:8100/v1}
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3-8b-awq}
       EMOTION_ANALYSIS_PROVIDER: ${EMOTION_ANALYSIS_PROVIDER:-deepface}
+      TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-whisper}
+      WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-small}
     volumes:
       - backend_uploads:/app/uploads
       - backend_logs:/app/logs

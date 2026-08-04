@@ -303,9 +303,22 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
                     answer.emotion_during_answer = emotion_result.dominant_emotion
                     emotion_samples_by_answer[answer.id] = serialize_timeline(emotion_result.timeline)
 
+            # Ensure a transcript exists for recorded answers so spoken responses
+            # can be scored. Transcription runs inline (not background) to avoid
+            # racing the background transcription job.
+            answer_text = answer.answer_text or ""
+            if not answer_text.strip() and answer.audio_file_path:
+                from app.services.transcription_service import transcribe_answer
+                try:
+                    await transcribe_answer(answer.id, db)
+                    db.refresh(answer)
+                    answer_text = answer.transcript or ""
+                except Exception as exc:
+                    print(f"Transcription failed for answer {answer.id}: {exc}")
+
             # Score the answer
-            if answer.answer_text and question.expected_answer:
-                result = await provider.evaluate_answer(answer.answer_text, question.expected_answer, serialize_rubric_criteria(question))
+            if answer_text and question.expected_answer:
+                result = await provider.evaluate_answer(answer_text, question.expected_answer, serialize_rubric_criteria(question))
                 answer.score = result.score
                 answer.feedback = result.feedback
             else:
@@ -523,6 +536,7 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
             "question": question.question_text if question else "Unknown",
             "expected_answer": question.expected_answer if question else "",
             "answer_text": answer.answer_text,
+            "transcript": answer.transcript,
             "score": answer.score,
             "feedback": answer.feedback,
             "feedback_en": evaluation_score.feedback_en if evaluation_score else None,
@@ -788,8 +802,8 @@ def get_ai_disclosure() -> Dict[str, object]:
         "transcription": {
             "provider": trans_provider.name,
             "provider_version": getattr(trans_provider, "version", None),
-            "purpose": "Conversion of audio responses to text for evaluation and review.",
-            "model": "simulated (fake provider)" if trans_provider.name == "fake_transcriber" else "speech-to-text model",
+            "purpose": "Conversion of recorded audio responses to text for evaluation and review.",
+            "model": "faster-whisper (multilingual, Arabic + English)" if trans_provider.name == "whisper" else "simulated (fake provider)",
         },
         "emotion_analysis": {
             "enabled": get_emotion_provider_name() != "disabled",

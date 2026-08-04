@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     TRANSCRIPTION_PROVIDER: str = os.getenv("TRANSCRIPTION_PROVIDER", "fake")
     TRANSCRIPTION_QUEUE_BACKEND: str = os.getenv("TRANSCRIPTION_QUEUE_BACKEND", "background")
     TRANSCRIPTION_QUEUE_NAME: str = os.getenv("TRANSCRIPTION_QUEUE_NAME", "transcription")
+    WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "small")
+    WHISPER_DEVICE: str = os.getenv("WHISPER_DEVICE", "cpu")
+    WHISPER_COMPUTE_TYPE: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+    WHISPER_VAD_FILTER: bool = os.getenv("WHISPER_VAD_FILTER", "true").lower() == "true"
 
     # Emotion Analysis
     EMOTION_ANALYSIS_PROVIDER: str = os.getenv("EMOTION_ANALYSIS_PROVIDER", "disabled")

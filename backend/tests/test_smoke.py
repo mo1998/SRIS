@@ -1879,6 +1879,93 @@ def test_transcript_unauthorized(client):
     assert update_response.status_code in (403, 404)
 
 
+def test_audio_only_answer_scored_from_transcript(client, monkeypatch):
+    """Audio-only answers (no typed text) get scored from the transcribed speech."""
+    from unittest.mock import AsyncMock
+
+    from app.services.transcription_service import TranscriptionResult
+
+    class StubWhisperProvider:
+        name = "whisper"
+        version = "1.0.0"
+
+        async def transcribe_audio(self, audio_path):
+            return TranscriptionResult(
+                transcript="I listen and empathize with the customer.",
+                detected_language="en",
+                confidence=0.9,
+            )
+
+    monkeypatch.setattr(
+        "app.services.transcription_service.get_transcription_provider",
+        lambda: StubWhisperProvider(),
+    )
+
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+
+    activate_response = client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    invite_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "interview_id": interview_id,
+            "candidate_email": "audio-candidate@test.com",
+            "candidate_name": "Audio Candidate",
+        },
+    )
+    assert invite_response.status_code == 201, invite_response.text
+    invite = invite_response.json()
+
+    verify_response = client.get(f"/api/invitations/verify/{invite['unique_token']}")
+    assert verify_response.status_code == 200, verify_response.text
+
+    start_response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview_id,
+            "candidate_email": "audio-candidate@test.com",
+            "candidate_name": "Audio Candidate",
+            "invitation_token": invite["unique_token"],
+        },
+    )
+    assert start_response.status_code == 201, start_response.text
+    response_id = start_response.json()["id"]
+
+    answer_response = client.post(
+        f"/api/responses/{response_id}/answer",
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "",
+            "time_taken_seconds": 90,
+        },
+        files={"audio_file": ("answer.wav", WAV_BYTES, "audio/wav")},
+    )
+    assert answer_response.status_code == 200, answer_response.text
+    assert answer_response.json()["audio_file_path"]
+
+    complete_response = client.post(f"/api/responses/{response_id}/complete")
+    assert complete_response.status_code == 200, complete_response.text
+
+    report_response = client.get(
+        f"/api/reports/candidate/{response_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert report_response.status_code == 200, report_response.text
+    report = report_response.json()
+
+    answer_report = report["answers"][0]
+    assert "I listen and empathize with the customer." in answer_report["transcript"]
+    assert answer_report["score"] > 0
+
+
 def test_data_export_request_flow(client):
     """Test requesting and processing a data export."""
     register_user(client)
