@@ -275,6 +275,108 @@ async def submit_answer(
     return answer
 
 
+@router.put("/{response_id}/answer/{question_id}", response_model=QuestionAnswerSchema)
+async def retake_answer(
+    response_id: int,
+    question_id: int,
+    answer_text: str,
+    audio_file: Optional[UploadFile] = File(None),
+    video_file: Optional[UploadFile] = File(None),
+    time_taken_seconds: int = None,
+    db: Session = Depends(get_db)
+):
+    """Retake/edit an answer while the response is still in progress.
+    Replaces the recorded text/media so candidates can fix mistakes."""
+    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
+    if not candidate_response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+    if candidate_response.status != "in_progress":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response is not in progress")
+
+    answer = db.query(QuestionAnswer).filter(
+        QuestionAnswer.response_id == response_id,
+        QuestionAnswer.question_id == question_id,
+    ).first()
+    if not answer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Answer not found")
+
+    # Replace audio/video media files (delete old ones)
+    audio_path = answer.audio_file_path
+    video_path = answer.video_file_path
+    if audio_file:
+        extension = validate_audio_filename(audio_file.filename)
+        content = await audio_file.read()
+        validate_audio_size(content)
+        validate_audio_content(extension, content)
+        os.makedirs("uploads/interviews/audio", exist_ok=True)
+        audio_filename = f"{uuid.uuid4()}_{audio_file.filename}"
+        audio_path = f"uploads/interviews/audio/{audio_filename}"
+        with open(audio_path, "wb") as f:
+            f.write(content)
+    if video_file:
+        extension = validate_video_filename(video_file.filename)
+        content = await video_file.read()
+        validate_video_size(content)
+        os.makedirs("uploads/interviews/video", exist_ok=True)
+        video_filename = f"{uuid.uuid4()}_{video_file.filename}"
+        video_path = f"uploads/interviews/video/{video_filename}"
+        with open(video_path, "wb") as f:
+            f.write(content)
+
+    # Remove old media files that were replaced
+    for old_path, new_path in ((answer.audio_file_path, audio_path), (answer.video_file_path, video_path)):
+        if old_path and old_path != new_path and os.path.exists(old_path):
+            try:
+                os.remove(old_path)
+            except OSError:
+                pass
+
+    answer.answer_text = answer_text
+    answer.audio_file_path = audio_path
+    answer.video_file_path = video_path
+    answer.time_taken_seconds = time_taken_seconds
+    answer.transcript = None
+    answer.transcript_updated_at = None
+    answer.score = None
+    answer.feedback = None
+    answer.emotion_during_answer = None
+    db.commit()
+    db.refresh(answer)
+    return answer
+
+
+@router.post("/{response_id}/integrity-events")
+async def submit_integrity_events(
+    response_id: int,
+    events: List[dict],
+    db: Session = Depends(get_db)
+):
+    """Record client-side integrity events (tab switches, window blurs)
+    for anti-cheating analysis."""
+    if not settings.INTEGRITY_TRACKING_ENABLED:
+        return {"recorded": 0}
+
+    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
+    if not candidate_response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+
+    from app.models import IntegrityEvent
+
+    allowed = {"tab_hidden", "tab_visible", "window_blur", "window_focus", "context_menu"}
+    recorded = 0
+    for event in events:
+        event_type = str(event.get("event_type", ""))
+        if event_type in allowed:
+            db.add(IntegrityEvent(
+                response_id=response_id,
+                event_type=event_type,
+                details=str(event.get("details", ""))[:500],
+            ))
+            recorded += 1
+    db.commit()
+    return {"recorded": recorded}
+
+
 @router.post("/{response_id}/quality", response_model=QualityCheckResult)
 async def submit_quality_metrics(
     response_id: int,
@@ -355,7 +457,26 @@ async def complete_interview_response(
     
     if candidate_response.status != "in_progress":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response is not in progress")
-    
+
+    # Server-side timer enforcement: flag if the candidate exceeded the
+    # interview duration (client timers can be tampered with).
+    interview_duration_minutes = candidate_response.interview.duration_minutes if candidate_response.interview else None
+    if (
+        settings.INTEGRITY_TRACKING_ENABLED
+        and interview_duration_minutes
+        and candidate_response.started_at
+    ):
+        elapsed_seconds = (datetime.utcnow() - candidate_response.started_at).total_seconds()
+        max_seconds = interview_duration_minutes * 60 + settings.INTERVIEW_DURATION_GRACE_SECONDS
+        if elapsed_seconds > max_seconds:
+            from app.models import IntegrityEvent
+            db.add(IntegrityEvent(
+                response_id=response_id,
+                event_type="timer_expired",
+                details=f"Completed {int(elapsed_seconds)}s after start; limit {int(max_seconds)}s",
+            ))
+            db.commit()
+
     # Update status
     candidate_response.status = "completed"
     candidate_response.completed_at = datetime.utcnow()

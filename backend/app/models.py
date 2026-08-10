@@ -255,6 +255,7 @@ class CandidateResponse(Base):
     invitation = relationship("Invitation")
     question_answers = relationship("QuestionAnswer", back_populates="response", cascade="all, delete-orphan")
     evaluation_runs = relationship("EvaluationRun", back_populates="response", cascade="all, delete-orphan")
+    integrity_events = relationship("IntegrityEvent", back_populates="response", cascade="all, delete-orphan")
 
 
 class QuestionAnswer(Base):
@@ -317,9 +318,20 @@ class EvaluationScore(Base):
     question = relationship("InterviewQuestion")
 
 
+class IntegrityEvent(Base):
+    __tablename__ = "integrity_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    response_id = Column(Integer, ForeignKey("candidate_responses.id"), nullable=False, index=True)
+    event_type = Column(String(50), nullable=False, index=True)  # tab_hidden, window_blur, timer_expired, etc.
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    response = relationship("CandidateResponse", back_populates="integrity_events")
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
-
     id = Column(Integer, primary_key=True, index=True)
     actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     action = Column(String(100), nullable=False, index=True)
