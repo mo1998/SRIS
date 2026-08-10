@@ -15,17 +15,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        'question_bank_entries',
-        sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('owner_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False, index=True),
-        sa.Column('question_text', sa.Text(), nullable=False),
-        sa.Column('expected_answer', sa.Text(), nullable=True),
-        sa.Column('question_type', sa.String(50), nullable=False, server_default='text'),
-        sa.Column('options', sa.Text(), nullable=True),
-        sa.Column('weight', sa.Float(), nullable=False, server_default='1.0'),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-    )
+    op.execute("CREATE TABLE IF NOT EXISTS question_bank_entries (id SERIAL PRIMARY KEY, owner_id INTEGER NOT NULL, question_text TEXT NOT NULL, expected_answer TEXT, question_type VARCHAR(50) NOT NULL DEFAULT 'text', options TEXT, weight FLOAT NOT NULL DEFAULT 1.0, created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, FOREIGN KEY(owner_id) REFERENCES users(id))")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_question_bank_entries_owner_id ON question_bank_entries (owner_id)")
 
 
 def downgrade() -> None:

@@ -15,14 +15,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        'integrity_events',
-        sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('response_id', sa.Integer(), sa.ForeignKey('candidate_responses.id'), nullable=False, index=True),
-        sa.Column('event_type', sa.String(50), nullable=False, index=True),
-        sa.Column('details', sa.Text(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-    )
+    op.execute("CREATE TABLE IF NOT EXISTS integrity_events (id SERIAL PRIMARY KEY, response_id INTEGER NOT NULL, event_type VARCHAR(50) NOT NULL, details TEXT, created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, FOREIGN KEY(response_id) REFERENCES candidate_responses(id))")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_integrity_events_response_id ON integrity_events (response_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_integrity_events_event_type ON integrity_events (event_type)")
 
 
 def downgrade() -> None:
