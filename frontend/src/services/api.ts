@@ -85,6 +85,16 @@ export const api = {
       axios.get(`${API_URL}/reports/interview/${interviewId}/pdf`, { responseType: 'blob' }),
     downloadCandidatePdf: (responseId: number) => 
       axios.get(`${API_URL}/reports/candidate/${responseId}/pdf`, { responseType: 'blob' }),
+    exportInterviewCsv: (interviewId: number) => 
+      axios.get(`${API_URL}/reports/interview/${interviewId}/export.csv`, { responseType: 'blob' }),
+    getComparison: (interviewId: number) => 
+      axios.get(`${API_URL}/reports/interview/${interviewId}/comparison`),
+    getQuestionAnalytics: (interviewId: number) => 
+      axios.get(`${API_URL}/reports/interview/${interviewId}/question-analytics`),
+    getCandidateProfile: (candidateEmail: string) => 
+      axios.get(`${API_URL}/reports/candidate/profile/${encodeURIComponent(candidateEmail)}`),
+    getPlagiarismReport: (interviewId: number) => 
+      axios.get(`${API_URL}/reports/interview/${interviewId}/plagiarism`),
     getMyResults: () => axios.get(`${API_URL}/reports/my-results`)
   }
 }

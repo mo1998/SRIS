@@ -34,6 +34,10 @@ const InterviewDetail: React.FC = () => {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [batchReevaluating, setBatchReevaluating] = useState(false)
+  const [showComparisonModal, setShowComparisonModal] = useState(false)
+  const [comparisonData, setComparisonData] = useState<any>(null)
+  const [questionAnalytics, setQuestionAnalytics] = useState<any>(null)
+  const [comparisonLoading, setComparisonLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   
   useEffect(() => {
@@ -357,6 +361,38 @@ const InterviewDetail: React.FC = () => {
     }
   }
 
+  const handleExportCsv = async () => {
+    try {
+      const response = await api.reports.exportInterviewCsv(parseInt(id!))
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `interview_${id}_responses.csv`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+    } catch (error) {
+      console.error('Failed to export CSV:', error)
+    }
+  }
+
+  const handleShowComparison = async () => {
+    setShowComparisonModal(true)
+    setComparisonLoading(true)
+    try {
+      const [comparisonRes, analyticsRes] = await Promise.all([
+        api.reports.getComparison(parseInt(id!)),
+        api.reports.getQuestionAnalytics(parseInt(id!)),
+      ])
+      setComparisonData(comparisonRes.data)
+      setQuestionAnalytics(analyticsRes.data)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to load comparison')
+    } finally {
+      setComparisonLoading(false)
+    }
+  }
+
   const handleBatchReevaluate = async () => {
     if (!confirm('Queue re-evaluation for all completed responses in this interview?')) {
       return
@@ -452,6 +488,18 @@ const InterviewDetail: React.FC = () => {
           {responses.some((response) => response.status === 'completed') && (
             <Button variant="outline-primary" onClick={handleBatchReevaluate} disabled={batchReevaluating}>
               {batchReevaluating ? 'Queueing...' : 'Re-evaluate All'}
+            </Button>
+          )}
+          {responses.some((response) => response.status === 'completed') && (
+            <Button variant="outline-primary" onClick={handleShowComparison}>
+              <FiActivity className="me-2" />
+              Compare
+            </Button>
+          )}
+          {responses.length > 0 && (
+            <Button variant="outline-dark" onClick={handleExportCsv}>
+              <FiDownload className="me-2" />
+              Export CSV
             </Button>
           )}
         </div>
@@ -935,6 +983,109 @@ const InterviewDetail: React.FC = () => {
               </Table>
             </Tab>
           </Tabs>
+        </Modal.Body>
+      </Modal>
+
+      {/* Comparison Modal */}
+      <Modal show={showComparisonModal} onHide={() => setShowComparisonModal(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Candidate Comparison</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {comparisonLoading ? (
+            <p className="text-center text-muted">Loading comparison...</p>
+          ) : comparisonData ? (
+            <>
+              <Table striped bordered hover responsive size="sm">
+                <thead>
+                  <tr>
+                    <th>Candidate</th>
+                    <th>Overall Score</th>
+                    <th>Pass/Fail</th>
+                    <th>Questions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comparisonData.candidates?.map((candidate: any) => (
+                    <tr key={candidate.response_id}>
+                      <td>
+                        <Link to={`/employer/candidate/${candidate.response_id}`}>
+                          {candidate.candidate_name}
+                        </Link>
+                      </td>
+                      <td>
+                        <Badge bg={candidate.total_score >= (interview?.pass_score || 70) ? 'success' : 'danger'}>
+                          {candidate.total_score?.toFixed(1) || 0}%
+                        </Badge>
+                      </td>
+                      <td>
+                        <Badge bg={candidate.passed ? 'success' : 'danger'}>
+                          {candidate.passed ? 'Pass' : 'Fail'}
+                        </Badge>
+                      </td>
+                      <td>
+                        <Table size="sm" className="mb-0">
+                          <thead>
+                            <tr>
+                              {candidate.question_scores?.map((answer: any, i: number) => (
+                                <th key={i}>{answer.question.length > 12 ? `${answer.question.slice(0, 12)}...` : answer.question}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              {candidate.question_scores?.map((answer: any, i: number) => (
+                                <td key={i}>
+                                  <Badge bg={answer.score === null ? 'light' : answer.score >= 70 ? 'success' : answer.score >= 50 ? 'warning' : 'danger'}>
+                                    {answer.score === null ? 'N/A' : `${answer.score.toFixed(0)}%`}
+                                  </Badge>
+                                </td>
+                              ))}
+                            </tr>
+                          </tbody>
+                        </Table>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+
+              {questionAnalytics && questionAnalytics.questions?.length > 0 && (
+                <>
+                  <hr />
+                  <h6>Question Analytics</h6>
+                  <Table striped bordered hover responsive size="sm">
+                    <thead>
+                      <tr>
+                        <th>Question</th>
+                        <th>Responses</th>
+                        <th>Avg Score</th>
+                        <th>Difficulty</th>
+                        <th>Discrimination</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {questionAnalytics.questions.map((q: any, i: number) => (
+                        <tr key={i}>
+                          <td>{q.question}</td>
+                          <td>{q.response_count}</td>
+                          <td>{q.average_score?.toFixed(1)}%</td>
+                          <td>
+                            <Badge bg={q.difficulty === 'hard' ? 'danger' : q.difficulty === 'medium' ? 'warning' : 'success'}>
+                              {q.difficulty}
+                            </Badge>
+                          </td>
+                          <td>{q.discrimination?.toFixed(2) ?? 'N/A'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </>
+              )}
+            </>
+          ) : (
+            <p className="text-center text-muted">No completed responses to compare.</p>
+          )}
         </Modal.Body>
       </Modal>
     </div>

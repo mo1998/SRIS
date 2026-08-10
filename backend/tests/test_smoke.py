@@ -2228,6 +2228,106 @@ def test_candidate_comparison_api(client):
     assert data["candidates"][0]["question_scores"][0]["score"] > data["candidates"][1]["question_scores"][0]["score"]
 
 
+def test_candidate_profile_and_question_analytics(client):
+    """Employers can view candidate CRM profile and per-question analytics."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    candidate_response = start_candidate_response(client, interview_id, email="analytics@test.com")
+    client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen and empathize with the customer."},
+    )
+    client.post(f"/api/responses/{candidate_response['id']}/complete")
+
+    profile_response = client.get(
+        f"/api/reports/candidate/profile/analytics@test.com",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert profile_response.status_code == 200, profile_response.text
+    profile = profile_response.json()
+    assert profile["candidate_email"] == "analytics@test.com"
+    assert profile["total_responses"] >= 1
+    assert profile["history"][0]["interview_title"] == "Customer Support Screen"
+
+    analytics_response = client.get(
+        f"/api/reports/interview/{interview_id}/question-analytics",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert analytics_response.status_code == 200, analytics_response.text
+    analytics = analytics_response.json()
+    assert len(analytics["questions"]) == 1
+    q = analytics["questions"][0]
+    assert q["response_count"] == 1
+    assert q["average_score"] > 0
+    assert q["difficulty"] in ("easy", "medium", "hard")
+
+
+def test_export_interview_csv(client):
+    """Employers can export candidate responses as CSV."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    candidate_response = start_candidate_response(client, interview_id, email="export@test.com")
+    client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen and empathize."},
+    )
+    client.post(f"/api/responses/{candidate_response['id']}/complete")
+
+    export_response = client.get(
+        f"/api/reports/interview/{interview_id}/export.csv",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert export_response.status_code == 200, export_response.text
+    assert "text/csv" in export_response.headers["content-type"]
+    assert "attachment" in export_response.headers["content-disposition"]
+    body = export_response.text
+    assert "Candidate Name" in body
+    assert "export@test.com" in body
+
+
+def test_plagiarism_detection(client):
+    """Near-duplicate answers between candidates are flagged."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    for email in ("plag-a@test.com", "plag-b@test.com"):
+        candidate_response = start_candidate_response(client, interview_id, email=email)
+        client.post(
+            f"/api/responses/{candidate_response['id']}/answer",
+            params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen actively and empathize with the customer and follow up."},
+        )
+        client.post(f"/api/responses/{candidate_response['id']}/complete")
+
+    plagiarism_response = client.get(
+        f"/api/reports/interview/{interview_id}/plagiarism",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert plagiarism_response.status_code == 200, plagiarism_response.text
+    report = plagiarism_response.json()
+    assert report["flag_count"] >= 1
+    assert report["flagged_pairs"][0]["question"] == "How do you handle an upset customer?"
+
+
 def test_data_export_request_flow(client):
     """Test requesting and processing a data export."""
     register_user(client)
