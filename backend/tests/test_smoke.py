@@ -2549,3 +2549,179 @@ def test_webhook_unauthorized(client):
         },
     )
     assert response.status_code == 403
+
+
+def test_maintenance_expiry_sweep(client):
+    """The maintenance job marks expired sent/pending invitations as expired."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "interview_id": interview_id,
+            "candidate_email": "expiring@test.com",
+            "candidate_name": "Expiring Candidate",
+        },
+    )
+    assert response.status_code == 201, response.text
+    invitation_id = response.json()["id"]
+
+    from app.services.maintenance_service import sweep_expired_invitations
+    from app.database import SessionLocal
+    from app.models import Invitation
+    from datetime import datetime, timedelta
+
+    db = SessionLocal()
+    try:
+        invitation = db.query(Invitation).filter(Invitation.id == invitation_id).first()
+        invitation.expires_at = datetime.utcnow() - timedelta(minutes=5)
+        db.commit()
+
+        count = sweep_expired_invitations(db)
+        assert count >= 1
+
+        db.refresh(invitation)
+        assert invitation.status.value == "expired"
+    finally:
+        db.close()
+
+
+def test_maintenance_reminders(client, monkeypatch):
+    """The maintenance job sends reminders to stale invitations and tracks counts."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "interview_id": interview_id,
+            "candidate_email": "reminder@test.com",
+            "candidate_name": "Reminder Candidate",
+        },
+    )
+    assert response.status_code == 201, response.text
+    invitation_id = response.json()["id"]
+
+    from app.services.maintenance_service import send_invitation_reminders
+    from app.database import SessionLocal
+    from app.models import Invitation
+    from datetime import datetime, timedelta
+
+    import app.services.email_service as email_service
+    sent_reminders = []
+
+    def fake_send_reminder_email(**kwargs):
+        sent_reminders.append(kwargs)
+        return None
+
+    monkeypatch.setattr(email_service, "send_reminder_email", fake_send_reminder_email)
+
+    db = SessionLocal()
+    try:
+        invitation = db.query(Invitation).filter(Invitation.id == invitation_id).first()
+        invitation.sent_at = datetime.utcnow() - timedelta(days=3)
+        invitation.reminder_count = 0
+        db.commit()
+
+        count = send_invitation_reminders(db)
+        assert count == 1
+        assert len(sent_reminders) == 1
+        assert sent_reminders[0]["to_email"] == "reminder@test.com"
+        assert sent_reminders[0]["reminder_number"] == 1
+
+        db.refresh(invitation)
+        assert invitation.reminder_count == 1
+        assert invitation.last_reminder_at is not None
+    finally:
+        db.close()
+
+
+def test_question_bank_crud(client):
+    """Employers can save, list, and delete reusable questions."""
+    register_user(client)
+    token = login_user(client)
+
+    response = client.post(
+        "/api/interviews/question-bank",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "question_text": "Describe a time you led a team under pressure.",
+            "expected_answer": "STAR format with clear ownership.",
+            "question_type": "text",
+            "weight": 1.5,
+        },
+    )
+    assert response.status_code == 201, response.text
+    entry_id = response.json()["id"]
+
+    list_response = client.get(
+        "/api/interviews/question-bank",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert list_response.status_code == 200
+    entries = list_response.json()
+    assert any(entry["id"] == entry_id for entry in entries)
+    assert entries[0]["question_text"].startswith("Describe a time")
+
+    delete_response = client.delete(
+        f"/api/interviews/question-bank/{entry_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert delete_response.status_code == 204
+
+    list_after = client.get(
+        "/api/interviews/question-bank",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert not any(entry["id"] == entry_id for entry in list_after.json())
+
+
+def test_question_bank_owner_isolation(client):
+    """Employers only see their own saved questions."""
+    register_user(client, email="bank-owner@test.com")
+    token = login_user(client, email="bank-owner@test.com")
+
+    client.post(
+        "/api/interviews/question-bank",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"question_text": "Private question", "question_type": "text"},
+    )
+
+    register_user(client, email="bank-other@test.com")
+    other_token = login_user(client, email="bank-other@test.com")
+    list_response = client.get(
+        "/api/interviews/question-bank",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+
+
+def test_manual_maintenance_endpoint(client):
+    """The maintenance trigger endpoint runs without error for employers."""
+    register_user(client)
+    token = login_user(client)
+
+    response = client.post(
+        "/api/maintenance/run",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "expired_invitations" in body
+    assert "reminders_sent" in body

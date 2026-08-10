@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Form, Button, Card, Alert, Row, Col, Badge } from 'react-bootstrap'
 import { api } from '../services/api'
 import { useNavigate } from 'react-router-dom'
-import { FiPlus, FiTrash2, FiSave, FiLayers } from 'react-icons/fi'
+import { FiPlus, FiTrash2, FiSave, FiLayers, FiBookOpen } from 'react-icons/fi'
 import PageHeader from '../components/ui/PageHeader'
 import ErrorAlert from '../components/ui/ErrorAlert'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
@@ -25,10 +25,25 @@ const CreateInterview: React.FC = () => {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [templateLoading, setTemplateLoading] = useState(false)
+  const [bankEntries, setBankEntries] = useState<any[]>([])
+  const [bankLoading, setBankLoading] = useState(false)
 
   useEffect(() => {
     loadTemplates()
+    loadQuestionBank()
   }, [])
+
+  const loadQuestionBank = async () => {
+    setBankLoading(true)
+    try {
+      const response = await api.interviews.listQuestionBank()
+      setBankEntries(response.data)
+    } catch (err) {
+      console.error('Failed to load question bank:', err)
+    } finally {
+      setBankLoading(false)
+    }
+  }
 
   const loadTemplates = async () => {
     try {
@@ -172,6 +187,68 @@ const CreateInterview: React.FC = () => {
       setLoading(false)
     }
   }
+
+  const handleLoadTemplateQuestions = () => {
+    if (!selectedTemplate || !selectedTemplate.questions?.length) {
+      setError('Selected template has no questions to load')
+      return
+    }
+    const loaded = selectedTemplate.questions.map((question: any, idx: number) => ({
+      question_text: question.question_text,
+      expected_answer: question.expected_answer || '',
+      question_type: question.question_type || 'text',
+      weight: question.weight || 1.0,
+      order_index: idx,
+      rubric_criteria: (question.rubric_criteria || []).map((criterion: any, cIdx: number) => ({
+        name: criterion.name,
+        description: criterion.description || '',
+        weight: criterion.weight || 1.0,
+        order_index: cIdx,
+      })),
+    }))
+    setQuestions(loaded)
+    setError('')
+  }
+
+  const handleAddFromBank = (entry: any) => {
+    setQuestions([...questions, {
+      question_text: entry.question_text,
+      expected_answer: entry.expected_answer || '',
+      question_type: entry.question_type || 'text',
+      weight: entry.weight || 1.0,
+      order_index: questions.length,
+      rubric_criteria: [],
+    }])
+  }
+
+  const handleSaveQuestionToBank = async (question: any) => {
+    if (!question.question_text.trim()) {
+      setError('Question text is required to save to bank')
+      return
+    }
+    try {
+      await api.interviews.saveQuestionToBank({
+        question_text: question.question_text,
+        expected_answer: question.expected_answer || '',
+        question_type: question.question_type || 'text',
+        options: question.options || null,
+        weight: question.weight || 1.0,
+      })
+      setError('')
+      loadQuestionBank()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to save question to bank')
+    }
+  }
+
+  const handleDeleteFromBank = async (entryId: number) => {
+    try {
+      await api.interviews.deleteQuestionBankEntry(entryId)
+      setBankEntries(bankEntries.filter((entry) => entry.id !== entryId))
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete question from bank')
+    }
+  }
   
   return (
     <div>
@@ -226,6 +303,16 @@ const CreateInterview: React.FC = () => {
                 <h6 className="mb-0">{selectedTemplate.name}</h6>
                 <Badge bg="secondary">{selectedTemplate.role_category}</Badge>
                 <Badge bg="light" text="dark">{selectedTemplate.duration_minutes} min</Badge>
+                <Button
+                  type="button"
+                  variant="success"
+                  size="sm"
+                  onClick={handleLoadTemplateQuestions}
+                  disabled={!selectedTemplate.questions?.length}
+                >
+                  <FiPlus className="me-1" />
+                  Load Questions into Editor
+                </Button>
               </div>
               <p className="text-muted">{selectedTemplate.description}</p>
               <ol className="mb-0">
@@ -250,6 +337,53 @@ const CreateInterview: React.FC = () => {
                 ))}
               </ol>
             </div>
+          )}
+        </Card.Body>
+      </Card>
+
+      <Card className="mb-4">
+        <Card.Header>
+          <h5 className="mb-0">
+            <FiBookOpen className="me-2" />
+            Question Bank
+          </h5>
+        </Card.Header>
+        <Card.Body>
+          {bankLoading ? (
+            <p className="text-muted mb-0">Loading saved questions...</p>
+          ) : bankEntries.length === 0 ? (
+            <p className="text-muted mb-0">
+              No saved questions yet. Use the "Save to Bank" button on any question below to reuse it later.
+            </p>
+          ) : (
+            <Row>
+              {bankEntries.map((entry) => (
+                <Col md={6} key={entry.id} className="mb-3">
+                  <Card className="bg-light h-100">
+                    <Card.Body>
+                      <div className="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                          <Badge bg="secondary" className="mb-2">{entry.question_type}</Badge>
+                          <p className="mb-1">{entry.question_text}</p>
+                          <small className="text-muted">
+                            Weight: {entry.weight}x
+                            {entry.expected_answer ? ' | Has reference answer' : ''}
+                          </small>
+                        </div>
+                        <div className="d-flex gap-1">
+                          <Button variant="outline-primary" size="sm" onClick={() => handleAddFromBank(entry)}>
+                            <FiPlus /> Add
+                          </Button>
+                          <Button variant="outline-danger" size="sm" onClick={() => handleDeleteFromBank(entry.id)}>
+                            <FiTrash2 />
+                          </Button>
+                        </div>
+                      </div>
+                    </Card.Body>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
           )}
         </Card.Body>
       </Card>
@@ -331,14 +465,26 @@ const CreateInterview: React.FC = () => {
           <Card key={index} className="mb-3">
             <Card.Header className="d-flex justify-content-between align-items-center">
               <h6 className="mb-0">Question {index + 1}</h6>
-              <Button
-                variant="outline-danger"
-                size="sm"
-                onClick={() => removeQuestion(index)}
-                disabled={questions.length === 1}
-              >
-                <FiTrash2 />
-              </Button>
+              <div className="d-flex gap-2">
+                <Button
+                  variant="outline-primary"
+                  size="sm"
+                  onClick={() => handleSaveQuestionToBank(question)}
+                  disabled={!question.question_text.trim()}
+                  title="Save this question to your reusable question bank"
+                >
+                  <FiBookOpen className="me-1" />
+                  Save to Bank
+                </Button>
+                <Button
+                  variant="outline-danger"
+                  size="sm"
+                  onClick={() => removeQuestion(index)}
+                  disabled={questions.length === 1}
+                >
+                  <FiTrash2 />
+                </Button>
+              </div>
             </Card.Header>
             <Card.Body>
               <Form.Group className="mb-3" controlId={`question-text-${index}`}>

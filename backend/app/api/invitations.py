@@ -82,7 +82,7 @@ async def create_invitation(
     
     # Create invitation
     token = generate_unique_token()
-    expires_at = datetime.utcnow() + timedelta(days=7)  # Valid for 7 days
+    expires_at = datetime.utcnow() + timedelta(days=settings.INVITATION_EXPIRY_DAYS)
     sent_at = datetime.utcnow()
     
     invitation = Invitation(
@@ -108,7 +108,7 @@ async def create_invitation(
     db.refresh(invitation)
     
     # Send email in background
-    interview_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/interview/{token}"
+    interview_link = f"{settings.FRONTEND_URL}/interview/{token}"
     background_tasks.add_task(
         send_invitation_email,
         to_email=invitation_data.candidate_email,
@@ -167,7 +167,7 @@ async def create_bulk_invitations(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview must be active")
     
     created_invitations = []
-    expires_at = datetime.utcnow() + timedelta(days=7)
+    expires_at = datetime.utcnow() + timedelta(days=settings.INVITATION_EXPIRY_DAYS)
     sent_at = datetime.utcnow()
     
     for inv_data in invitations:
@@ -196,7 +196,7 @@ async def create_bulk_invitations(
         created_invitations.append(invitation)
         
         # Send email in background
-        interview_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/interview/{token}"
+        interview_link = f"{settings.FRONTEND_URL}/interview/{token}"
         background_tasks.add_task(
             send_invitation_email,
             to_email=inv_data.candidate_email,
@@ -252,8 +252,8 @@ async def preview_invitation_email(
     interview = get_interview_or_404(interview_id, db)
     require_invitation_manager(interview, current_user, db)
 
-    expires_at = datetime.utcnow() + timedelta(days=7)
-    interview_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/interview/sample-token"
+    expires_at = datetime.utcnow() + timedelta(days=settings.INVITATION_EXPIRY_DAYS)
+    interview_link = f"{settings.FRONTEND_URL}/interview/sample-token"
     subject, html_body = render_invitation_email(
         candidate_name=preview_data.candidate_name,
         interview_title=interview.title,
@@ -433,7 +433,7 @@ async def resend_invitation(
     
     # Generate new token and extend expiry
     invitation.unique_token = generate_unique_token()
-    invitation.expires_at = datetime.utcnow() + timedelta(days=7)
+    invitation.expires_at = datetime.utcnow() + timedelta(days=settings.INVITATION_EXPIRY_DAYS)
     invitation.status = InvitationStatus.SENT
     invitation.sent_at = datetime.utcnow()
     create_audit_log(
@@ -449,7 +449,7 @@ async def resend_invitation(
     db.commit()
     
     # Send email
-    interview_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/interview/{invitation.unique_token}"
+    interview_link = f"{settings.FRONTEND_URL}/interview/{invitation.unique_token}"
     
     background_tasks.add_task(
         send_invitation_email,
