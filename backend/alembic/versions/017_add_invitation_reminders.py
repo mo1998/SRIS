@@ -7,6 +7,7 @@ Create Date: 2026-08-10 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 revision = '017_add_invitation_reminders'
 down_revision = '016_add_integrity_events'
@@ -15,10 +16,22 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMP WITHOUT TIME ZONE")
-    op.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS reminder_count INTEGER NOT NULL DEFAULT 0")
+    # Idempotent + dialect-safe: SQLite does not support "ADD COLUMN IF NOT
+    # EXISTS", so probe existing columns via the inspector instead.
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    columns = {c["name"] for c in inspector.get_columns('invitations')}
+    if 'last_reminder_at' not in columns:
+        op.add_column('invitations', sa.Column('last_reminder_at', sa.DateTime(), nullable=True))
+    if 'reminder_count' not in columns:
+        op.add_column('invitations', sa.Column('reminder_count', sa.Integer(), nullable=False, server_default='0'))
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE invitations DROP COLUMN IF EXISTS reminder_count")
-    op.execute("ALTER TABLE invitations DROP COLUMN IF EXISTS last_reminder_at")
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    columns = {c["name"] for c in inspector.get_columns('invitations')}
+    if 'reminder_count' in columns:
+        op.drop_column('invitations', 'reminder_count')
+    if 'last_reminder_at' in columns:
+        op.drop_column('invitations', 'last_reminder_at')
