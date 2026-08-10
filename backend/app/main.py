@@ -5,8 +5,11 @@ Smart Remote Interview System (SRIS) - Main Application
 import json
 import logging
 import os
+import threading
 import time
 import uuid
+
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -30,10 +33,40 @@ SECURITY_HEADERS = {
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
+
+def _maintenance_loop(stop_event: threading.Event) -> None:
+    """Periodically run invitation expiry sweep and reminders."""
+    from app.services.maintenance_service import run_maintenance
+
+    logger.info("Maintenance loop started (interval=%ss)", settings.MAINTENANCE_INTERVAL_SECONDS)
+    while not stop_event.wait(settings.MAINTENANCE_INTERVAL_SECONDS):
+        try:
+            result = run_maintenance()
+            logger.info("Maintenance run: %s", result)
+        except Exception as e:
+            logger.error("Maintenance run failed: %s", e)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    maintenance_thread = None
+    stop_event = threading.Event()
+    if settings.MAINTENANCE_ENABLED:
+        maintenance_thread = threading.Thread(
+            target=_maintenance_loop, args=(stop_event,), daemon=True, name="maintenance"
+        )
+        maintenance_thread.start()
+    yield
+    stop_event.set()
+    if maintenance_thread is not None:
+        maintenance_thread.join(timeout=5)
+
+
 app = FastAPI(
     title="Smart Remote Interview System",
     description="AI-powered remote interview platform with emotion detection and candidate evaluation",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS configuration

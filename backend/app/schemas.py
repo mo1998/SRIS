@@ -172,6 +172,23 @@ class QuestionResponse(QuestionBase):
         from_attributes = True
 
 
+class QuestionBankEntryCreate(BaseModel):
+    question_text: str
+    expected_answer: Optional[str] = None
+    question_type: str = "text"
+    options: Optional[str] = None
+    weight: float = 1.0
+
+
+class QuestionBankEntryResponse(QuestionBankEntryCreate):
+    id: int
+    owner_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class InterviewBase(BaseModel):
     title: str
     description: Optional[str] = None

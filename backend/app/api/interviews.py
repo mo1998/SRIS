@@ -8,8 +8,8 @@ from typing import List
 from datetime import datetime
 
 from app.database import get_db
-from app.models import User, Interview, InterviewQuestion, InterviewStatus, InterviewTemplate, RubricCriterion, TeamMembership, TeamRole, UserRole
-from app.schemas import InterviewCreate, InterviewFromTemplateCreate, InterviewResponse, InterviewTemplateResponse, InterviewUpdate, QuestionResponse
+from app.models import User, Interview, InterviewQuestion, InterviewStatus, InterviewTemplate, QuestionBankEntry, RubricCriterion, TeamMembership, TeamRole, UserRole
+from app.schemas import InterviewCreate, InterviewFromTemplateCreate, InterviewResponse, InterviewTemplateResponse, InterviewUpdate, QuestionBankEntryCreate, QuestionBankEntryResponse, QuestionResponse
 from app.api.auth import get_current_user, require_role
 from app.services.audit_service import create_audit_log
 
@@ -198,6 +198,59 @@ async def list_employer_interviews(
         .all()
     )
     return interviews
+
+
+@router.get("/question-bank", response_model=List[QuestionBankEntryResponse])
+async def list_question_bank(
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db)
+):
+    """List the employer's saved reusable questions."""
+    return (
+        db.query(QuestionBankEntry)
+        .filter(QuestionBankEntry.owner_id == current_user.id)
+        .order_by(QuestionBankEntry.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/question-bank", response_model=QuestionBankEntryResponse, status_code=status.HTTP_201_CREATED)
+async def save_question_to_bank(
+    entry: QuestionBankEntryCreate,
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db)
+):
+    """Save a question to the employer's reusable question bank."""
+    bank_entry = QuestionBankEntry(
+        owner_id=current_user.id,
+        question_text=entry.question_text,
+        expected_answer=entry.expected_answer,
+        question_type=entry.question_type,
+        options=entry.options,
+        weight=entry.weight,
+    )
+    db.add(bank_entry)
+    db.commit()
+    db.refresh(bank_entry)
+    return bank_entry
+
+
+@router.delete("/question-bank/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_question_bank_entry(
+    entry_id: int,
+    current_user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db)
+):
+    """Delete a saved question from the employer's question bank."""
+    entry = (
+        db.query(QuestionBankEntry)
+        .filter(QuestionBankEntry.id == entry_id, QuestionBankEntry.owner_id == current_user.id)
+        .first()
+    )
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question bank entry not found")
+    db.delete(entry)
+    db.commit()
 
 
 @router.get("/{interview_id}", response_model=InterviewResponse)

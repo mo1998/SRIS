@@ -431,7 +431,7 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
             from app.models import Invitation
             invitation = db.query(Invitation).filter(Invitation.id == response.invitation_id).first()
             if invitation and invitation.unique_token:
-                results_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/results/{invitation.unique_token}"
+                results_link = f"{settings.FRONTEND_URL}/results/{invitation.unique_token}"
         try:
             await send_completion_email(
                 to_email=response.candidate_email,

@@ -153,6 +153,86 @@ async def send_invitation_email(
         logger.error("Error sending invitation to %s: %s", to_email, e)
 
 
+def render_reminder_email(
+    candidate_name: str,
+    interview_title: str,
+    interview_link: str,
+    expires_at: datetime,
+    reminder_number: int,
+) -> tuple[str, str]:
+    """Render a reminder email for an invitation not yet accepted."""
+    safe_candidate_name = escape(candidate_name)
+    safe_interview_title = escape(interview_title)
+    safe_interview_link = escape(interview_link)
+    formatted_expiry = escape(expires_at.strftime('%B %d, %Y at %I:%M %p'))
+    expiry_note = (
+        f"This is your final reminder — the invitation expires {formatted_expiry}."
+        if reminder_number >= 2
+        else f"The invitation is still valid until {formatted_expiry}."
+    )
+
+    html_content = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h1 style="color: #2c3e50; margin-bottom: 20px;">Friendly Reminder</h1>
+            <p>Dear {safe_candidate_name},</p>
+            <p>We noticed you haven't started your remote interview for <strong>{safe_interview_title}</strong> yet.</p>
+            <p style="color: #e67e22;">{expiry_note}</p>
+
+            <p style="margin: 20px 0;">Click the button below to start your interview:</p>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{safe_interview_link}"
+                   style="background-color: #3498db; color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; font-size: 16px; font-weight: bold;">
+                    Start Interview
+                </a>
+            </div>
+
+            <p style="color: #7f8c8d; font-size: 14px;">Or copy and paste this link into your browser:</p>
+            <p style="color: #3498db; word-break: break-all; font-size: 12px;">{safe_interview_link}</p>
+
+            <hr style="border: none; border-top: 1px solid #ecf0f1; margin: 30px 0;">
+            <p style="color: #7f8c8d; font-size: 12px;">
+                If you already completed your interview, please ignore this message.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+
+    return f"Reminder: Your Interview Invitation - {interview_title}", html_content
+
+
+async def send_reminder_email(
+    to_email: str,
+    candidate_name: str,
+    interview_title: str,
+    interview_link: str,
+    expires_at: datetime,
+    reminder_number: int,
+):
+    """Send an invitation reminder email via Mailpit."""
+    health = get_email_health()
+    if not health["configured"]:
+        logger.warning("Mailpit not configured — skipping reminder to %s", to_email)
+        return
+
+    subject, html_content = render_reminder_email(
+        candidate_name=candidate_name,
+        interview_title=interview_title,
+        interview_link=interview_link,
+        expires_at=expires_at,
+        reminder_number=reminder_number,
+    )
+
+    try:
+        _send_email(to_email, candidate_name, subject, html_content)
+        logger.info("Reminder email sent to %s via Mailpit", to_email)
+    except Exception as e:
+        logger.error("Error sending reminder to %s: %s", to_email, e)
+
+
 async def send_completion_email(
     to_email: str,
     candidate_name: str,

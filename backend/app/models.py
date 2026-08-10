@@ -198,6 +198,23 @@ class RubricCriterion(Base):
     question = relationship("InterviewQuestion", back_populates="rubric_criteria")
 
 
+class QuestionBankEntry(Base):
+    """Reusable question saved by an employer for reuse across interviews."""
+
+    __tablename__ = "question_bank_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    question_text = Column(Text, nullable=False)
+    expected_answer = Column(Text, nullable=True)
+    question_type = Column(String(50), default="text")
+    options = Column(Text, nullable=True)
+    weight = Column(Float, default=1.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    owner = relationship("User")
+
+
 class Invitation(Base):
     __tablename__ = "invitations"
 
@@ -210,6 +227,8 @@ class Invitation(Base):
     sent_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    last_reminder_at = Column(DateTime, nullable=True)
+    reminder_count = Column(Integer, default=0)
 
     # Relationships
     interview = relationship("Interview", back_populates="invitations")

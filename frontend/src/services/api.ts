@@ -25,7 +25,11 @@ export const api = {
     complete: (id: number) => axios.post(`${API_URL}/interviews/${id}/complete`),
     delete: (id: number) => axios.delete(`${API_URL}/interviews/${id}`),
     getQuestions: (id: number) => axios.get(`${API_URL}/interviews/${id}/questions`),
-    addQuestion: (id: number, data: any) => axios.post(`${API_URL}/interviews/${id}/questions`, data)
+    addQuestion: (id: number, data: any) => axios.post(`${API_URL}/interviews/${id}/questions`, data),
+    listQuestionBank: () => axios.get(`${API_URL}/interviews/question-bank`),
+    saveQuestionToBank: (data: any) => axios.post(`${API_URL}/interviews/question-bank`, data),
+    deleteQuestionBankEntry: (id: number) => axios.delete(`${API_URL}/interviews/question-bank/${id}`),
+    runMaintenance: () => axios.post(`${API_URL}/maintenance/run`)
   },
   
   // Invitations

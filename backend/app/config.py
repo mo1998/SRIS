@@ -29,8 +29,15 @@ class Settings(BaseSettings):
     MAIL_FROM: str = os.getenv("MAIL_FROM", "noreply@sris.com")
     MAIL_FROM_NAME: str = os.getenv("MAIL_FROM_NAME", "SRIS")
     MAILPIT_API_URL: str = os.getenv("MAILPIT_API_URL", "http://localhost:8025/api/v1/send")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
     INVITATION_RESEND_COOLDOWN_SECONDS: int = int(os.getenv("INVITATION_RESEND_COOLDOWN_SECONDS", "300"))
     MAX_BULK_INVITATIONS: int = int(os.getenv("MAX_BULK_INVITATIONS", "100"))
+    INVITATION_EXPIRY_DAYS: int = int(os.getenv("INVITATION_EXPIRY_DAYS", "7"))
+    INVITATION_REMINDER_AFTER_HOURS: int = int(os.getenv("INVITATION_REMINDER_AFTER_HOURS", "24"))
+    INVITATION_REMINDER_MAX: int = int(os.getenv("INVITATION_REMINDER_MAX", "2"))
+    INVITATION_REMINDER_COOLDOWN_HOURS: int = int(os.getenv("INVITATION_REMINDER_COOLDOWN_HOURS", "48"))
+    MAINTENANCE_ENABLED: bool = os.getenv("MAINTENANCE_ENABLED", "true").lower() == "true"
+    MAINTENANCE_INTERVAL_SECONDS: int = int(os.getenv("MAINTENANCE_INTERVAL_SECONDS", "3600"))
     
     # Evaluation
     EVALUATION_PROVIDER: str = os.getenv("EVALUATION_PROVIDER", "local_vllm")
