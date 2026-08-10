@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     EMOTION_ANALYSIS_PROVIDER: str = os.getenv("EMOTION_ANALYSIS_PROVIDER", "disabled")
     EMOTION_FRAME_SAMPLE_SECONDS: float = float(os.getenv("EMOTION_FRAME_SAMPLE_SECONDS", "1.0"))
     EMOTION_MAX_FRAMES: int = int(os.getenv("EMOTION_MAX_FRAMES", "60"))
+    EMOTION_ANALYSIS_TIMEOUT_SECONDS: int = int(os.getenv("EMOTION_ANALYSIS_TIMEOUT_SECONDS", "120"))
+    EMOTION_ANALYSIS_PARALLEL: bool = os.getenv("EMOTION_ANALYSIS_PARALLEL", "true").lower() == "true"
 
     # Quality Thresholds
     MIN_VOICE_CONFIDENCE: float = 0.7

@@ -75,8 +75,21 @@ class DeepFaceEmotionAnalysisProvider(EmotionAnalysisProvider):
             logger.info("Emotion analysis skipped: video file not found (%s)", video_path)
             return None
 
+        cached = _cache_get(video_path)
+        if cached is not None:
+            return cached
+
+        timeout = max(1, settings.EMOTION_ANALYSIS_TIMEOUT_SECONDS)
         try:
-            return await asyncio.to_thread(self._analyze_video_sync, video_path)
+            result = await asyncio.wait_for(
+                asyncio.to_thread(self._analyze_video_sync, video_path),
+                timeout=timeout,
+            )
+            _cache_set(video_path, result)
+            return result
+        except asyncio.TimeoutError:
+            logger.warning("DeepFace emotion analysis timed out after %ss: %s", timeout, video_path)
+            return None
         except Exception as exc:
             logger.warning("DeepFace emotion analysis failed: %s", exc)
             return None
@@ -174,3 +187,33 @@ def serialize_timeline(timeline: List[EmotionSample]) -> List[dict]:
         {"emotion": sample.emotion, "confidence": sample.confidence, "timestamp": sample.timestamp}
         for sample in timeline
     ]
+
+
+# Bounded in-process cache so repeated evaluations of the same video file do not
+# re-run expensive DeepFace analysis. Keyed by path + file mtime so re-recording
+# invalidates stale results.
+_CACHE_MAX_ENTRIES = 128
+_cache: "dict[str, tuple[str, float, EmotionAnalysisResult | None]]" = {}
+
+
+def _cache_key(path: str) -> "tuple[str, float]":
+    try:
+        stat = os.stat(path)
+        return (path, stat.st_mtime)
+    except OSError:
+        return (path, 0.0)
+
+
+def _cache_get(path: str) -> Optional[EmotionAnalysisResult]:
+    key = _cache_key(path)
+    entry = _cache.get(key[0])
+    if entry and entry[0] == key[1]:
+        return entry[1]
+    return None
+
+
+def _cache_set(path: str, result: Optional[EmotionAnalysisResult]) -> None:
+    if len(_cache) >= _CACHE_MAX_ENTRIES:
+        _cache.clear()
+    key = _cache_key(path)
+    _cache[key[0]] = (key[1], result)

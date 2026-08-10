@@ -5,14 +5,14 @@ Candidate response routes - submitting answers, quality checks
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import uuid
 
 from app.database import get_db
 from app.config import settings
 from app.models import User, Interview, InterviewQuestion, InterviewStatus, Invitation, InvitationStatus, CandidateResponse, QuestionAnswer, TeamMembership, TeamRole, UserRole
-from app.schemas import CandidateResponseCreate, CandidateResponseSummary, QuestionAnswerSchema, QualityCheckResult
+from app.schemas import CandidateResponseCreate, CandidateResponseSummary, QuestionAnswerSchema, QualityCheckResult, ResponseTimer
 from app.api.auth import get_current_user, require_role
 from app.services.audit_service import create_audit_log
 
@@ -197,6 +197,41 @@ async def start_interview_response(
     db.refresh(candidate_response)
     
     return candidate_response
+
+
+@router.get("/{response_id}/timer", response_model=ResponseTimer)
+async def get_response_timer(response_id: int, db: Session = Depends(get_db)):
+    """Get the server-authoritative interview timer for a response.
+
+    The client timer is advisory; this endpoint is the source of truth so a
+    tampered browser clock cannot extend the interview.
+    """
+
+    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
+
+    if not candidate_response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+
+    started_at = candidate_response.started_at or datetime.utcnow()
+    interview = db.query(Interview).filter(Interview.id == candidate_response.interview_id).first()
+    duration_minutes = interview.duration_minutes if interview else None
+    grace_seconds = settings.INTERVIEW_DURATION_GRACE_SECONDS
+
+    max_seconds = (duration_minutes or 0) * 60 + grace_seconds
+    deadline = started_at + timedelta(seconds=max_seconds)
+    server_time = datetime.utcnow()
+    remaining_seconds = max(0, int((deadline - server_time).total_seconds()))
+
+    return ResponseTimer(
+        response_id=response_id,
+        started_at=started_at,
+        duration_minutes=duration_minutes,
+        grace_seconds=grace_seconds,
+        deadline=deadline,
+        remaining_seconds=remaining_seconds,
+        server_time=server_time,
+        expired=remaining_seconds <= 0,
+    )
 
 
 @router.post("/{response_id}/answer", response_model=QuestionAnswerSchema)

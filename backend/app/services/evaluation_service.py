@@ -5,6 +5,7 @@ Evaluation service - deterministic answer scoring and candidate evaluation
 from dataclasses import dataclass
 import asyncio
 import json
+import logging
 import os
 import re
 import hashlib
@@ -15,6 +16,8 @@ from fastapi import BackgroundTasks
 from rq import Queue
 from sqlalchemy.orm import Session
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.database import SessionLocal
@@ -256,7 +259,7 @@ async def calculate_emotion_score(emotion_timeline: str) -> float:
         return confidence
         
     except Exception as e:
-        print(f"Error calculating emotion score: {e}")
+        logger.warning("Error calculating emotion score: %s", e)
         return 50.0
 
 
@@ -290,19 +293,37 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
     emotion_samples_by_answer = {}
 
     try:
+        # Analyze facial emotion from recorded videos. Runs as a parallel
+        # pre-pass (bounded by asyncio.semaphore) so DeepFace latency does not
+        # serialize the whole evaluation; results are keyed by answer id.
+        emotion_results = {}
+        video_answers = [a for a in answers if a.video_file_path]
+        if video_answers:
+            from app.services.emotion_service import get_emotion_provider, serialize_timeline
+            emotion_provider = get_emotion_provider()
+            concurrency = min(len(video_answers), 4) if settings.EMOTION_ANALYSIS_PARALLEL else 1
+            semaphore = asyncio.Semaphore(concurrency)
+
+            async def _analyze(answer: QuestionAnswer) -> None:
+                async with semaphore:
+                    emotion_result = await emotion_provider.analyze_video(answer.video_file_path)
+                    if emotion_result and emotion_result.timeline:
+                        emotion_results[answer.id] = (emotion_result, serialize_timeline(emotion_result.timeline))
+
+            await asyncio.gather(*(_analyze(a) for a in video_answers))
+
         # Evaluate each answer
         for answer in answers:
             question = db.query(InterviewQuestion).filter(InterviewQuestion.id == answer.question_id).first()
             if not question:
                 continue
 
-            # Analyze facial emotion from recorded video (if available)
-            if answer.video_file_path:
-                from app.services.emotion_service import get_emotion_provider, serialize_timeline
-                emotion_result = await get_emotion_provider().analyze_video(answer.video_file_path)
-                if emotion_result and emotion_result.timeline:
-                    answer.emotion_during_answer = emotion_result.dominant_emotion
-                    emotion_samples_by_answer[answer.id] = serialize_timeline(emotion_result.timeline)
+            # Apply emotion analysis result (if any)
+            emotion_result = emotion_results.get(answer.id)
+            if emotion_result:
+                result, timeline = emotion_result
+                answer.emotion_during_answer = result.dominant_emotion
+                emotion_samples_by_answer[answer.id] = timeline
 
             # Ensure a transcript exists for recorded answers so spoken responses
             # can be scored. Transcription runs inline (not background) to avoid
@@ -315,7 +336,7 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
                     db.refresh(answer)
                     answer_text = answer.transcript or ""
                 except Exception as exc:
-                    print(f"Transcription failed for answer {answer.id}: {exc}")
+                    logger.warning("Transcription failed for answer %s: %s", answer.id, exc)
 
             # Score the answer
             if answer_text and question.expected_answer:
@@ -442,7 +463,7 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
                 results_link=results_link,
             )
         except Exception as exc:
-            print(f"Completion email failed: {exc}")
+            logger.warning("Completion email failed: %s", exc)
 
     # Fire webhooks
     try:
@@ -461,7 +482,7 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
         )
         await fire_event("evaluation.completed", payload, org_id)
     except Exception as exc:
-        print(f"Webhook fire failed: {exc}")
+        logger.warning("Webhook fire failed: %s", exc)
 
 
 def create_evaluation_run(response_id: int, db: Session, status: str = "queued") -> EvaluationRun:
