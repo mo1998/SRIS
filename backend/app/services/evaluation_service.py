@@ -307,7 +307,7 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
             # can be scored. Transcription runs inline (not background) to avoid
             # racing the background transcription job.
             answer_text = answer.answer_text or ""
-            if not answer_text.strip() and answer.audio_file_path:
+            if not answer_text.strip() and (answer.audio_file_path or answer.video_file_path):
                 from app.services.transcription_service import transcribe_answer
                 try:
                     await transcribe_answer(answer.id, db)
