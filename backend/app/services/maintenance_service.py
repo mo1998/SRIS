@@ -78,12 +78,10 @@ def send_invitation_reminders(db: Session) -> int:
 
         reminder_number = invitation.reminder_count + 1
         try:
-            from app.services.email_service import send_reminder_email
-            import asyncio
-            import inspect
+            from app.services.email_service import send_reminder_email_sync
 
             link = _interview_link(invitation)
-            result = send_reminder_email(
+            sent = send_reminder_email_sync(
                 to_email=invitation.candidate_email,
                 candidate_name=invitation.candidate_name,
                 interview_title=interview.title,
@@ -91,8 +89,8 @@ def send_invitation_reminders(db: Session) -> int:
                 expires_at=invitation.expires_at,
                 reminder_number=reminder_number,
             )
-            if inspect.iscoroutine(result):
-                asyncio.run(result)
+            if not sent:
+                continue
         except Exception as e:
             logger.error("Reminder failed for invitation %s: %s", invitation.id, e)
             continue

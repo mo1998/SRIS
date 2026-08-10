@@ -2627,9 +2627,9 @@ def test_maintenance_reminders(client, monkeypatch):
 
     def fake_send_reminder_email(**kwargs):
         sent_reminders.append(kwargs)
-        return None
+        return True
 
-    monkeypatch.setattr(email_service, "send_reminder_email", fake_send_reminder_email)
+    monkeypatch.setattr(email_service, "send_reminder_email_sync", fake_send_reminder_email)
 
     db = SessionLocal()
     try:

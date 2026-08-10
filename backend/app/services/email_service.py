@@ -233,6 +233,37 @@ async def send_reminder_email(
         logger.error("Error sending reminder to %s: %s", to_email, e)
 
 
+def send_reminder_email_sync(
+    to_email: str,
+    candidate_name: str,
+    interview_title: str,
+    interview_link: str,
+    expires_at: datetime,
+    reminder_number: int,
+) -> bool:
+    """Synchronous reminder send for background maintenance jobs."""
+    health = get_email_health()
+    if not health["configured"]:
+        logger.warning("Mailpit not configured — skipping reminder to %s", to_email)
+        return False
+
+    subject, html_content = render_reminder_email(
+        candidate_name=candidate_name,
+        interview_title=interview_title,
+        interview_link=interview_link,
+        expires_at=expires_at,
+        reminder_number=reminder_number,
+    )
+
+    try:
+        _send_email(to_email, candidate_name, subject, html_content)
+        logger.info("Reminder email sent to %s via Mailpit", to_email)
+        return True
+    except Exception as e:
+        logger.error("Error sending reminder to %s: %s", to_email, e)
+        return False
+
+
 async def send_completion_email(
     to_email: str,
     candidate_name: str,
