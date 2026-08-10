@@ -147,6 +147,127 @@ async def compare_candidates(
     }
 
 
+@router.get("/interview/{interview_id}/export.csv")
+async def export_interview_csv(
+    interview_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Export all candidate responses for an interview as CSV."""
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    require_interview_membership(interview, current_user, db)
+
+    import csv
+    import io
+
+    from app.models import CandidateResponse, QuestionAnswer, InterviewQuestion
+
+    questions = (
+        db.query(InterviewQuestion)
+        .filter(InterviewQuestion.interview_id == interview_id)
+        .order_by(InterviewQuestion.order_index, InterviewQuestion.id)
+        .all()
+    )
+    responses = (
+        db.query(CandidateResponse)
+        .filter(CandidateResponse.interview_id == interview_id)
+        .order_by(CandidateResponse.created_at)
+        .all()
+    )
+
+    question_cols = [f"Q{i+1} Score ({q.question_text[:40]})" for i, q in enumerate(questions)]
+    headers = ["Candidate Name", "Candidate Email", "Status", "Total Score", "Passed",
+               "Reviewer Decision", "Dominant Emotion", "Confidence", "Completed At"] + question_cols
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
+
+    for response in responses:
+        answers = {a.question_id: a for a in db.query(QuestionAnswer).filter(QuestionAnswer.response_id == response.id).all()}
+        row = [
+            response.candidate_name,
+            response.candidate_email,
+            response.status,
+            response.total_score,
+            response.passed,
+            response.reviewer_decision.value if response.reviewer_decision else "pending",
+            response.dominant_emotion or "",
+            response.confidence_score or "",
+            response.completed_at.strftime("%Y-%m-%d %H:%M") if response.completed_at else "",
+        ] + [(answers[q.id].score if q.id in answers and answers[q.id].score is not None else "") for q in questions]
+        writer.writerow(row)
+
+    filename = f"interview_{interview_id}_responses.csv"
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/candidate/profile/{candidate_email}")
+async def get_candidate_profile(
+    candidate_email: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Candidate database / CRM profile: all history across interviews."""
+    from app.models import CandidateResponse
+
+    response = (
+        db.query(CandidateResponse)
+        .filter(CandidateResponse.candidate_email == candidate_email)
+        .order_by(CandidateResponse.created_at.desc())
+        .first()
+    )
+    if not response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No responses found for candidate")
+
+    interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
+    require_interview_membership(interview, current_user, db)
+
+    from app.services.evaluation_service import generate_candidate_profile
+
+    return generate_candidate_profile(candidate_email, db)
+
+
+@router.get("/interview/{interview_id}/question-analytics")
+async def get_question_analytics(
+    interview_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Per-question difficulty and discrimination analytics."""
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    require_interview_membership(interview, current_user, db)
+
+    from app.services.evaluation_service import generate_interview_question_analytics
+
+    return generate_interview_question_analytics(interview_id, db)
+
+
+@router.get("/interview/{interview_id}/plagiarism")
+async def get_plagiarism_report(
+    interview_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Detect near-duplicate answers between candidates (cheating)."""
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    require_interview_membership(interview, current_user, db)
+
+    from app.services.evaluation_service import detect_answer_plagiarism
+
+    return detect_answer_plagiarism(interview_id, db)
+
+
 @router.get("/evaluation/health", response_model=EvaluationHealth)
 async def get_evaluation_provider_health(
     response: Response,

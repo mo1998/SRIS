@@ -771,6 +771,197 @@ def generate_interview_evaluation_analytics(interview_id: int, db: Session) -> D
     }
 
 
+def generate_candidate_profile(candidate_email: str, db: Session) -> Dict[str, object]:
+    """Candidate database / CRM profile: all history across interviews."""
+    from app.models import Interview
+
+    responses = (
+        db.query(CandidateResponse)
+        .filter(CandidateResponse.candidate_email == candidate_email)
+        .order_by(CandidateResponse.created_at.desc())
+        .all()
+    )
+
+    history = []
+    passed_count = 0
+    for response in responses:
+        interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
+        history.append({
+            "response_id": response.id,
+            "interview_id": response.interview_id,
+            "interview_title": interview.title if interview else "Unknown",
+            "status": response.status,
+            "total_score": response.total_score,
+            "passed": response.passed,
+            "reviewer_decision": response.reviewer_decision.value if response.reviewer_decision else "pending",
+            "dominant_emotion": response.dominant_emotion,
+            "completed_at": response.completed_at,
+            "created_at": response.created_at,
+        })
+        if response.passed:
+            passed_count += 1
+
+    completed = [h for h in history if h["status"] == "completed"]
+    scores = [h["total_score"] for h in completed if h["total_score"] is not None]
+    candidate_name = next((r.candidate_name for r in responses if r.candidate_email == candidate_email), None)
+
+    return {
+        "candidate_email": candidate_email,
+        "candidate_name": candidate_name,
+        "total_responses": len(history),
+        "completed_responses": len(completed),
+        "passed_count": passed_count,
+        "average_score": sum(scores) / len(scores) if scores else None,
+        "best_score": max(scores) if scores else None,
+        "history": history,
+        "generated_at": datetime.utcnow(),
+    }
+
+
+def generate_interview_question_analytics(interview_id: int, db: Session) -> Dict[str, object]:
+    """Per-question analytics: difficulty and discrimination."""
+    from app.models import CandidateResponse, QuestionAnswer, InterviewQuestion
+
+    questions = (
+        db.query(InterviewQuestion)
+        .filter(InterviewQuestion.interview_id == interview_id)
+        .order_by(InterviewQuestion.order_index, InterviewQuestion.id)
+        .all()
+    )
+    responses = (
+        db.query(CandidateResponse)
+        .filter(CandidateResponse.interview_id == interview_id, CandidateResponse.status == "completed")
+        .all()
+    )
+    response_ids = [response.id for response in responses]
+
+    questions_analysis = []
+    for question in questions:
+        answers = (
+            db.query(QuestionAnswer)
+            .filter(
+                QuestionAnswer.question_id == question.id,
+                QuestionAnswer.response_id.in_(response_ids),
+            )
+            .all()
+        ) if response_ids else []
+
+        scores = [a.score for a in answers if a.score is not None]
+        avg = sum(scores) / len(scores) if scores else None
+
+        # Discrimination: correlation between this question's score and the
+        # candidate's overall total score (point-biserial style).
+        discrimination = None
+        if len(scores) >= 2:
+            total_by_response = {r.id: (r.total_score or 0.0) for r in responses}
+            q_scores = []
+            t_scores = []
+            for a in answers:
+                if a.score is not None and a.response_id in total_by_response:
+                    q_scores.append(a.score)
+                    t_scores.append(total_by_response[a.response_id])
+            if q_scores and len(set(t_scores)) > 1:
+                q_mean = sum(q_scores) / len(q_scores)
+                t_mean = sum(t_scores) / len(t_scores)
+                num = sum((q - q_mean) * (t - t_mean) for q, t in zip(q_scores, t_scores))
+                denom = (sum((q - q_mean) ** 2 for q in q_scores) ** 0.5) * (sum((t - t_mean) ** 2 for t in t_scores) ** 0.5)
+                if denom:
+                    discrimination = round(num / denom, 3)
+
+        questions_analysis.append({
+            "question_id": question.id,
+            "question": question.question_text,
+            "expected_answer": question.expected_answer,
+            "response_count": len(answers),
+            "average_score": round(avg, 2) if avg is not None else None,
+            "min_score": min(scores) if scores else None,
+            "max_score": max(scores) if scores else None,
+            "difficulty": "easy" if (avg is not None and avg >= 75) else "medium" if (avg is not None and avg >= 50) else "hard" if avg is not None else "unknown",
+            "discrimination": discrimination,
+        })
+
+    return {
+        "interview_id": interview_id,
+        "question_count": len(questions),
+        "response_count": len(responses),
+        "questions": questions_analysis,
+        "generated_at": datetime.utcnow(),
+    }
+
+
+def detect_answer_plagiarism(interview_id: int, db: Session, threshold: float = 0.8) -> Dict[str, object]:
+    """Compare candidate answers against each other per question to detect
+    near-duplicate submissions (cheating)."""
+    from app.models import CandidateResponse, QuestionAnswer, InterviewQuestion
+
+    questions = (
+        db.query(InterviewQuestion)
+        .filter(InterviewQuestion.interview_id == interview_id)
+        .all()
+    )
+    responses = (
+        db.query(CandidateResponse)
+        .filter(CandidateResponse.interview_id == interview_id, CandidateResponse.status == "completed")
+        .all()
+    )
+    response_ids = [response.id for response in responses]
+
+    flags = []
+    for question in questions:
+        answers = (
+            db.query(QuestionAnswer)
+            .filter(
+                QuestionAnswer.question_id == question.id,
+                QuestionAnswer.response_id.in_(response_ids),
+            )
+            .all()
+        ) if response_ids else []
+
+        text_by_response = {}
+        for a in answers:
+            text = (a.answer_text or a.transcript or "").strip()
+            if text:
+                text_by_response[a.response_id] = (a.id, text)
+
+        items = list(text_by_response.items())
+        for i in range(len(items)):
+            for j in range(i + 1, len(items)):
+                r1, (a1_id, t1) = items[i]
+                r2, (a2_id, t2) = items[j]
+                similarity = text_similarity(t1, t2)
+                if similarity >= threshold:
+                    name1 = next((r.candidate_name for r in responses if r.id == r1), str(r1))
+                    name2 = next((r.candidate_name for r in responses if r.id == r2), str(r2))
+                    flags.append({
+                        "question_id": question.id,
+                        "question": question.question_text,
+                        "response_a_id": r1,
+                        "response_a_name": name1,
+                        "response_b_id": r2,
+                        "response_b_name": name2,
+                        "similarity": round(similarity, 3),
+                    })
+
+    return {
+        "interview_id": interview_id,
+        "threshold": threshold,
+        "flagged_pairs": flags,
+        "flag_count": len(flags),
+        "generated_at": datetime.utcnow(),
+    }
+
+
+def text_similarity(text_a: str, text_b: str) -> float:
+    """Jaccard-style similarity over normalized tokens."""
+    set_a = set(normalize_tokens(text_a))
+    set_b = set(normalize_tokens(text_b))
+    if not set_a and not set_b:
+        return 1.0 if text_a == text_b else 0.0
+    if not set_a or not set_b:
+        return 0.0
+    return len(set_a & set_b) / len(set_a | set_b)
+
+
 async def get_evaluation_health() -> Dict[str, object]:
     provider = get_evaluation_provider()
     health = {
