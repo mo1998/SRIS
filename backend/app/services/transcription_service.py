@@ -11,6 +11,7 @@ import redis
 from fastapi import BackgroundTasks
 from rq import Queue
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.config import settings
 from app.database import SessionLocal
@@ -111,14 +112,21 @@ def get_transcription_provider() -> TranscriptionProvider:
 
 async def transcribe_answer(answer_id: int, db: Session) -> TranscriptionResult:
     answer = db.query(QuestionAnswer).filter(QuestionAnswer.id == answer_id).first()
-    if not answer or not answer.audio_file_path:
+    if not answer:
         return TranscriptionResult(transcript="", detected_language=None, confidence=0.0)
 
-    if not os.path.exists(answer.audio_file_path):
+    # Audio file preferred; fall back to video file (video recordings capture
+    # the audio track too, so spoken answers can still be transcribed).
+    media_path = None
+    for candidate in (answer.audio_file_path, answer.video_file_path):
+        if candidate and os.path.exists(candidate):
+            media_path = candidate
+            break
+    if not media_path:
         return TranscriptionResult(transcript="", detected_language=None, confidence=0.0)
 
     provider = get_transcription_provider()
-    result = await provider.transcribe_audio(answer.audio_file_path)
+    result = await provider.transcribe_audio(media_path)
 
     from datetime import datetime
 
@@ -133,7 +141,10 @@ async def transcribe_response_answers_background(response_id: int) -> None:
     try:
         answers = db.query(QuestionAnswer).filter(
             QuestionAnswer.response_id == response_id,
-            QuestionAnswer.audio_file_path.isnot(None),
+            or_(
+                QuestionAnswer.audio_file_path.isnot(None),
+                QuestionAnswer.video_file_path.isnot(None),
+            ),
         ).all()
         for answer in answers:
             await transcribe_answer(answer.id, db)
