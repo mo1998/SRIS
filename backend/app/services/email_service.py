@@ -159,6 +159,7 @@ async def send_completion_email(
     interview_title: str,
     score: float,
     passed: bool,
+    results_link: str = "",
 ):
     """Send interview completion email with results via Mailpit."""
     health = get_email_health()
@@ -167,6 +168,11 @@ async def send_completion_email(
         return
 
     result_text = "passed" if passed else "did not pass"
+    results_html = (
+        f'<p><a href="{results_link}" style="display: inline-block; padding: 10px 20px; '
+        f'background-color: #3498db; color: white; text-decoration: none; border-radius: 5px;">View Detailed Results</a></p>'
+        if results_link else ""
+    )
     html_content = f"""
     <html>
     <body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4;">
@@ -180,6 +186,8 @@ async def send_completion_email(
                 <p style="font-size: 18px;"><strong>Score:</strong> {score:.1f}%</p>
                 <p style="font-size: 18px;"><strong>Status:</strong> You {result_text} the interview</p>
             </div>
+
+            {results_html}
 
             <p>A detailed report has been shared with the employer. They will review your performance and contact you if you move forward in the process.</p>
 

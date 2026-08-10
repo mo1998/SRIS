@@ -5,6 +5,7 @@ Evaluation service - deterministic answer scoring and candidate evaluation
 from dataclasses import dataclass
 import asyncio
 import json
+import os
 import re
 import hashlib
 from typing import Dict, List, Optional, Protocol
@@ -394,7 +395,17 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
         quality_scores.append(response.face_visibility_score)
     if response.lighting_score is not None:
         quality_scores.append(response.lighting_score)
-    
+
+    # Blend quality + emotion confidence into the total score so captured
+    # metrics actually influence the outcome (configurable weights).
+    base_score = response.total_score or 0.0
+    if quality_scores:
+        quality_avg = sum(quality_scores) / len(quality_scores)
+        base_score = base_score * (1 - settings.SCORING_QUALITY_WEIGHT) + quality_avg * settings.SCORING_QUALITY_WEIGHT
+    if response.confidence_score is not None:
+        base_score = base_score * (1 - settings.SCORING_EMOTION_WEIGHT) + response.confidence_score * settings.SCORING_EMOTION_WEIGHT
+    response.total_score = base_score
+
     # Get interview pass score
     interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
     pass_score = interview.pass_score if interview else 70.0
@@ -415,13 +426,20 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
     if response.candidate_email:
         from app.services.email_service import send_completion_email
         interview_title = interview.title if interview else "Interview"
+        results_link = ""
+        if response.invitation_id:
+            from app.models import Invitation
+            invitation = db.query(Invitation).filter(Invitation.id == response.invitation_id).first()
+            if invitation and invitation.unique_token:
+                results_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/results/{invitation.unique_token}"
         try:
             await send_completion_email(
                 to_email=response.candidate_email,
                 candidate_name=response.candidate_name,
                 interview_title=interview_title,
                 score=response.total_score or 0.0,
-                passed=response.passed or False
+                passed=response.passed or False,
+                results_link=results_link,
             )
         except Exception as exc:
             print(f"Completion email failed: {exc}")
@@ -808,15 +826,23 @@ def get_ai_disclosure() -> Dict[str, object]:
         "emotion_analysis": {
             "enabled": get_emotion_provider_name() != "disabled",
             "provider": get_emotion_provider_name(),
-            "purpose": "Facial expression analysis of recorded interview video using DeepFace (open source). Emotion data is collected for operational quality analysis only.",
-            "scoring_impact": "none",
+            "purpose": "Facial expression analysis of recorded interview video using DeepFace (open source). Emotion confidence may contribute a small configurable weight to the overall score.",
+            "scoring_impact": "weighted" if settings.SCORING_EMOTION_WEIGHT > 0 else "none",
+            "weight": settings.SCORING_EMOTION_WEIGHT,
+        },
+        "quality_analysis": {
+            "enabled": True,
+            "purpose": "Voice, background, face visibility, and lighting metrics from client-side device checks.",
+            "scoring_impact": "weighted" if settings.SCORING_QUALITY_WEIGHT > 0 else "none",
+            "weight": settings.SCORING_QUALITY_WEIGHT,
         },
         "disclosure": (
             "SRIS uses automated evaluation tools to assist employers in reviewing candidate responses. "
             "All AI-generated scores and feedback are subject to human review. "
             "Final hiring decisions are made by human reviewers. "
-            "Emotion and quality metrics are collected for operational diagnostics only "
-            "and are never used as a basis for scoring or hiring decisions."
+            "Emotion confidence and device-quality metrics may contribute a small, configurable "
+            "weight to the overall score; these weights are disclosed to candidates and employers."
+
         ),
         "last_updated": datetime.utcnow(),
     }

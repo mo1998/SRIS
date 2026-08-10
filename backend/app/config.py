@@ -75,6 +75,14 @@ class Settings(BaseSettings):
     MIN_FACE_VISIBILITY: float = 0.8
     MIN_LIGHTING_SCORE: float = 0.6
     MAX_BACKGROUND_NOISE: float = 0.3
+
+    # Integrity / anti-cheating
+    INTEGRITY_TRACKING_ENABLED: bool = os.getenv("INTEGRITY_TRACKING_ENABLED", "true").lower() == "true"
+    INTERVIEW_DURATION_GRACE_SECONDS: int = int(os.getenv("INTERVIEW_DURATION_GRACE_SECONDS", "60"))
+
+    # Scoring weights (applied when a quality/emotion value is present)
+    SCORING_QUALITY_WEIGHT: float = float(os.getenv("SCORING_QUALITY_WEIGHT", "0.1"))
+    SCORING_EMOTION_WEIGHT: float = float(os.getenv("SCORING_EMOTION_WEIGHT", "0.05"))
     
     model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
 

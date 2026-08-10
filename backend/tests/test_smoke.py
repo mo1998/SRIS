@@ -2052,6 +2052,182 @@ def test_video_only_answer_scored_from_transcript(client, monkeypatch):
     assert answer_report["score"] > 0
 
 
+def test_candidate_results_portal_by_token(client, monkeypatch):
+    """Candidates can view their own results via the invitation token
+    without logging in."""
+    from app.services.transcription_service import TranscriptionResult
+
+    class StubWhisperProvider:
+        name = "whisper"
+        version = "1.0.0"
+
+        async def transcribe_audio(self, audio_path):
+            return TranscriptionResult(
+                transcript="I listen and empathize with the customer.",
+                detected_language="en",
+                confidence=0.9,
+            )
+
+    monkeypatch.setattr(
+        "app.services.transcription_service.get_transcription_provider",
+        lambda: StubWhisperProvider(),
+    )
+
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    invite_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "interview_id": interview_id,
+            "candidate_email": "portal-candidate@test.com",
+            "candidate_name": "Portal Candidate",
+        },
+    )
+    assert invite_response.status_code == 201, invite_response.text
+    invite = invite_response.json()
+    invitation_token = invite["unique_token"]
+
+    client.get(f"/api/invitations/verify/{invitation_token}")
+
+    start_response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview_id,
+            "candidate_email": "portal-candidate@test.com",
+            "candidate_name": "Portal Candidate",
+            "invitation_token": invitation_token,
+        },
+    )
+    assert start_response.status_code == 201, start_response.text
+    response_id = start_response.json()["id"]
+
+    client.post(
+        f"/api/responses/{response_id}/answer",
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "I listen and empathize with the customer.",
+        },
+    )
+    client.post(f"/api/responses/{response_id}/complete")
+
+    results_response = client.get(f"/api/invitations/{invitation_token}/results")
+    assert results_response.status_code == 200, results_response.text
+    data = results_response.json()
+    assert data["candidate_name"] == "Portal Candidate"
+    assert data["total_score"] > 0
+    assert "answers" in data
+    assert data["answers"][0]["score"] > 0
+
+    bad_response = client.get("/api/invitations/not-a-real-token/results")
+    assert bad_response.status_code == 404
+
+
+def test_answer_retake_replaces_answer_and_clears_score(client):
+    """Candidates can retake an answer while the response is in progress."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    candidate_response = start_candidate_response(client, interview_id, email="retake@test.com")
+
+    qid = interview["questions"][0]["id"]
+    first = client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={"question_id": qid, "answer_text": "wrong answer"},
+    )
+    assert first.status_code == 200, first.text
+
+    retake = client.put(
+        f"/api/responses/{candidate_response['id']}/answer/{qid}",
+        params={"question_id": qid, "answer_text": "I listen carefully and empathize with the customer.", "time_taken_seconds": 99},
+    )
+    assert retake.status_code == 200, retake.text
+    data = retake.json()
+    assert data["answer_text"] == "I listen carefully and empathize with the customer."
+    assert data["time_taken_seconds"] == 99
+    assert data["score"] is None
+    assert data["transcript"] is None
+
+
+def test_integrity_events_recorded_and_timer_flagged(client):
+    """Client-side integrity events are stored; server enforces duration."""
+    from app.models import IntegrityEvent
+    from app.database import SessionLocal
+
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    candidate_response = start_candidate_response(client, interview_id, email="integrity@test.com")
+    response_id = candidate_response["id"]
+
+    events_response = client.post(
+        f"/api/responses/{response_id}/integrity-events",
+        json=[{"event_type": "tab_hidden", "details": "switched away"}, {"event_type": "window_blur"}],
+    )
+    assert events_response.status_code == 200, events_response.text
+    assert events_response.json()["recorded"] == 2
+
+    db = SessionLocal()
+    try:
+        events = db.query(IntegrityEvent).filter(IntegrityEvent.response_id == response_id).all()
+        assert len(events) == 2
+        assert events[0].event_type == "tab_hidden"
+    finally:
+        db.close()
+
+
+def test_candidate_comparison_api(client):
+    """Employers get side-by-side candidate comparison ranked by score."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    for i, (email, answer) in enumerate([("cand-a@test.com", "I listen and empathize with the customer."),
+                                         ("cand-b@test.com", "I listen.")]):
+        candidate_response = start_candidate_response(client, interview_id, email=email)
+        client.post(
+            f"/api/responses/{candidate_response['id']}/answer",
+            params={"question_id": interview["questions"][0]["id"], "answer_text": answer},
+        )
+        client.post(f"/api/responses/{candidate_response['id']}/complete")
+
+    comparison_response = client.get(
+        f"/api/reports/interview/{interview_id}/comparison",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert comparison_response.status_code == 200, comparison_response.text
+    data = comparison_response.json()
+    assert len(data["candidates"]) == 2
+    # Ranked by total score descending
+    assert data["candidates"][0]["total_score"] >= data["candidates"][1]["total_score"]
+    assert data["candidates"][0]["question_scores"][0]["question"] == "How do you handle an upset customer?"
+    # Per-question score reflects answer quality
+    assert data["candidates"][0]["question_scores"][0]["score"] > data["candidates"][1]["question_scores"][0]["score"]
+
+
 def test_data_export_request_flow(client):
     """Test requesting and processing a data export."""
     register_user(client)
@@ -2150,7 +2326,8 @@ def test_ai_disclosure_endpoint(client):
     assert "transcription" in data
     assert "emotion_analysis" in data
     assert "disclosure" in data
-    assert data["emotion_analysis"]["scoring_impact"] == "none"
+    assert data["emotion_analysis"]["scoring_impact"] == "weighted"
+    assert "quality_analysis" in data
     assert data["evaluation"]["human_review_available"] is True
 
 

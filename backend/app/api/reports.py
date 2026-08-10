@@ -93,6 +93,60 @@ async def get_interview_report(
     return report
 
 
+@router.get("/interview/{interview_id}/comparison")
+async def compare_candidates(
+    interview_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Side-by-side candidate comparison with per-question scores,
+    ranked by total score."""
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    require_interview_membership(interview, current_user, db)
+
+    from app.models import CandidateResponse, QuestionAnswer, InterviewQuestion
+
+    questions = (
+        db.query(InterviewQuestion)
+        .filter(InterviewQuestion.interview_id == interview_id)
+        .order_by(InterviewQuestion.order_index, InterviewQuestion.id)
+        .all()
+    )
+    responses = (
+        db.query(CandidateResponse)
+        .filter(CandidateResponse.interview_id == interview_id, CandidateResponse.status == "completed")
+        .all()
+    )
+
+    rows = []
+    for response in sorted(responses, key=lambda r: (r.total_score or 0.0), reverse=True):
+        answers = {a.question_id: a for a in db.query(QuestionAnswer).filter(QuestionAnswer.response_id == response.id).all()}
+        row = {
+            "response_id": response.id,
+            "candidate_name": response.candidate_name,
+            "candidate_email": response.candidate_email,
+            "total_score": response.total_score,
+            "passed": response.passed,
+            "reviewer_decision": response.reviewer_decision.value if response.reviewer_decision else "pending",
+            "dominant_emotion": response.dominant_emotion,
+            "completed_at": response.completed_at,
+            "question_scores": [
+                {"question_id": q.id, "question": q.question_text, "score": (answers[q.id].score if q.id in answers else None)}
+                for q in questions
+            ],
+        }
+        rows.append(row)
+
+    return {
+        "interview_id": interview_id,
+        "interview_title": interview.title,
+        "questions": [{"id": q.id, "text": q.question_text} for q in questions],
+        "candidates": rows,
+    }
+
+
 @router.get("/evaluation/health", response_model=EvaluationHealth)
 async def get_evaluation_provider_health(
     response: Response,

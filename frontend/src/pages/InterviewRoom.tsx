@@ -306,7 +306,47 @@ const InterviewRoom: React.FC = () => {
 
     return () => window.clearInterval(interval)
   }, [step, remainingSeconds])
-  
+
+  // Track integrity events (tab switches / window blurs) during the interview
+  useEffect(() => {
+    if (step !== 'interview' || !responseId) return
+
+    const events: any[] = []
+    let flushTimer: number | undefined
+
+    const flush = () => {
+      if (events.length === 0 || !responseId) return
+      const batch = events.splice(0, events.length)
+      api.responses
+        .submitIntegrityEvents(responseId, batch)
+        .catch(() => {})
+    }
+
+    const record = (eventType: string, details?: string) => {
+      events.push({ event_type: eventType, details: details || '' })
+    }
+
+    const onVisibility = () => {
+      if (document.hidden) record('tab_hidden')
+      else record('tab_visible')
+    }
+    const onBlur = () => record('window_blur')
+    const onFocus = () => record('window_focus')
+
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
+    flushTimer = window.setInterval(flush, 10000)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocus)
+      if (flushTimer) window.clearInterval(flushTimer)
+      flush()
+    }
+  }, [step, responseId])
+
   if (loading) {
     return <Container className="mt-5"><p>Loading interview...</p></Container>
   }

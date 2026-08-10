@@ -10,7 +10,7 @@ import uuid
 import os
 
 from app.database import get_db
-from app.models import User, Interview, Invitation, InvitationStatus, InterviewStatus, TeamMembership, TeamRole, UserRole
+from app.models import User, Interview, Invitation, InvitationStatus, InterviewStatus, TeamMembership, TeamRole, UserRole, CandidateResponse
 from app.schemas import InvitationCreate, InvitationResponse, InvitationEmailPreview, InvitationPreviewRequest, InvitationVerificationResponse
 from app.api.auth import get_current_user
 from app.config import settings
@@ -307,6 +307,40 @@ async def verify_invitation_token(
         "created_at": invitation.created_at,
         "interview": interview,
     }
+
+
+@router.get("/{token}/results")
+async def get_candidate_results(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """Public token-based endpoint for candidates to view their own results
+    (score, feedback, transcript) without needing an account."""
+    invitation = db.query(Invitation).filter(Invitation.unique_token == token).first()
+    if not invitation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid invitation token")
+
+    response = (
+        db.query(CandidateResponse)
+        .filter(CandidateResponse.invitation_id == invitation.id)
+        .order_by(CandidateResponse.id.desc())
+        .first()
+    )
+    if not response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No interview response found for this invitation")
+
+    from app.services.evaluation_service import generate_candidate_report
+
+    report = generate_candidate_report(response.id, db)
+    if not report:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not available yet")
+
+    # Strip internal/employer-only fields
+    report.pop("evidence", None)
+    for answer in report.get("answers", []):
+        answer.pop("video_file_path", None)
+        answer.pop("audio_file_path", None)
+    return report
 
 
 @router.get("/{interview_id}", response_model=List[InvitationResponse])

@@ -35,6 +35,7 @@ export const api = {
     preview: (interviewId: number, data: { candidate_name?: string; custom_message?: string }) => axios.post(`${API_URL}/invitations/preview/${interviewId}`, data),
     list: (interviewId: number) => axios.get(`${API_URL}/invitations/${interviewId}`),
     verify: (token: string) => axios.get(`${API_URL}/invitations/verify/${token}`),
+    getResults: (token: string) => axios.get(`${API_URL}/invitations/${token}/results`),
     resend: (invitationId: number) => axios.post(`${API_URL}/invitations/${invitationId}/resend`),
     revoke: (invitationId: number) => axios.post(`${API_URL}/invitations/${invitationId}/revoke`)
   },
@@ -62,6 +63,7 @@ export const api = {
       })
     },
     submitQuality: (responseId: number, data: any) => axios.post(`${API_URL}/responses/${responseId}/quality`, null, { params: data }),
+    submitIntegrityEvents: (responseId: number, events: any[]) => axios.post(`${API_URL}/responses/${responseId}/integrity-events`, events),
     submitEmotion: (responseId: number, data: any) => axios.post(`${API_URL}/responses/${responseId}/emotion`, null, { params: data }),
     complete: (responseId: number) => axios.post(`${API_URL}/responses/${responseId}/complete`),
     list: (interviewId: number) => axios.get(`${API_URL}/responses/interview/${interviewId}`),

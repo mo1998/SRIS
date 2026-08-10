@@ -519,6 +519,7 @@ class AIDisclosure(BaseModel):
     evaluation: Dict
     transcription: Dict
     emotion_analysis: Dict
+    quality_analysis: Dict = {}
     disclosure: str
     last_updated: datetime
 

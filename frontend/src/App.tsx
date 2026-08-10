@@ -11,6 +11,7 @@ import CreateInterview from './pages/CreateInterview'
 import InterviewDetail from './pages/InterviewDetail'
 import CandidateReport from './pages/CandidateReport'
 import InterviewRoom from './pages/InterviewRoom'
+import ResultsPortal from './pages/ResultsPortal'
 import MyResults from './pages/MyResults'
 import AccountSettings from './pages/AccountSettings'
 
@@ -107,6 +108,8 @@ const AppRoutes: React.FC = () => {
         } />
 
         <Route path="/interview/:token" element={<InterviewRoom />} />
+
+        <Route path="/results/:token" element={<ResultsPortal />} />
 
         <Route path="/employee/results" element={
           <ProtectedRoute roles={['employee']}>
