@@ -5,7 +5,11 @@ Transcription service - audio file transcription with provider abstraction
 from dataclasses import dataclass
 from typing import Optional, Protocol
 import asyncio
+import logging
 import os
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 import redis
 from fastapi import BackgroundTasks
@@ -138,6 +142,8 @@ async def transcribe_answer(answer_id: int, db: Session) -> TranscriptionResult:
 
 async def transcribe_response_answers_background(response_id: int) -> None:
     db = SessionLocal()
+    failed = 0
+    total = 0
     try:
         answers = db.query(QuestionAnswer).filter(
             QuestionAnswer.response_id == response_id,
@@ -147,9 +153,19 @@ async def transcribe_response_answers_background(response_id: int) -> None:
             ),
         ).all()
         for answer in answers:
-            await transcribe_answer(answer.id, db)
+            total += 1
+            try:
+                await transcribe_answer(answer.id, db)
+            except Exception as exc:
+                failed += 1
+                logger.error("Background transcription failed for answer %s of response %s: %s", answer.id, response_id, exc)
     finally:
         db.close()
+
+    if failed:
+        logger.error("Background transcription completed with failures: %d/%d answers failed for response %s", failed, total, response_id)
+    elif total:
+        logger.info("Background transcription completed for response %s: %d answers", response_id, total)
 
 
 def run_transcription_job(response_id: int) -> None:
@@ -165,3 +181,37 @@ def enqueue_transcription(response_id: int, background_tasks: BackgroundTasks) -
 
     background_tasks.add_task(transcribe_response_answers_background, response_id)
     return "background"
+
+
+async def get_transcription_health() -> dict:
+    provider = get_transcription_provider()
+    healthy = True
+    status = "available"
+    last_error = None
+
+    if provider.name == "whisper":
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(provider._get_model),
+                timeout=max(10, min(settings.EMOTION_ANALYSIS_TIMEOUT_SECONDS, 60)),
+            )
+            status = "whisper_available"
+        except asyncio.TimeoutError:
+            healthy = False
+            status = "whisper_unavailable"
+            last_error = "Model load timed out"
+        except Exception as exc:
+            healthy = False
+            status = "whisper_unavailable"
+            last_error = str(exc)
+
+    return {
+        "provider": provider.name,
+        "provider_version": getattr(provider, "version", None),
+        "model_name": settings.WHISPER_MODEL_SIZE if provider.name == "whisper" else None,
+        "queue_backend": settings.TRANSCRIPTION_QUEUE_BACKEND,
+        "healthy": healthy,
+        "status": status,
+        "last_error": last_error,
+        "checked_at": datetime.utcnow(),
+    }

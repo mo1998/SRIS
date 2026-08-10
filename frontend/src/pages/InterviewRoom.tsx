@@ -79,8 +79,23 @@ const InterviewRoom: React.FC = () => {
       setResponseId(response.data.id)
       setRemainingSeconds((interview?.duration_minutes || 0) * 60)
       setStep('interview')
+      syncServerTimer(response.data.id)
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to start interview')
+    }
+  }
+
+  const syncServerTimer = async (id: number) => {
+    try {
+      const timerRes = await api.responses.getTimer(id)
+      const timer = timerRes.data
+      const serverNow = new Date(timer.server_time).getTime()
+      const clientNow = Date.now()
+      const clockSkew = clientNow - serverNow
+      const deadlineMs = new Date(timer.deadline).getTime() + clockSkew
+      setRemainingSeconds(Math.max(0, Math.round((deadlineMs - Date.now()) / 1000)))
+    } catch (err) {
+      console.error('Failed to sync server timer:', err)
     }
   }
 
@@ -306,6 +321,30 @@ const InterviewRoom: React.FC = () => {
 
     return () => window.clearInterval(interval)
   }, [step, remainingSeconds])
+
+  // Re-sync the countdown with the server periodically so a tampered client
+  // clock cannot silently extend the interview.
+  useEffect(() => {
+    if (step !== 'interview' || !responseId) return
+
+    const sync = window.setInterval(() => syncServerTimer(responseId), 30000)
+    return () => window.clearInterval(sync)
+  }, [step, responseId])
+
+  // Auto-submit the current answer and complete when time runs out. Reset the
+  // guard when the question advances so remaining answers auto-submit too.
+  const autoSubmittedRef = useRef(false)
+  useEffect(() => {
+    autoSubmittedRef.current = false
+  }, [currentQuestionIndex])
+
+  useEffect(() => {
+    if (step !== 'interview' || remainingSeconds !== 0) return
+    if (autoSubmittedRef.current || isSubmittingAnswer) return
+
+    autoSubmittedRef.current = true
+    submitAnswer()
+  }, [step, remainingSeconds, isSubmittingAnswer])
 
   // Track integrity events (tab switches / window blurs) during the interview
   useEffect(() => {

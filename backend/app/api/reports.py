@@ -11,10 +11,11 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models import User, Interview, CandidateResponse, TeamMembership, TeamRole, UserRole
-from app.schemas import InterviewReport, CandidateReport, EmailHealth, EvaluationAnalytics, EvaluationHealth, EvaluationRunAudit, AIDisclosure
+from app.schemas import InterviewReport, CandidateReport, EmailHealth, EvaluationAnalytics, EvaluationHealth, EvaluationRunAudit, AIDisclosure, TranscriptionHealth
 from app.api.auth import get_current_user, require_role, UserRole
 from app.services.evaluation_service import generate_employer_report, generate_candidate_report, generate_candidate_evaluation_audit, generate_interview_evaluation_analytics, get_evaluation_health, get_ai_disclosure
 from app.services.email_service import get_email_health
+from app.services.transcription_service import get_transcription_health
 from app.services.audit_service import create_audit_log
 
 router = APIRouter()
@@ -292,6 +293,19 @@ async def get_email_configuration_health(
 
     response.headers["Cache-Control"] = "no-store"
     return get_email_health()
+
+
+@router.get("/transcription/health", response_model=TranscriptionHealth)
+async def get_transcription_provider_health(
+    response: Response,
+    current_user: User = Depends(get_current_user)
+):
+    """Get transcription provider availability and queue status."""
+    if current_user.role not in [UserRole.EMPLOYER, UserRole.ADMIN]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    response.headers["Cache-Control"] = "no-store"
+    return await get_transcription_health()
 
 
 @router.get("/ai-disclosure", response_model=AIDisclosure)

@@ -2725,3 +2725,186 @@ def test_manual_maintenance_endpoint(client):
     body = response.json()
     assert "expired_invitations" in body
     assert "reminders_sent" in body
+
+
+def test_response_timer_endpoint(client):
+    """The server-authoritative timer reports remaining time and expiry."""
+    from app.config import settings
+
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    candidate_response = start_candidate_response(client, interview_id, email="timer@test.com")
+    response_id = candidate_response["id"]
+
+    response = client.get(f"/api/responses/{response_id}/timer")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["response_id"] == response_id
+    assert body["duration_minutes"] == 30
+    assert body["grace_seconds"] == settings.INTERVIEW_DURATION_GRACE_SECONDS
+    assert body["remaining_seconds"] > 0
+    assert body["expired"] is False
+    assert body["deadline"] > body["started_at"]
+
+    # A not-found response is rejected
+    missing = client.get("/api/responses/999999/timer")
+    assert missing.status_code == 404
+
+    # An expired response reports expired True (started far in the past)
+    from datetime import datetime, timedelta
+    from app.database import SessionLocal
+    from app.models import CandidateResponse
+
+    db = SessionLocal()
+    try:
+        cr = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
+        cr.started_at = datetime.utcnow() - timedelta(hours=2)
+        db.commit()
+    finally:
+        db.close()
+
+    expired = client.get(f"/api/responses/{response_id}/timer")
+    assert expired.status_code == 200
+    assert expired.json()["expired"] is True
+    assert expired.json()["remaining_seconds"] == 0
+
+
+def test_emotion_analysis_timeout_and_cache(client, monkeypatch):
+    """DeepFace emotion analysis honors a timeout and caches repeated results."""
+    from app.config import settings
+    from app.services.emotion_service import (
+        DeepFaceEmotionAnalysisProvider,
+        _cache_get,
+        _cache_set,
+        EmotionAnalysisResult,
+        EmotionSample,
+    )
+
+    monkeypatch.setattr(settings, "EMOTION_ANALYSIS_TIMEOUT_SECONDS", 1)
+
+    # Timeout: provider that never returns is abandoned after the timeout.
+    provider = DeepFaceEmotionAnalysisProvider()
+    slow_path = "/tmp/opencode/slow-emo.webm"
+    os.makedirs(os.path.dirname(slow_path), exist_ok=True)
+    with open(slow_path, "wb") as f:
+        f.write(b"fake-video")
+
+    def _slow_forever(video_path):
+        import time
+        time.sleep(3)
+        return None
+
+    monkeypatch.setattr(provider, "_analyze_video_sync", _slow_forever)
+    import asyncio
+    import time
+
+    started = time.monotonic()
+    result = asyncio.run(provider.analyze_video(slow_path))
+    elapsed = time.monotonic() - started
+    assert result is None
+    assert elapsed < 15
+    # Cache: same path + mtime returns the stored result without re-analysis.
+    cached = EmotionAnalysisResult(
+        dominant_emotion="happy",
+        confidence=80.0,
+        timeline=[EmotionSample(emotion="happy", confidence=0.8, timestamp=0.0)],
+    )
+    _cache_set("/tmp/cached-emo.webm", cached)
+    assert _cache_get("/tmp/cached-emo.webm") is cached
+
+
+def test_transcription_health_endpoint(client):
+    """Employers can inspect transcription provider health."""
+    register_user(client)
+    token = login_user(client)
+
+    response = client.get(
+        "/api/reports/transcription/health",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["provider"] in ("fake", "fake_transcriber", "whisper")
+    assert body["queue_backend"] in ("rq", "background")
+    assert "healthy" in body
+
+    # Unauthorized roles are rejected
+    register_user(client, email="trans-hr@test.com", role="employee")
+    hr_token = login_user(client, email="trans-hr@test.com")
+    denied = client.get(
+        "/api/reports/transcription/health",
+        headers={"Authorization": f"Bearer {hr_token}"},
+    )
+    assert denied.status_code == 403
+
+
+def test_emotion_parallel_evaluation_uses_cached_results(client, monkeypatch):
+    """Evaluation runs parallel emotion analysis and applies results to answers."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    candidate_response = start_candidate_response(client, interview_id, email="emopar@test.com")
+    response_id = candidate_response["id"]
+    client.post(
+        f"/api/responses/{response_id}/answer",
+        params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen."},
+    )
+
+    calls = {"count": 0}
+
+    class RecordingProvider:
+        name = "fake"
+        version = "1.0.0"
+
+        async def analyze_video(self, video_path):
+            calls["count"] += 1
+            from app.services.emotion_service import EmotionAnalysisResult, EmotionSample
+            return EmotionAnalysisResult(
+                dominant_emotion="neutral",
+                confidence=50.0,
+                timeline=[EmotionSample(emotion="neutral", confidence=0.6, timestamp=0.0)],
+            )
+
+    monkeypatch.setattr("app.services.emotion_service.get_emotion_provider", lambda: RecordingProvider())
+
+    # Give the answer a video file so the parallel emotion pre-pass runs.
+    from app.database import SessionLocal
+    from app.models import QuestionAnswer
+
+    db = SessionLocal()
+    try:
+        answer = db.query(QuestionAnswer).filter(QuestionAnswer.response_id == response_id).first()
+        answer.video_file_path = "/tmp/sample-emo.webm"
+        db.commit()
+    finally:
+        db.close()
+
+    from app.services.evaluation_service import evaluate_candidate_response
+    import asyncio
+
+    eval_db = SessionLocal()
+    try:
+        asyncio.run(evaluate_candidate_response(response_id, eval_db, evaluation_run_id=None))
+    finally:
+        eval_db.close()
+
+    assert calls["count"] == 1
+
+    db2 = SessionLocal()
+    try:
+        answer2 = db2.query(QuestionAnswer).filter(QuestionAnswer.response_id == response_id).first()
+        assert answer2.emotion_during_answer == "neutral"
+    finally:
+        db2.close()

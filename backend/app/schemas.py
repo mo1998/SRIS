@@ -552,6 +552,28 @@ class EmailHealth(BaseModel):
     checked_at: datetime
 
 
+class TranscriptionHealth(BaseModel):
+    provider: str
+    provider_version: Optional[str] = None
+    model_name: Optional[str] = None
+    queue_backend: str
+    healthy: bool
+    status: str
+    last_error: Optional[str] = None
+    checked_at: datetime
+
+
+class ResponseTimer(BaseModel):
+    response_id: int
+    started_at: datetime
+    duration_minutes: Optional[int] = None
+    grace_seconds: int
+    deadline: datetime
+    remaining_seconds: int
+    server_time: datetime
+    expired: bool
+
+
 class EvaluationAnalytics(BaseModel):
     interview_id: int
     completed_responses: int

@@ -70,6 +70,7 @@ export const api = {
     submitIntegrityEvents: (responseId: number, events: any[]) => axios.post(`${API_URL}/responses/${responseId}/integrity-events`, events),
     submitEmotion: (responseId: number, data: any) => axios.post(`${API_URL}/responses/${responseId}/emotion`, null, { params: data }),
     complete: (responseId: number) => axios.post(`${API_URL}/responses/${responseId}/complete`),
+    getTimer: (responseId: number) => axios.get(`${API_URL}/responses/${responseId}/timer`),
     list: (interviewId: number) => axios.get(`${API_URL}/responses/interview/${interviewId}`),
     get: (responseId: number) => axios.get(`${API_URL}/responses/${responseId}`),
     delete: (responseId: number) => axios.delete(`${API_URL}/responses/${responseId}`)
