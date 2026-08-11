@@ -14,6 +14,8 @@ import InterviewRoom from './pages/InterviewRoom'
 import ResultsPortal from './pages/ResultsPortal'
 import MyResults from './pages/MyResults'
 import AccountSettings from './pages/AccountSettings'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; roles?: string[] }> = ({ children, roles }) => {
   const { isAuthenticated, isLoading, user } = useAuth()
@@ -66,6 +68,16 @@ const AppRoutes: React.FC = () => {
         <Route path="/register" element={
           isAuthenticated ? <Navigate to="/" /> : (
             <PublicLayout><Register /></PublicLayout>
+          )
+        } />
+        <Route path="/forgot-password" element={
+          isAuthenticated ? <Navigate to="/" /> : (
+            <PublicLayout><ForgotPassword /></PublicLayout>
+          )
+        } />
+        <Route path="/reset-password" element={
+          isAuthenticated ? <Navigate to="/" /> : (
+            <PublicLayout><ResetPassword /></PublicLayout>
           )
         } />
 

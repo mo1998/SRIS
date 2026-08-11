@@ -82,6 +82,20 @@ class PasswordChange(BaseModel):
         return validate_password_strength(password)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password_complexity(cls, password: str) -> str:
+        return validate_password_strength(password)
+
+
 def validate_password_strength(password: str) -> str:
     if not any(character.islower() for character in password):
         raise ValueError("Password must include a lowercase letter")

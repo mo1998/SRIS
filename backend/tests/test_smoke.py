@@ -3000,3 +3000,77 @@ def test_response_completion_creates_notification(client):
         assert "Candidate One" in (notifications[0].message or "")
     finally:
         db.close()
+
+
+def test_forgot_password_request_and_reset_flow(client, monkeypatch):
+    """Forgot-password mails a one-time token; reset changes the password."""
+    from datetime import datetime
+
+    register_user(client)
+    login_user(client)
+
+    captured = {}
+
+    async def fake_send(to_email, reset_link):
+        captured["to_email"] = to_email
+        captured["reset_link"] = reset_link
+
+    monkeypatch.setattr("app.services.email_service.send_password_reset_email", fake_send)
+
+    response = client.post("/api/auth/forgot-password", json={"email": "employer@example.com"})
+    assert response.status_code == 200, response.text
+    assert "reset link has been sent" in response.json()["message"]
+
+    from app.database import SessionLocal
+    from app.models import User, PasswordResetToken
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == "employer@example.com").first()
+        reset = db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        ).first()
+        assert reset is not None
+        assert reset.expires_at > datetime.utcnow()
+    finally:
+        db.close()
+
+    assert captured["to_email"] == "employer@example.com"
+    token = captured["reset_link"].split("token=")[1]
+
+    # Reset with the token then sign in with the new password
+    reset_response = client.post("/api/auth/reset-password", json={
+        "token": token,
+        "new_password": "NewStrong1pass",
+    })
+    assert reset_response.status_code == 200, reset_response.text
+
+    new_login = client.post(
+        "/api/auth/login",
+        data={"username": "employer@example.com", "password": "NewStrong1pass"},
+    )
+    assert new_login.status_code == 200, new_login.text
+
+    # Token is single-use: second reset attempt fails
+    replay = client.post("/api/auth/reset-password", json={
+        "token": token,
+        "new_password": "Another1pass",
+    })
+    assert replay.status_code == 400
+
+
+def test_reset_password_rejects_bad_token(client):
+    """Invalid or expired reset tokens are rejected."""
+    bad = client.post("/api/auth/reset-password", json={
+        "token": "not-a-real-token",
+        "new_password": "Timeout123!",
+    })
+    assert bad.status_code == 400
+
+
+def test_forgot_password_no_user_leak(client):
+    """Unknown emails get the same response as registered ones."""
+    response = client.post("/api/auth/forgot-password", json={"email": "nobody@nowhere.com"})
+    assert response.status_code == 200, response.text
+    assert "reset link has been sent" in response.json()["message"]

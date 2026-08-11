@@ -313,3 +313,60 @@ async def send_completion_email(
         logger.info("Completion email sent to %s via Mailpit", to_email)
     except Exception as e:
         logger.error("Error sending completion to %s: %s", to_email, e)
+
+
+def render_password_reset_email(
+    reset_link: str,
+    expires_minutes: int,
+) -> tuple[str, str]:
+    """Render the password reset confirmation email subject and HTML body."""
+    safe_reset_link = escape(reset_link)
+    formatted_expiry = escape(f"{expires_minutes} minutes")
+
+    html_content = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h1 style="color: #2c3e50; margin-bottom: 20px;">Password Reset</h1>
+            <p>We received a request to reset your password.</p>
+            <p>Click the button below to choose a new password. This link is valid for <strong>{formatted_expiry}</strong>.</p>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{safe_reset_link}"
+                   style="background-color: #3498db; color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; font-size: 16px; font-weight: bold;">
+                    Reset Password
+                </a>
+            </div>
+
+            <p style="color: #7f8c8d; font-size: 14px;">Or copy and paste this link into your browser:</p>
+            <p style="color: #3498db; word-break: break-all; font-size: 12px;">{safe_reset_link}</p>
+
+            <hr style="border: none; border-top: 1px solid #ecf0f1; margin: 30px 0;">
+            <p style="color: #7f8c8d; font-size: 12px;">
+                If you did not request a password reset, you can safely ignore this email.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+
+    return "Reset Your SRIS Password", html_content
+
+
+async def send_password_reset_email(to_email: str, reset_link: str):
+    """Send a password reset email via Mailpit."""
+    health = get_email_health()
+    if not health["configured"]:
+        logger.warning("Mailpit not configured — skipping password reset to %s", to_email)
+        return
+
+    subject, html_content = render_password_reset_email(
+        reset_link=reset_link,
+        expires_minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES,
+    )
+
+    try:
+        _send_email(to_email, to_email, subject, html_content)
+        logger.info("Password reset email sent to %s via Mailpit", to_email)
+    except Exception as e:
+        logger.error("Error sending password reset to %s: %s", to_email, e)
