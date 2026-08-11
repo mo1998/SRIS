@@ -2,6 +2,7 @@ import React from 'react'
 import { useAuth } from '../../store/authStore'
 import { FiLogOut, FiMenu, FiUser, FiChevronDown } from 'react-icons/fi'
 import { useNavigate } from 'react-router-dom'
+import NotificationBell from '../NotificationBell'
 
 interface TopbarProps {
   onToggleSidebar: () => void
@@ -45,6 +46,9 @@ const Topbar: React.FC<TopbarProps> = ({ onToggleSidebar }) => {
       </div>
 
       <div className="topbar-right" ref={menuRef}>
+        <div className="me-2">
+          <NotificationBell />
+        </div>
         <div className="topbar-user" onClick={() => setMenuOpen(!menuOpen)}>
           <div className="topbar-avatar">
             {user?.full_name?.charAt(0)?.toUpperCase() || '?'}

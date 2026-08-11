@@ -2908,3 +2908,95 @@ def test_emotion_parallel_evaluation_uses_cached_results(client, monkeypatch):
         assert answer2.emotion_during_answer == "neutral"
     finally:
         db2.close()
+
+
+def test_notifications_crud(client):
+    """Users can list, read, and bulk-read their in-app notifications."""
+    register_user(client)
+    token = login_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    empty = client.get("/api/notifications/", headers=headers)
+    assert empty.status_code == 200, empty.text
+    assert empty.json() == {"notifications": [], "unread_count": 0}
+
+    from app.database import SessionLocal
+    from app.models import User
+    from app.services.notification_service import create_notification
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == "employer@example.com").first()
+        create_notification(db, user.id, "Hello", "World", notification_type="general")
+        create_notification(db, user.id, "Second", None, notification_type="general")
+    finally:
+        db.close()
+
+    listing = client.get("/api/notifications/", headers=headers)
+    assert listing.status_code == 200
+    body = listing.json()
+    assert body["unread_count"] == 2
+    assert len(body["notifications"]) == 2
+    assert body["notifications"][0]["title"] == "Second"
+    assert body["notifications"][0]["is_read"] is False
+
+    nid = body["notifications"][0]["id"]
+
+    count = client.get("/api/notifications/unread-count", headers=headers)
+    assert count.json()["unread_count"] == 2
+
+    read = client.post(f"/api/notifications/{nid}/read", headers=headers)
+    assert read.status_code == 200
+    assert read.json()["is_read"] is True
+
+    count2 = client.get("/api/notifications/unread-count", headers=headers)
+    assert count2.json()["unread_count"] == 1
+
+    all_read = client.post("/api/notifications/read-all", headers=headers)
+    assert all_read.status_code == 200
+    assert all_read.json()["marked"] == 1
+
+    # Reading a notification that does not belong to the user 404s
+    register_user(client, email="notif-other@test.com")
+    other_token = login_user(client, email="notif-other@test.com")
+    denied = client.post(
+        f"/api/notifications/{nid}/read",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert denied.status_code == 404
+
+
+def test_response_completion_creates_notification(client):
+    """Completing a response notifies the interview owner."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    candidate_response = start_candidate_response(client, interview_id, email="notify-cand@test.com")
+    client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen."},
+    )
+    client.post(f"/api/responses/{candidate_response['id']}/complete")
+
+    from app.database import SessionLocal
+    from app.models import Notification, User
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == "employer@example.com").first()
+        notifications = (
+            db.query(Notification)
+            .filter(Notification.user_id == user.id, Notification.type == "response_completed")
+            .order_by(Notification.id.desc())
+            .all()
+        )
+        assert len(notifications) >= 1
+        assert "Candidate One" in (notifications[0].message or "")
+    finally:
+        db.close()

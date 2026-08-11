@@ -599,6 +599,21 @@ class AuditLogResponse(BaseModel):
     created_at: datetime
 
 
+class NotificationResponse(BaseModel):
+    id: int
+    type: str
+    title: str
+    message: Optional[str] = None
+    link: Optional[str] = None
+    is_read: bool
+    created_at: datetime
+
+
+class NotificationsListResponse(BaseModel):
+    notifications: List[NotificationResponse]
+    unread_count: int
+
+
 class DataRequestTypeEnum(str, Enum):
     export = "export"
     delete = "delete"
