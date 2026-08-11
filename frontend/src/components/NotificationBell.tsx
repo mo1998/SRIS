@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { FiBell } from 'react-icons/fi'
-import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 
 interface NotificationItem {
@@ -28,7 +27,6 @@ const NotificationBell: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0)
   const [error, setError] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
-  const navigate = useNavigate()
 
   const load = async () => {
     try {
@@ -80,7 +78,6 @@ const NotificationBell: React.FC = () => {
       } catch { /* silent */ }
     }
     setOpen(false)
-    if (n.link) navigate(n.link)
   }
 
   return (
