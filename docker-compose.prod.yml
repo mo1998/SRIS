@@ -57,6 +57,8 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       DEBUG: False
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-SRIS}
       MAILPIT_API_URL: ${MAILPIT_API_URL:-}
@@ -65,6 +67,10 @@ services:
       EVALUATION_QUEUE_BACKEND: rq
       EVALUATION_QUEUE_NAME: ${EVALUATION_QUEUE_NAME:-evaluation}
       EVALUATION_PROVIDER: ${EVALUATION_PROVIDER:-deterministic_baseline}
+      CLOUD_LLM_BASE_URL: ${CLOUD_LLM_BASE_URL:-https://api.openai.com/v1}
+      CLOUD_LLM_MODEL: ${CLOUD_LLM_MODEL:-gpt-4o-mini}
+      CLOUD_LLM_API_KEY: ${CLOUD_LLM_API_KEY:-}
+      CLOUD_LLM_TIMEOUT_SECONDS: ${CLOUD_LLM_TIMEOUT_SECONDS:-20}
     volumes:
       - backend_uploads:/app/uploads
       - backend_logs:/app/logs
@@ -101,8 +107,17 @@ services:
       EVALUATION_QUEUE_BACKEND: rq
       EVALUATION_QUEUE_NAME: ${EVALUATION_QUEUE_NAME:-evaluation}
       EVALUATION_PROMPT_VERSION: ${EVALUATION_PROMPT_VERSION:-rubric-v1}
-      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:8100/v1}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://local-model:8100/v1}
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3-8b-awq}
+      LOCAL_LLM_TIMEOUT_SECONDS: ${LOCAL_LLM_TIMEOUT_SECONDS:-5}
+      CLOUD_LLM_BASE_URL: ${CLOUD_LLM_BASE_URL:-https://api.openai.com/v1}
+      CLOUD_LLM_MODEL: ${CLOUD_LLM_MODEL:-gpt-4o-mini}
+      CLOUD_LLM_API_KEY: ${CLOUD_LLM_API_KEY:-}
+      CLOUD_LLM_TIMEOUT_SECONDS: ${CLOUD_LLM_TIMEOUT_SECONDS:-20}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-SRIS}
       EMOTION_ANALYSIS_PROVIDER: ${EMOTION_ANALYSIS_PROVIDER:-deepface}
       TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-whisper}
       WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-small}
@@ -124,14 +139,67 @@ services:
           memory: 2G
           cpus: '2.0'
 
+  # Optional local vLLM OpenAI-compatible model server.
+  # Requires an NVIDIA GPU. Enabled via ENABLE_LOCAL_LLM=true (deploy.sh adds
+  # the 'local-llm' profile automatically). Not exposed to the host; only the
+  # backend and evaluation-worker reach it on the compose network.
+  local-model:
+    image: ${LOCAL_MODEL_IMAGE:-vllm/vllm-openai:latest}
+    container_name: sris-local-model-prod
+    profiles: ["local-llm"]
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
+      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8100"
+      - --model
+      - /models/${LOCAL_MODEL_SERVED_NAME:-qwen3-8b-awq}
+      - --served-model-name
+      - ${LOCAL_MODEL_SERVED_NAME:-qwen3-8b-awq}
+      - --max-model-len
+      - "${LOCAL_MODEL_MAX_MODEL_LEN:-4096}"
+      - --gpu-memory-utilization
+      - "${LOCAL_MODEL_GPU_MEMORY_UTILIZATION:-0.50}"
+      - --max-num-seqs
+      - "${LOCAL_MODEL_MAX_NUM_SEQS:-8}"
+      - --trust-remote-code
+    volumes:
+      - ${LOCAL_MODEL_PATH:-./models/qwen3-8b-awq}:/models/qwen3-8b-awq:ro
+    networks:
+      - sris-network
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8100/v1/models', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: always
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: sris-frontend-prod
+    environment:
+      DOMAIN: ${DOMAIN:-sris.example.com}
+      SSL_CERTIFICATE: ${SSL_CERTIFICATE:-/etc/letsencrypt/live/${DOMAIN:-sris.example.com}/fullchain.pem}
+      SSL_CERTIFICATE_KEY: ${SSL_CERTIFICATE_KEY:-/etc/letsencrypt/live/${DOMAIN:-sris.example.com}/privkey.pem}
     volumes:
-      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
-      - ./docker/nginx/nginx-prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/nginx-prod.conf:/etc/nginx/templates/default.conf.template:ro
+      - certbot_conf:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
     depends_on:
       - backend
     networks:
@@ -145,6 +213,18 @@ services:
         limits:
           memory: 512M
           cpus: '0.5'
+
+  certbot:
+    image: certbot/certbot
+    container_name: sris-certbot-prod
+    profiles: ["certbot"]
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_lib:/var/lib/letsencrypt
+      - certbot_www:/var/www/certbot
+    networks:
+      - sris-network
+    restart: "no"
 
   db-migrate:
     build:
@@ -170,6 +250,12 @@ volumes:
   backend_uploads:
     driver: local
   backend_logs:
+    driver: local
+  certbot_conf:
+    driver: local
+  certbot_lib:
+    driver: local
+  certbot_www:
     driver: local
 
 networks:
