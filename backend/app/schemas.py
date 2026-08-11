@@ -563,7 +563,8 @@ class EmailHealth(BaseModel):
     provider: str
     mail_from: str
     mail_from_name: str
-    mailpit_api_url: str
+    mail_server: str = ""
+    mail_port: int = 0
     missing_settings: List[str] = []
     checked_at: datetime
 
