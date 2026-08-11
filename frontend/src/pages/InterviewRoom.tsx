@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Webcam from 'react-webcam'
 import { api } from '../services/api'
+import LanguageSwitcher from '../i18n/LanguageSwitcher'
 import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiCheck, FiArrowRight, FiCamera } from 'react-icons/fi'
 
 const InterviewRoom: React.FC = () => {
@@ -543,6 +544,9 @@ const InterviewRoom: React.FC = () => {
   
   return (
     <Container fluid className="mt-3">
+      <div style={{ position: 'fixed', top: '0.75rem', right: '0.75rem', zIndex: 1100 }}>
+        <LanguageSwitcher />
+      </div>
       <Row className="gy-3">
         <Col lg={8}>
           <Card className="mb-4">
