@@ -15,6 +15,8 @@ const CandidateReport: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [reevaluating, setReevaluating] = useState(false)
   const [reevaluationError, setReevaluationError] = useState('')
+  const canManageEvaluations = user?.role === 'employer' || user?.role === 'admin'
+  const isEmployerView = canManageEvaluations
   
   useEffect(() => {
     loadReport()
@@ -107,9 +109,6 @@ const CandidateReport: React.FC = () => {
     return `${delta > 0 ? '+' : ''}${delta.toFixed(1)} pts`
   }
 
-  const canManageEvaluations = user?.role === 'employer' || user?.role === 'admin'
-  const isEmployerView = canManageEvaluations
-  
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
