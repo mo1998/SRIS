@@ -192,7 +192,6 @@ export default {
     memberAddFailed: 'فشل إضافة عضو الفريق',
     deleted: 'تم حذف المقابلة',
     deleteFailed: 'فشل حذف المقابلة',
-    jan: 'يناير', feb: 'فبراير', mar: 'مارس', apr: 'أبريل', may: 'مايو', jun: 'يونيو',
   },
   interviewDetail: {
     loading: 'جارٍ التحميل...',

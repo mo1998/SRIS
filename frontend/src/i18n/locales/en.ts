@@ -192,7 +192,6 @@ export default {
     memberAddFailed: 'Failed to add team member',
     deleted: 'Interview deleted',
     deleteFailed: 'Failed to delete interview',
-    jan: 'Jan', feb: 'Feb', mar: 'Mar', apr: 'Apr', may: 'May', jun: 'Jun',
   },
   interviewDetail: {
     loading: 'Loading...',
