@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Card, Badge } from 'react-bootstrap'
 import { FiChevronDown, FiChevronUp, FiCheck, FiX } from 'react-icons/fi'
+import { useTranslation } from 'react-i18next'
 
 interface Evidence {
   provider?: string
@@ -74,6 +75,7 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
   videoUrl,
   defaultExpanded = false,
 }) => {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(defaultExpanded)
 
   const matched = getMatchedItems(evidence)
@@ -120,7 +122,7 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
             )}
             {isFallback && (
               <Badge bg="warning" className="rounded-pill px-2 py-1" style={{ fontSize: '0.65rem' }}>
-                Fallback
+                {t('feedbackCard.fallback')}
               </Badge>
             )}
             <span className="text-muted">
@@ -133,7 +135,7 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
           <div className="mt-4 pt-3 border-top">
             {answerText && (
               <div className="mb-3">
-                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>Candidate Answer</small>
+                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{t('feedbackCard.candidateAnswer')}</small>
                 <p className="mb-0 mt-1 p-3 bg-light rounded border-start border-4" style={{ borderLeftColor: '#6366f1', fontSize: '0.9rem' }}>
                   {answerText}
                 </p>
@@ -141,21 +143,21 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
             )}
             {videoUrl && (
               <div className="mb-3">
-                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>Recorded Video</small>
+                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{t('feedbackCard.recordedVideo')}</small>
                 <video src={videoUrl} controls style={{ width: '100%', maxHeight: 400, borderRadius: 8 }} className="mt-1" />
               </div>
             )}
 
             {expectedAnswer && (
               <div className="mb-3">
-                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>Expected Answer</small>
+                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{t('feedbackCard.expectedAnswer')}</small>
                 <p className="mb-0 mt-1 text-muted" style={{ fontSize: '0.85rem' }}>{expectedAnswer}</p>
               </div>
             )}
 
             {sanitizedFeedbackEn && (
               <div className="mb-3" dir="ltr">
-                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>Feedback</small>
+                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{t('feedbackCard.feedback')}</small>
                 <div className="mt-1 p-3 bg-white border rounded" style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
                   {sanitizedFeedbackEn}
                 </div>
@@ -164,7 +166,7 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
 
             {hasArabic && (
               <div className="mb-3" dir="rtl">
-                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>الملاحظات</small>
+                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{t('feedbackCard.feedback')}</small>
                 <div className="mt-1 p-3 bg-white border rounded" style={{ fontSize: '0.9rem', lineHeight: 1.8, fontFamily: 'system-ui, sans-serif' }}>
                   {feedbackAr}
                 </div>
@@ -175,7 +177,7 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
               {matched.length > 0 && (
                 <div className="col-md-6">
                   <small className="text-muted fw-semibold text-uppercase d-block mb-2" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>
-                    <FiCheck className="me-1" style={{ color: '#059669' }} /> Matched Criteria
+                    <FiCheck className="me-1" style={{ color: '#059669' }} /> {t('feedbackCard.matchedCriteria')}
                   </small>
                   <div className="d-flex flex-wrap gap-1">
                     {matched.map((item, i) => (
@@ -191,7 +193,7 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
               {missing.length > 0 && (
                 <div className="col-md-6">
                   <small className="text-muted fw-semibold text-uppercase d-block mb-2" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>
-                    <FiX className="me-1" style={{ color: '#e11d48' }} /> Missing Criteria
+                    <FiX className="me-1" style={{ color: '#e11d48' }} /> {t('feedbackCard.missingCriteria')}
                   </small>
                   <div className="d-flex flex-wrap gap-1">
                     {missing.map((item, i) => (
@@ -208,7 +210,7 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
 
             {evidenceText && (
               <div>
-                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>Evidence</small>
+                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{t('feedbackCard.evidence')}</small>
                 <blockquote className="mt-1 mb-0 p-3 bg-light border-start border-4 rounded-end"
                   style={{ borderLeftColor: '#6366f1', fontSize: '0.88rem', fontStyle: 'italic', color: '#334155' }}>
                   &ldquo;{evidenceText}&rdquo;

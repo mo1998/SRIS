@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Row, Col, Badge, Button, Table, Accordion } from 'react-bootstrap'
+import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAuth } from '../store/authStore'
@@ -7,6 +8,7 @@ import { FiArrowLeft, FiDownload } from 'react-icons/fi'
 import InterviewFeedbackCard from '../components/ui/InterviewFeedbackCard'
 
 const CandidateReport: React.FC = () => {
+  const { t } = useTranslation()
   const { responseId } = useParams<{ responseId: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -55,7 +57,7 @@ const CandidateReport: React.FC = () => {
   }
 
   const handleReevaluate = async () => {
-    if (!window.confirm('Run a new evaluation for this response? This will create a new audit run.')) {
+    if (!window.confirm(t('candidateReport.reevaluateConfirm'))) {
       return
     }
 
@@ -66,18 +68,18 @@ const CandidateReport: React.FC = () => {
       await api.reports.reevaluateCandidate(parseInt(responseId!))
       await loadReport()
     } catch (error: any) {
-      setReevaluationError(error.response?.data?.detail || 'Failed to re-evaluate response')
+      setReevaluationError(error.response?.data?.detail || t('candidateReport.reevaluateFailed'))
     } finally {
       setReevaluating(false)
     }
   }
   
   if (loading) {
-    return <p>Loading report...</p>
+    return <p>{t('candidateReport.loading')}</p>
   }
   
   if (!report) {
-    return <p>Report not found</p>
+    return <p>{t('candidateReport.notFound')}</p>
   }
   
   const getScoreClass = (score: number) => {
@@ -91,7 +93,7 @@ const CandidateReport: React.FC = () => {
   }
 
   const formatDateTime = (value?: string) => {
-    if (!value) return 'N/A'
+    if (!value) return t('common.n/a')
     return new Date(value).toLocaleString()
   }
 
@@ -103,9 +105,9 @@ const CandidateReport: React.FC = () => {
   }
 
   const formatScoreDelta = (run: any, previousRun?: any) => {
-    if (!previousRun) return 'Baseline'
+    if (!previousRun) return t('candidateReport.baseline')
     const delta = getRunScore(run) - getRunScore(previousRun)
-    if (delta === 0) return 'No change'
+    if (delta === 0) return t('candidateReport.noChange')
     return `${delta > 0 ? '+' : ''}${delta.toFixed(1)} pts`
   }
 
@@ -114,43 +116,43 @@ const CandidateReport: React.FC = () => {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <Button variant="outline-secondary" onClick={() => navigate(-1)}>
           <FiArrowLeft className="me-2" />
-          Back
+          {t('candidateReport.back')}
         </Button>
         <Button variant="outline-primary" onClick={handleDownloadPdf}>
           <FiDownload className="me-2" />
-          Download PDF
+          {t('candidateReport.downloadPdf')}
         </Button>
       </div>
       {reevaluationError && <p className="text-danger">{reevaluationError}</p>}
       
       <Card className="mb-4">
         <Card.Header>
-          <h4 className="mb-0">Candidate Performance Report</h4>
+          <h4 className="mb-0">{t('candidateReport.title')}</h4>
         </Card.Header>
         <Card.Body>
           <Row>
             <Col md={6}>
-              <h5>Candidate Information</h5>
-              <p><strong>Name:</strong> {report.candidate_name}</p>
-              <p><strong>Email:</strong> {report.candidate_email}</p>
-              <p><strong>Interview:</strong> {report.interview_title}</p>
+              <h5>{t('candidateReport.candidateInformation')}</h5>
+              <p><strong>{t('candidateReport.name')}:</strong> {report.candidate_name}</p>
+              <p><strong>{t('candidateReport.email')}:</strong> {report.candidate_email}</p>
+              <p><strong>{t('candidateReport.interview')}:</strong> {report.interview_title}</p>
             </Col>
             <Col md={6} className="text-center">
-              <h5>Overall Score</h5>
+              <h5>{t('candidateReport.overallScore')}</h5>
               <div className={`score-circle ${getScoreClass(report.total_score)}`}>
                 {report.total_score.toFixed(1)}%
               </div>
               <Badge bg={report.passed ? 'success' : 'danger'} className="mt-2" style={{ fontSize: '16px' }}>
-                {report.passed ? 'PASSED' : 'FAILED'}
+                {report.passed ? t('candidateReport.passed') : t('candidateReport.failed')}
               </Badge>
             </Col>
           </Row>
           {isEmployerView && (report.evaluation_provider || report.evaluation_model) && (
             <div className="border-top mt-3 pt-3">
-              <h6>Evaluation Agent</h6>
-              <p className="mb-1"><strong>Provider:</strong> {report.evaluation_provider || 'N/A'}</p>
-              <p className="mb-1"><strong>Model:</strong> {report.evaluation_model || 'N/A'}</p>
-              <p className="mb-0"><strong>Status:</strong> {report.evaluation_status || 'N/A'}</p>
+              <h6>{t('candidateReport.evaluationAgent')}</h6>
+              <p className="mb-1"><strong>{t('candidateReport.provider')}:</strong> {report.evaluation_provider || t('common.n/a')}</p>
+              <p className="mb-1"><strong>{t('candidateReport.model')}:</strong> {report.evaluation_model || t('common.n/a')}</p>
+              <p className="mb-0"><strong>{t('candidateReport.status')}:</strong> {report.evaluation_status || t('common.n/a')}</p>
             </div>
           )}
         </Card.Body>
@@ -160,13 +162,13 @@ const CandidateReport: React.FC = () => {
         <Col md={6}>
           <Card className="mb-4">
             <Card.Header>
-              <h6 className="mb-0">Environment Quality</h6>
+              <h6 className="mb-0">{t('candidateReport.environmentQuality')}</h6>
             </Card.Header>
             <Card.Body>
               <Table bordered>
                 <tbody>
                   <tr>
-                    <td>Voice Quality</td>
+                    <td>{t('candidateReport.voiceQuality')}</td>
                     <td>
                       <Badge bg={report.voice_quality >= 80 ? 'success' : report.voice_quality >= 60 ? 'warning' : 'danger'}>
                         {report.voice_quality.toFixed(1)}%
@@ -174,7 +176,7 @@ const CandidateReport: React.FC = () => {
                     </td>
                   </tr>
                   <tr>
-                    <td>Background Quality</td>
+                    <td>{t('candidateReport.backgroundQuality')}</td>
                     <td>
                       <Badge bg={report.background_quality >= 80 ? 'success' : report.background_quality >= 60 ? 'warning' : 'danger'}>
                         {report.background_quality.toFixed(1)}%
@@ -182,7 +184,7 @@ const CandidateReport: React.FC = () => {
                     </td>
                   </tr>
                   <tr>
-                    <td>Face Visibility</td>
+                    <td>{t('candidateReport.faceVisibility')}</td>
                     <td>
                       <Badge bg={report.face_visibility >= 80 ? 'success' : report.face_visibility >= 60 ? 'warning' : 'danger'}>
                         {report.face_visibility.toFixed(1)}%
@@ -190,7 +192,7 @@ const CandidateReport: React.FC = () => {
                     </td>
                   </tr>
                   <tr>
-                    <td>Lighting</td>
+                    <td>{t('candidateReport.lighting')}</td>
                     <td>
                       <Badge bg={report.lighting >= 80 ? 'success' : report.lighting >= 60 ? 'warning' : 'danger'}>
                         {report.lighting.toFixed(1)}%
@@ -206,18 +208,18 @@ const CandidateReport: React.FC = () => {
         <Col md={6}>
           <Card className="mb-4">
             <Card.Header>
-              <h6 className="mb-0">Emotion & Confidence Analysis</h6>
+              <h6 className="mb-0">{t('candidateReport.emotionConfidence')}</h6>
             </Card.Header>
             <Card.Body className="text-center">
               <Row>
                 <Col>
-                  <h5>Dominant Emotion</h5>
+                  <h5>{t('candidateReport.dominantEmotion')}</h5>
                   <span className={`emotion-badge ${getEmotionClass(report.dominant_emotion)}`}>
                     {report.dominant_emotion}
                   </span>
                 </Col>
                 <Col>
-                  <h5>Confidence Score</h5>
+                  <h5>{t('candidateReport.confidenceScore')}</h5>
                   <div className={`score-circle ${getScoreClass(report.confidence_score)}`} style={{ width: '80px', height: '80px', fontSize: '18px' }}>
                     {report.confidence_score.toFixed(1)}%
                   </div>
@@ -231,14 +233,14 @@ const CandidateReport: React.FC = () => {
       {isEmployerView && (
         <Card className="border-0">
           <Card.Header className="bg-transparent px-0 pt-0 border-bottom-0">
-            <h5 className="mb-0 fw-semibold">Question-by-Question Breakdown</h5>
+            <h5 className="mb-0 fw-semibold">{t('candidateReport.questionBreakdown')}</h5>
           </Card.Header>
           <Card.Body className="px-0 pb-0">
             {report.answers.map((answer: any, idx: number) => (
               <InterviewFeedbackCard
                 key={idx}
                 questionNumber={idx + 1}
-                questionText={answer.question || `Question ${idx + 1}`}
+                questionText={answer.question || t('interviewDetail.questionN', { n: idx + 1 })}
                 expectedAnswer={answer.expected_answer}
                 answerText={answer.answer_text}
                 score={answer.score ?? 0}
@@ -257,24 +259,24 @@ const CandidateReport: React.FC = () => {
         <Card className="mt-4 border-0">
           <Card.Header className="bg-transparent px-0 pt-0 border-bottom-0">
             <div className="d-flex justify-content-between align-items-center">
-              <h5 className="mb-0 fw-semibold">Evaluation Audit Trail</h5>
+              <h5 className="mb-0 fw-semibold">{t('candidateReport.auditTrail')}</h5>
               {canManageEvaluations && (
                 <Button variant="outline-primary" size="sm" onClick={handleReevaluate} disabled={reevaluating}>
-                  {reevaluating ? 'Re-evaluating...' : 'Re-evaluate'}
+                  {reevaluating ? t('candidateReport.reevaluating') : t('candidateReport.reevaluate')}
                 </Button>
               )}
             </div>
           </Card.Header>
           <Card.Body className="px-0">
             {evaluationAudit.length === 0 ? (
-              <p className="text-muted mb-0">No evaluation runs recorded.</p>
+              <p className="text-muted mb-0">{t('candidateReport.noRuns')}</p>
             ) : (
               <Accordion defaultActiveKey="0">
                 {evaluationAudit.map((run: any, runIndex: number) => (
                   <Accordion.Item eventKey={`${runIndex}`} key={run.id}>
                     <Accordion.Header>
-                      <span className="me-2">Run #{run.id}</span>
-                      {runIndex === 0 && <Badge bg="primary" className="me-2">Latest</Badge>}
+                      <span className="me-2">{t('candidateReport.runN', { id: run.id })}</span>
+                      {runIndex === 0 && <Badge bg="primary" className="me-2">{t('candidateReport.latest')}</Badge>}
                       <Badge bg={run.status === 'completed' ? 'success' : run.status === 'failed' ? 'danger' : 'warning'}>
                         {run.status}
                       </Badge>
@@ -282,25 +284,25 @@ const CandidateReport: React.FC = () => {
                     <Accordion.Body>
                       <Row className="mb-4 g-3">
                         <Col md={6}>
-                          <p className="mb-1"><strong>Provider:</strong> {run.provider}</p>
-                          <p className="mb-1"><strong>Model:</strong> {run.model_name || 'N/A'}</p>
-                          <p className="mb-1"><strong>Config Hash:</strong> {run.config_hash || 'N/A'}</p>
+                          <p className="mb-1"><strong>{t('candidateReport.provider')}:</strong> {run.provider}</p>
+                          <p className="mb-1"><strong>{t('candidateReport.model')}:</strong> {run.model_name || t('common.n/a')}</p>
+                          <p className="mb-1"><strong>{t('candidateReport.configHash')}:</strong> {run.config_hash || t('common.n/a')}</p>
                         </Col>
                         <Col md={6}>
-                          <p className="mb-1"><strong>Started:</strong> {formatDateTime(run.started_at)}</p>
-                          <p className="mb-1"><strong>Completed:</strong> {formatDateTime(run.completed_at)}</p>
-                          <p className="mb-1"><strong>Score Delta:</strong> {formatScoreDelta(run, evaluationAudit[runIndex + 1])}</p>
+                          <p className="mb-1"><strong>{t('candidateReport.started')}:</strong> {formatDateTime(run.started_at)}</p>
+                          <p className="mb-1"><strong>{t('common.completed')}:</strong> {formatDateTime(run.completed_at)}</p>
+                          <p className="mb-1"><strong>{t('candidateReport.scoreDelta')}:</strong> {formatScoreDelta(run, evaluationAudit[runIndex + 1])}</p>
                           {run.raw_summary && (
-                            <p className="mb-1"><strong>Summary:</strong> {run.raw_summary.total_score?.toFixed?.(1) || run.raw_summary.total_score || 0}% / {run.raw_summary.answer_count || 0} answers</p>
+                            <p className="mb-1"><strong>{t('candidateReport.summary')}:</strong> {run.raw_summary.total_score?.toFixed?.(1) || run.raw_summary.total_score || 0}% / {t('candidateReport.answers', { count: run.raw_summary.answer_count || 0 })}</p>
                           )}
                         </Col>
                       </Row>
-                      {run.error && <p className="text-danger"><strong>Error:</strong> {run.error}</p>}
+                      {run.error && <p className="text-danger"><strong>{t('candidateReport.error')}:</strong> {run.error}</p>}
                       {run.scores.map((score: any, sIdx: number) => (
                         <InterviewFeedbackCard
                           key={score.id}
                           questionNumber={sIdx + 1}
-                          questionText={score.question || `Question ${score.question_id}`}
+                          questionText={score.question || t('interviewDetail.questionN', { n: score.question_id })}
                           score={score.score}
                           feedbackEn={score.feedback_en}
                           feedbackAr={score.feedback_ar}

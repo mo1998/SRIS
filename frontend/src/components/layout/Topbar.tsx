@@ -1,8 +1,10 @@
 import React from 'react'
 import { useAuth } from '../../store/authStore'
+import { useTranslation } from 'react-i18next'
 import { FiLogOut, FiMenu, FiUser, FiChevronDown } from 'react-icons/fi'
 import { useNavigate } from 'react-router-dom'
 import NotificationBell from '../NotificationBell'
+import LanguageSwitcher from '../../i18n/LanguageSwitcher'
 
 interface TopbarProps {
   onToggleSidebar: () => void
@@ -10,6 +12,7 @@ interface TopbarProps {
 
 const Topbar: React.FC<TopbarProps> = ({ onToggleSidebar }) => {
   const { user, logout } = useAuth()
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
@@ -47,6 +50,9 @@ const Topbar: React.FC<TopbarProps> = ({ onToggleSidebar }) => {
 
       <div className="topbar-right" ref={menuRef}>
         <div className="me-2">
+          <LanguageSwitcher />
+        </div>
+        <div className="me-2">
           <NotificationBell />
         </div>
         <div className="topbar-user" onClick={() => setMenuOpen(!menuOpen)}>
@@ -79,7 +85,7 @@ const Topbar: React.FC<TopbarProps> = ({ onToggleSidebar }) => {
               onClick={() => { setMenuOpen(false); navigate('/account/settings') }}
               style={{ borderRadius: 'var(--radius-sm)' }}
             >
-              <FiUser className="me-2" />Account Settings
+              <FiUser className="me-2" />{t('topbar.accountSettings')}
             </button>
             <hr className="my-1" />
             <button
@@ -87,7 +93,7 @@ const Topbar: React.FC<TopbarProps> = ({ onToggleSidebar }) => {
               onClick={handleLogout}
               style={{ borderRadius: 'var(--radius-sm)', color: 'var(--color-danger)' }}
             >
-              <FiLogOut className="me-2" />Logout
+              <FiLogOut className="me-2" />{t('topbar.logout')}
             </button>
           </div>
         )}

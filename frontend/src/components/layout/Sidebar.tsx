@@ -1,5 +1,6 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../store/authStore'
 import { FiBriefcase, FiFileText, FiPlusCircle, FiUser, FiBarChart2, FiUsers } from 'react-icons/fi'
 
@@ -10,6 +11,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
   const { user } = useAuth()
+  const { t } = useTranslation()
 
   return (
     <>
@@ -19,38 +21,38 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
           <div className="brand-icon">
             <FiBriefcase />
           </div>
-          <span className="brand-text">SRIS</span>
+          <span className="brand-text">{t('sidebar.brand')}</span>
         </div>
 
         <nav className="sidebar-nav">
           {user?.role === 'employer' && (
             <>
-              <div className="sidebar-section-label">Employer</div>
+              <div className="sidebar-section-label">{t('sidebar.sectionEmployer')}</div>
               <NavLink to="/employer/dashboard" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} onClick={onClose}>
                 <FiBarChart2 className="link-icon" />
-                Dashboard
+                {t('sidebar.dashboard')}
               </NavLink>
               <NavLink to="/employer/interviews/create" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} onClick={onClose}>
                 <FiPlusCircle className="link-icon" />
-                Create Interview
+                {t('sidebar.createInterview')}
               </NavLink>
             </>
           )}
 
           {user?.role === 'employee' && (
             <>
-              <div className="sidebar-section-label">Employee</div>
+              <div className="sidebar-section-label">{t('sidebar.sectionEmployee')}</div>
               <NavLink to="/employee/results" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} onClick={onClose}>
                 <FiFileText className="link-icon" />
-                My Results
+                {t('sidebar.myResults')}
               </NavLink>
             </>
           )}
 
-          <div className="sidebar-section-label mt-3">General</div>
+          <div className="sidebar-section-label mt-3">{t('sidebar.sectionGeneral')}</div>
           <NavLink to="/account/settings" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} onClick={onClose}>
             <FiUser className="link-icon" />
-            Account Settings
+            {t('sidebar.accountSettings')}
           </NavLink>
         </nav>
 

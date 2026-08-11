@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Table, Badge, Button } from 'react-bootstrap'
+import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { FiEye } from 'react-icons/fi'
 import { useNavigate, Link } from 'react-router-dom'
@@ -8,6 +9,7 @@ import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 
 const MyResults: React.FC = () => {
+  const { t } = useTranslation()
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
@@ -27,29 +29,29 @@ const MyResults: React.FC = () => {
     }
   }
   
-  if (loading) return <LoadingSpinner text="Loading your results..." />
+  if (loading) return <LoadingSpinner text={t('resultsPortal.loading')} />
   
   return (
     <div>
-      <PageHeader title="My Results" subtitle="View your interview performance and feedback" />
+      <PageHeader title={t('myResults.title')} subtitle={t('myResults.subtitle')} />
       
       {results.length === 0 ? (
         <EmptyState
-          title="No results yet"
-          description="You haven't completed any interviews yet."
+          title={t('myResults.noResults')}
+          description={t('myResults.noResultsDesc')}
         />
       ) : (
         <div className="table-responsive">
           <Table striped bordered hover>
             <thead>
               <tr>
-                <th>Interview</th>
-                <th>Score</th>
-                <th>Status</th>
-                <th>Confidence</th>
-                <th>Voice Quality</th>
-                <th>Completed</th>
-                <th>Actions</th>
+                <th>{t('myResults.interview')}</th>
+                <th>{t('myResults.score')}</th>
+                <th>{t('myResults.status')}</th>
+                <th>{t('myResults.confidence')}</th>
+                <th>{t('myResults.voiceQuality')}</th>
+                <th>{t('myResults.completed')}</th>
+                <th>{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -63,18 +65,18 @@ const MyResults: React.FC = () => {
                   </td>
                   <td>
                     <Badge bg={result.passed ? 'success' : 'danger'}>
-                      {result.passed ? 'PASSED' : 'FAILED'}
+                      {result.passed ? t('common.passed') : t('common.failed')}
                     </Badge>
                   </td>
                   <td>{result.confidence_score?.toFixed(1)}%</td>
                   <td>{result.voice_quality?.toFixed(1)}%</td>
                   <td className="text-muted small">
-                    {result.completed_at ? new Date(result.completed_at).toLocaleDateString() : 'N/A'}
+                    {result.completed_at ? new Date(result.completed_at).toLocaleDateString() : t('common.n/a')}
                   </td>
                     <td>
                       <Link to={`/employee/candidate/${result.response_id}`}>
                         <Button variant="outline-primary" size="sm">
-                          <FiEye className="me-1" /> View
+                          <FiEye className="me-1" /> {t('common.view')}
                         </Button>
                       </Link>
                     </td>

@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { vi } from 'vitest'
+import '../i18n'
 
 vi.mock('chart.js', () => ({
   Chart: { register: vi.fn() },
