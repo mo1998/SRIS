@@ -498,6 +498,8 @@ class CandidateReport(BaseModel):
     ai_disclosure: Optional[str] = None
     answers: List[ReportQuestionAnswerSchema] = []
     feedback: str = ""
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     evaluation_provider: Optional[str] = None
     evaluation_model: Optional[str] = None
     evaluation_status: Optional[str] = None
