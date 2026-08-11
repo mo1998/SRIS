@@ -3,6 +3,12 @@ import axios from 'axios'
 const API_URL = '/api'
 
 export const api = {
+  // Authentication
+  auth: {
+    forgotPassword: (email: string) => axios.post(`${API_URL}/auth/forgot-password`, { email }),
+    resetPassword: (token: string, new_password: string) => axios.post(`${API_URL}/auth/reset-password`, { token, new_password }),
+  },
+
   // Users and organization
   users: {
     updateMe: (data: { full_name?: string; phone?: string }) => axios.patch(`${API_URL}/users/me`, data),

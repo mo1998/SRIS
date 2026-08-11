@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     LOGIN_RATE_LIMIT_ATTEMPTS: int = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
     LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "30"))
+    PASSWORD_RESET_RATE_LIMIT_PER_HOUR: int = int(os.getenv("PASSWORD_RESET_RATE_LIMIT_PER_HOUR", "5"))
     
     # Email (Mailpit)
     MAIL_FROM: str = os.getenv("MAIL_FROM", "noreply@sris.com")

@@ -78,11 +78,15 @@ const Login: React.FC = () => {
                 </div>
               </Form.Group>
               
-              <Button variant="primary" type="submit" className="w-100 mb-3" disabled={loading}>
+              <Button variant="primary" type="submit" className="w-100 mb-2" disabled={loading}>
                 {loading ? 'Signing in...' : 'Sign in'}
               </Button>
             </Form>
-            
+
+            <div className="text-center mb-3">
+              <Link to="/forgot-password" className="small fw-medium" style={{ fontSize: '0.875rem' }}>Forgot password?</Link>
+            </div>
+
             <p className="text-center mb-0" style={{ fontSize: '0.875rem' }}>
               Don't have an account? <Link to="/register" className="fw-medium">Register</Link>
             </p>

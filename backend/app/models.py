@@ -82,6 +82,20 @@ class User(Base):
     team_memberships = relationship("TeamMembership", back_populates="user", cascade="all, delete-orphan")
 
 
+class PasswordResetToken(Base):
+    """One-time token used to reset a user's password."""
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(255), unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User")
+
+
 class TeamMembership(Base):
     __tablename__ = "team_memberships"
     __table_args__ = (UniqueConstraint("organization_id", "user_id", name="uq_team_membership_org_user"),)

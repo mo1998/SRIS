@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+import hashlib
+import secrets
 
 from app.database import get_db
-from app.models import Organization, TeamMembership, TeamRole, User, UserRole
-from app.schemas import UserCreate, UserResponse, Token
+from app.models import Organization, TeamMembership, TeamRole, User, UserRole, PasswordResetToken
+from app.schemas import UserCreate, UserResponse, Token, ForgotPasswordRequest, ResetPasswordRequest
 from app.config import settings
 
 router = APIRouter()
@@ -19,6 +21,7 @@ router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 login_failures: dict[str, list[datetime]] = {}
+password_reset_requests: dict[str, list[datetime]] = {}
 
 
 def get_login_rate_limit_key(username: str) -> str:
@@ -55,6 +58,74 @@ def record_failed_login(username: str) -> None:
 
 def clear_failed_login(username: str) -> None:
     login_failures.pop(get_login_rate_limit_key(username), None)
+
+
+def enforce_password_reset_rate_limit(username: str) -> None:
+    """Limit password reset requests per email to prevent email bombing."""
+    key = get_login_rate_limit_key(username)
+    now = datetime.utcnow()
+    hour_ago = now - timedelta(hours=1)
+    requests = [ts for ts in password_reset_requests.get(key, []) if ts >= hour_ago]
+    if len(requests) >= settings.PASSWORD_RESET_RATE_LIMIT_PER_HOUR:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many password reset requests. Please try again later.",
+        )
+    requests.append(now)
+    password_reset_requests[key] = requests
+
+
+def hash_password_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_password_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def create_password_reset_token(db: Session, user: User) -> PasswordResetToken:
+    """Create a fresh one-time password reset token for a user."""
+    token = generate_password_reset_token()
+
+    # Invalidate any prior unused tokens for this user.
+    now = datetime.utcnow()
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used_at.is_(None),
+    ).update({"used_at": now})
+
+    reset_token = PasswordResetToken(
+        user_id=user.id,
+        token_hash=hash_password_reset_token(token),
+        expires_at=now + timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
+    )
+    db.add(reset_token)
+    db.commit()
+    return token, reset_token
+
+
+def validate_password_reset_token(db: Session, token: str) -> User:
+    """Validate a reset token and return its user, revoking on use."""
+    token_hash = hash_password_reset_token(token)
+    reset_token = (
+        db.query(PasswordResetToken)
+        .filter(PasswordResetToken.token_hash == token_hash)
+        .first()
+    )
+    if not reset_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+    if reset_token.used_at is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reset token has already been used")
+    if reset_token.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reset token has expired")
+
+    user = db.query(User).filter(User.id == reset_token.user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account not found")
+
+    reset_token.used_at = datetime.utcnow()
+    db.commit()
+    return user
 
 
 def get_password_hash(password: str) -> str:
@@ -239,3 +310,45 @@ async def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
         "refresh_token": new_refresh_token,
         "token_type": "bearer"
     }
+
+
+@router.post("/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Request a password reset link, sent to the account email."""
+    enforce_password_reset_rate_limit(request.email)
+
+    user = db.query(User).filter(User.email == request.email).first()
+
+    # Respond identically whether or not the address is registered, so the
+    # endpoint cannot be used to enumerate accounts.
+    response_message = "If that email is registered, a password reset link has been sent."
+
+    if user is None or not user.is_active:
+        return {"message": response_message}
+
+    token, _reset_record = create_password_reset_token(db, user)
+    reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+
+    from app.services.email_service import send_password_reset_email
+    await send_password_reset_email(user.email, reset_link)
+
+    return {"message": response_message}
+
+
+@router.post("/reset-password")
+async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Reset a user's password using a one-time token."""
+    user = validate_password_reset_token(db, request.token)
+
+    if not request.new_password or len(request.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters",
+        )
+
+    user.hashed_password = get_password_hash(request.new_password)
+    # Revoke any existing sessions.
+    user.token_version = (user.token_version or 0) + 1
+    db.commit()
+
+    return {"message": "Password has been reset successfully. You can now sign in."}
