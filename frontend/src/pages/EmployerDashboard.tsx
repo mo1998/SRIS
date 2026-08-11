@@ -47,7 +47,7 @@ const EmployerDashboard: React.FC = () => {
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const navigate = useNavigate()
   const toast = useToast()
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   const statusLabelMap: Record<string, string> = {
     draft: t('dashboard.draft'),
@@ -129,15 +129,31 @@ const EmployerDashboard: React.FC = () => {
     }],
   }
 
-  const monthlyData = {
-    labels: [t('dashboard.jan'), t('dashboard.feb'), t('dashboard.mar'), t('dashboard.apr'), t('dashboard.may'), t('dashboard.jun')],
-    datasets: [{
-      label: t('dashboard.interviews'),
-      data: [2, 4, 3, 6, 5, 8],
-      backgroundColor: 'var(--color-primary)',
-      borderRadius: 6,
-    }],
-  }
+  const monthFormatter = new Intl.DateTimeFormat(i18n.language === 'ar' ? 'ar' : 'en', { month: 'short' })
+
+  const monthlyData = (() => {
+    const months: { key: string; label: string; count: number }[] = []
+    const now = new Date()
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      months.push({ key: `${d.getFullYear()}-${d.getMonth()}`, label: monthFormatter.format(d), count: 0 })
+    }
+    interviews.forEach((interview) => {
+      if (!interview.created_at) return
+      const created = new Date(interview.created_at)
+      const month = months.find((m) => m.key === `${created.getFullYear()}-${created.getMonth()}`)
+      if (month) month.count += 1
+    })
+    return {
+      labels: months.map((m) => m.label),
+      datasets: [{
+        label: t('dashboard.interviews'),
+        data: months.map((m) => m.count),
+        backgroundColor: 'var(--color-primary)',
+        borderRadius: 6,
+      }],
+    }
+  })()
 
   if (loading) return <LoadingSpinner text={t('dashboard.loading')} />
 
