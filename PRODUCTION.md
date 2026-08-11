@@ -1,7 +1,8 @@
 # SRIS Production Hardening Plan
 
 Status: **partially implemented.** Phase 0 shipped (deploy/env/compose/SSL).
-Phases 1-7 pending. Read before continuing implementation.
+Phase 1 shipped (Resend email provider + retry/backoff + health reporting).
+Phases 2-7 pending. Read before continuing implementation.
 
 ## Decisions (locked)
 

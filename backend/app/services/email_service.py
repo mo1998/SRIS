@@ -1,14 +1,17 @@
 """
-Email service for sending invitations and notifications via Mailpit HTTP API.
+Email service for sending invitations and notifications.
+Supports Resend (production) and Mailpit (development) providers.
 """
 
 import logging
+import time
+from datetime import datetime
+from html import escape
+from typing import Dict, Optional, Protocol
+
 import httpx
 
 from app.config import settings
-from datetime import datetime
-from typing import Dict, Optional
-from html import escape
 
 logger = logging.getLogger("sris.email")
 
@@ -19,25 +22,144 @@ PLACEHOLDER_EMAIL_VALUES = {
     "noreply@sris.com",
 }
 
+# Transient HTTP statuses worth retrying with backoff
+RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+SEND_RETRIES = 3
+SEND_BACKOFF_SECONDS = 1.0
+SEND_TIMEOUT_SECONDS = 15.0
+
+
+class EmailProviderError(RuntimeError):
+    """Raised when a configured email provider cannot send mail."""
+
+
+class EmailProvider(Protocol):
+    name: str
+
+    def send(self, to_email: str, to_name: str, subject: str, html_content: str) -> None:
+        ...
+
+
+def _post_with_retry(url: str, headers: Dict[str, str], json_payload: dict) -> None:
+    """POST a payload with bounded retries and exponential backoff on transient failures."""
+    for attempt in range(SEND_RETRIES):
+        try:
+            resp = httpx.post(url, headers=headers, json=json_payload, timeout=SEND_TIMEOUT_SECONDS)
+            resp.raise_for_status()
+            return
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in RETRYABLE_STATUSES and attempt < SEND_RETRIES - 1:
+                time.sleep(SEND_BACKOFF_SECONDS * (2 ** attempt))
+                continue
+            raise
+        except httpx.TransportError:
+            if attempt < SEND_RETRIES - 1:
+                time.sleep(SEND_BACKOFF_SECONDS * (2 ** attempt))
+                continue
+            raise
+
+
+class ResendEmailProvider:
+    """Send email through the Resend HTTP API."""
+
+    name = "resend"
+    API_URL = "https://api.resend.com/emails"
+
+    def send(self, to_email: str, to_name: str, subject: str, html_content: str) -> None:
+        if not settings.RESEND_API_KEY:
+            raise EmailProviderError("RESEND_API_KEY is not configured")
+        payload = {
+            "from": f"{settings.MAIL_FROM_NAME} <{settings.MAIL_FROM}>",
+            "to": [to_email],
+            "subject": subject,
+            "html": html_content,
+        }
+        _post_with_retry(
+            self.API_URL,
+            {"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+            payload,
+        )
+
+
+class MailpitEmailProvider:
+    """Send email through the Mailpit HTTP API (development/testing)."""
+
+    name = "mailpit"
+
+    def send(self, to_email: str, to_name: str, subject: str, html_content: str) -> None:
+        if not settings.MAILPIT_API_URL:
+            raise EmailProviderError("MAILPIT_API_URL is not configured")
+        payload = {
+            "From": {"Email": settings.MAIL_FROM, "Name": settings.MAIL_FROM_NAME},
+            "To": [{"Email": to_email, "Name": to_name}],
+            "Subject": subject,
+            "HTML": html_content,
+        }
+        _post_with_retry(settings.MAILPIT_API_URL, {}, payload)
+
+
+class DisabledEmailProvider:
+    """No-op provider used when email sending is explicitly disabled."""
+
+    name = "disabled"
+
+    def send(self, to_email: str, to_name: str, subject: str, html_content: str) -> None:
+        logger.warning("Email provider is disabled — skipping send to %s", to_email)
+
+
+def get_email_provider() -> EmailProvider:
+    """Return the configured email provider instance."""
+    provider = settings.EMAIL_PROVIDER.lower()
+    if provider == "resend":
+        return ResendEmailProvider()
+    if provider == "mailpit":
+        return MailpitEmailProvider()
+    if provider == "disabled":
+        return DisabledEmailProvider()
+    raise EmailProviderError(f"Unknown EMAIL_PROVIDER: {settings.EMAIL_PROVIDER}")
+
 
 def get_email_health() -> Dict[str, object]:
     missing_settings = []
-    if not settings.MAILPIT_API_URL:
+    provider = get_email_provider()
+
+    if provider.name == "resend" and not settings.RESEND_API_KEY:
+        missing_settings.append("RESEND_API_KEY")
+    if provider.name == "mailpit" and not settings.MAILPIT_API_URL:
         missing_settings.append("MAILPIT_API_URL")
     if settings.MAIL_FROM in PLACEHOLDER_EMAIL_VALUES:
         missing_settings.append("MAIL_FROM")
 
-    configured = len(missing_settings) == 0
+    configured = provider.name != "disabled" and len(missing_settings) == 0
+    status = (
+        "disabled"
+        if provider.name == "disabled"
+        else ("configured" if configured else "configuration_incomplete")
+    )
+    mail_server, mail_port = _provider_endpoint(provider)
     return {
         "configured": configured,
-        "status": "configured" if configured else "configuration_incomplete",
-        "provider": "mailpit",
+        "status": status,
+        "provider": provider.name,
         "mail_from": settings.MAIL_FROM,
         "mail_from_name": settings.MAIL_FROM_NAME,
-        "mailpit_api_url": settings.MAILPIT_API_URL,
+        "mail_server": mail_server,
+        "mail_port": mail_port,
         "missing_settings": missing_settings,
         "checked_at": datetime.utcnow(),
     }
+
+
+def _provider_endpoint(provider: EmailProvider) -> tuple[str, int]:
+    """Human-readable SMTP-style server/port for the active provider."""
+    if provider.name == "resend":
+        return "api.resend.com", 443
+    if provider.name == "mailpit" and settings.MAILPIT_API_URL:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(settings.MAILPIT_API_URL)
+        return parsed.hostname or "", parsed.port or 80
+    return "", 0
 
 
 def render_invitation_email(
@@ -114,14 +236,8 @@ def _send_email(
     subject: str,
     html_content: str,
 ) -> None:
-    payload = {
-        "From": {"Email": settings.MAIL_FROM, "Name": settings.MAIL_FROM_NAME},
-        "To": [{"Email": to_email, "Name": to_name}],
-        "Subject": subject,
-        "HTML": html_content,
-    }
-    resp = httpx.post(settings.MAILPIT_API_URL, json=payload, timeout=15.0)
-    resp.raise_for_status()
+    provider = get_email_provider()
+    provider.send(to_email, to_name, subject, html_content)
 
 
 async def send_invitation_email(
@@ -132,10 +248,10 @@ async def send_invitation_email(
     expires_at: datetime,
     custom_message: Optional[str] = None,
 ):
-    """Send interview invitation email via Mailpit."""
+    """Send interview invitation email via the configured provider."""
     health = get_email_health()
     if not health["configured"]:
-        logger.warning("Mailpit not configured — skipping send to %s", to_email)
+        logger.warning("Email provider not configured — skipping send to %s", to_email)
         return
 
     subject, html_content = render_invitation_email(
@@ -148,7 +264,7 @@ async def send_invitation_email(
 
     try:
         _send_email(to_email, candidate_name, subject, html_content)
-        logger.info("Invitation email sent to %s via Mailpit", to_email)
+        logger.info("Invitation email sent to %s via configured provider", to_email)
     except Exception as e:
         logger.error("Error sending invitation to %s: %s", to_email, e)
 
@@ -212,10 +328,10 @@ async def send_reminder_email(
     expires_at: datetime,
     reminder_number: int,
 ):
-    """Send an invitation reminder email via Mailpit."""
+    """Send an invitation reminder email via the configured provider."""
     health = get_email_health()
     if not health["configured"]:
-        logger.warning("Mailpit not configured — skipping reminder to %s", to_email)
+        logger.warning("Email provider not configured — skipping reminder to %s", to_email)
         return
 
     subject, html_content = render_reminder_email(
@@ -228,7 +344,7 @@ async def send_reminder_email(
 
     try:
         _send_email(to_email, candidate_name, subject, html_content)
-        logger.info("Reminder email sent to %s via Mailpit", to_email)
+        logger.info("Reminder email sent to %s via configured provider", to_email)
     except Exception as e:
         logger.error("Error sending reminder to %s: %s", to_email, e)
 
@@ -244,7 +360,7 @@ def send_reminder_email_sync(
     """Synchronous reminder send for background maintenance jobs."""
     health = get_email_health()
     if not health["configured"]:
-        logger.warning("Mailpit not configured — skipping reminder to %s", to_email)
+        logger.warning("Email provider not configured — skipping reminder to %s", to_email)
         return False
 
     subject, html_content = render_reminder_email(
@@ -257,7 +373,7 @@ def send_reminder_email_sync(
 
     try:
         _send_email(to_email, candidate_name, subject, html_content)
-        logger.info("Reminder email sent to %s via Mailpit", to_email)
+        logger.info("Reminder email sent to %s via configured provider", to_email)
         return True
     except Exception as e:
         logger.error("Error sending reminder to %s: %s", to_email, e)
@@ -272,10 +388,10 @@ async def send_completion_email(
     passed: bool,
     results_link: str = "",
 ):
-    """Send interview completion email with results via Mailpit."""
+    """Send interview completion email with results via the configured provider."""
     health = get_email_health()
     if not health["configured"]:
-        logger.warning("Mailpit not configured — skipping completion email to %s", to_email)
+        logger.warning("Email provider not configured — skipping completion email to %s", to_email)
         return
 
     result_text = "passed" if passed else "did not pass"
@@ -310,7 +426,7 @@ async def send_completion_email(
 
     try:
         _send_email(to_email, candidate_name, subject=f"Interview Results - {interview_title}", html_content=html_content)
-        logger.info("Completion email sent to %s via Mailpit", to_email)
+        logger.info("Completion email sent to %s via configured provider", to_email)
     except Exception as e:
         logger.error("Error sending completion to %s: %s", to_email, e)
 
@@ -354,10 +470,10 @@ def render_password_reset_email(
 
 
 async def send_password_reset_email(to_email: str, reset_link: str):
-    """Send a password reset email via Mailpit."""
+    """Send a password reset email via the configured provider."""
     health = get_email_health()
     if not health["configured"]:
-        logger.warning("Mailpit not configured — skipping password reset to %s", to_email)
+        logger.warning("Email provider not configured — skipping password reset to %s", to_email)
         return
 
     subject, html_content = render_password_reset_email(
@@ -367,6 +483,6 @@ async def send_password_reset_email(to_email: str, reset_link: str):
 
     try:
         _send_email(to_email, to_email, subject, html_content)
-        logger.info("Password reset email sent to %s via Mailpit", to_email)
+        logger.info("Password reset email sent to %s via configured provider", to_email)
     except Exception as e:
         logger.error("Error sending password reset to %s: %s", to_email, e)
