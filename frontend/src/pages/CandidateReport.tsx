@@ -23,10 +23,11 @@ const CandidateReport: React.FC = () => {
   const loadReport = async () => {
     try {
       const parsedResponseId = parseInt(responseId!)
-      const [reportResponse, auditResponse] = await Promise.all([
-        api.reports.getCandidateReport(parsedResponseId),
-        api.reports.getCandidateEvaluations(parsedResponseId),
-      ])
+      const reportPromise = api.reports.getCandidateReport(parsedResponseId)
+      const auditPromise = canManageEvaluations
+        ? api.reports.getCandidateEvaluations(parsedResponseId)
+        : Promise.resolve({ data: [] as any[] })
+      const [reportResponse, auditResponse] = await Promise.all([reportPromise, auditPromise])
       setReport(reportResponse.data)
       setEvaluationAudit(auditResponse.data)
     } catch (error) {
@@ -107,6 +108,7 @@ const CandidateReport: React.FC = () => {
   }
 
   const canManageEvaluations = user?.role === 'employer' || user?.role === 'admin'
+  const isEmployerView = canManageEvaluations
   
   return (
     <div>
@@ -144,7 +146,7 @@ const CandidateReport: React.FC = () => {
               </Badge>
             </Col>
           </Row>
-          {(report.evaluation_provider || report.evaluation_model) && (
+          {isEmployerView && (report.evaluation_provider || report.evaluation_model) && (
             <div className="border-top mt-3 pt-3">
               <h6>Evaluation Agent</h6>
               <p className="mb-1"><strong>Provider:</strong> {report.evaluation_provider || 'N/A'}</p>
@@ -227,89 +229,93 @@ const CandidateReport: React.FC = () => {
         </Col>
       </Row>
       
-      <Card className="border-0">
-        <Card.Header className="bg-transparent px-0 pt-0 border-bottom-0">
-          <h5 className="mb-0 fw-semibold">Question-by-Question Breakdown</h5>
-        </Card.Header>
-        <Card.Body className="px-0 pb-0">
-          {report.answers.map((answer: any, idx: number) => (
-            <InterviewFeedbackCard
-              key={idx}
-              questionNumber={idx + 1}
-              questionText={answer.question || `Question ${idx + 1}`}
-              expectedAnswer={answer.expected_answer}
-              answerText={answer.answer_text}
-              score={answer.score ?? 0}
-              emotion={answer.emotion}
-              feedbackEn={answer.feedback_en || answer.feedback}
-              feedbackAr={answer.feedback_ar}
-              evidence={answer.evidence}
-              videoUrl={answer.video_file_path ? answer.video_file_path.replace(/^uploads\//, '/static/') : undefined}
-            />
-          ))}
-        </Card.Body>
-      </Card>
+      {isEmployerView && (
+        <Card className="border-0">
+          <Card.Header className="bg-transparent px-0 pt-0 border-bottom-0">
+            <h5 className="mb-0 fw-semibold">Question-by-Question Breakdown</h5>
+          </Card.Header>
+          <Card.Body className="px-0 pb-0">
+            {report.answers.map((answer: any, idx: number) => (
+              <InterviewFeedbackCard
+                key={idx}
+                questionNumber={idx + 1}
+                questionText={answer.question || `Question ${idx + 1}`}
+                expectedAnswer={answer.expected_answer}
+                answerText={answer.answer_text}
+                score={answer.score ?? 0}
+                emotion={answer.emotion}
+                feedbackEn={answer.feedback_en || answer.feedback}
+                feedbackAr={answer.feedback_ar}
+                evidence={answer.evidence}
+                videoUrl={answer.video_file_path ? answer.video_file_path.replace(/^uploads\//, '/static/') : undefined}
+              />
+            ))}
+          </Card.Body>
+        </Card>
+      )}
 
-      <Card className="mt-4 border-0">
-        <Card.Header className="bg-transparent px-0 pt-0 border-bottom-0">
-          <div className="d-flex justify-content-between align-items-center">
-            <h5 className="mb-0 fw-semibold">Evaluation Audit Trail</h5>
-            {canManageEvaluations && (
-              <Button variant="outline-primary" size="sm" onClick={handleReevaluate} disabled={reevaluating}>
-                {reevaluating ? 'Re-evaluating...' : 'Re-evaluate'}
-              </Button>
+      {isEmployerView && (
+        <Card className="mt-4 border-0">
+          <Card.Header className="bg-transparent px-0 pt-0 border-bottom-0">
+            <div className="d-flex justify-content-between align-items-center">
+              <h5 className="mb-0 fw-semibold">Evaluation Audit Trail</h5>
+              {canManageEvaluations && (
+                <Button variant="outline-primary" size="sm" onClick={handleReevaluate} disabled={reevaluating}>
+                  {reevaluating ? 'Re-evaluating...' : 'Re-evaluate'}
+                </Button>
+              )}
+            </div>
+          </Card.Header>
+          <Card.Body className="px-0">
+            {evaluationAudit.length === 0 ? (
+              <p className="text-muted mb-0">No evaluation runs recorded.</p>
+            ) : (
+              <Accordion defaultActiveKey="0">
+                {evaluationAudit.map((run: any, runIndex: number) => (
+                  <Accordion.Item eventKey={`${runIndex}`} key={run.id}>
+                    <Accordion.Header>
+                      <span className="me-2">Run #{run.id}</span>
+                      {runIndex === 0 && <Badge bg="primary" className="me-2">Latest</Badge>}
+                      <Badge bg={run.status === 'completed' ? 'success' : run.status === 'failed' ? 'danger' : 'warning'}>
+                        {run.status}
+                      </Badge>
+                    </Accordion.Header>
+                    <Accordion.Body>
+                      <Row className="mb-4 g-3">
+                        <Col md={6}>
+                          <p className="mb-1"><strong>Provider:</strong> {run.provider}</p>
+                          <p className="mb-1"><strong>Model:</strong> {run.model_name || 'N/A'}</p>
+                          <p className="mb-1"><strong>Config Hash:</strong> {run.config_hash || 'N/A'}</p>
+                        </Col>
+                        <Col md={6}>
+                          <p className="mb-1"><strong>Started:</strong> {formatDateTime(run.started_at)}</p>
+                          <p className="mb-1"><strong>Completed:</strong> {formatDateTime(run.completed_at)}</p>
+                          <p className="mb-1"><strong>Score Delta:</strong> {formatScoreDelta(run, evaluationAudit[runIndex + 1])}</p>
+                          {run.raw_summary && (
+                            <p className="mb-1"><strong>Summary:</strong> {run.raw_summary.total_score?.toFixed?.(1) || run.raw_summary.total_score || 0}% / {run.raw_summary.answer_count || 0} answers</p>
+                          )}
+                        </Col>
+                      </Row>
+                      {run.error && <p className="text-danger"><strong>Error:</strong> {run.error}</p>}
+                      {run.scores.map((score: any, sIdx: number) => (
+                        <InterviewFeedbackCard
+                          key={score.id}
+                          questionNumber={sIdx + 1}
+                          questionText={score.question || `Question ${score.question_id}`}
+                          score={score.score}
+                          feedbackEn={score.feedback_en}
+                          feedbackAr={score.feedback_ar}
+                          evidence={score.evidence}
+                        />
+                      ))}
+                    </Accordion.Body>
+                  </Accordion.Item>
+                ))}
+              </Accordion>
             )}
-          </div>
-        </Card.Header>
-        <Card.Body className="px-0">
-          {evaluationAudit.length === 0 ? (
-            <p className="text-muted mb-0">No evaluation runs recorded.</p>
-          ) : (
-            <Accordion defaultActiveKey="0">
-              {evaluationAudit.map((run: any, runIndex: number) => (
-                <Accordion.Item eventKey={`${runIndex}`} key={run.id}>
-                  <Accordion.Header>
-                    <span className="me-2">Run #{run.id}</span>
-                    {runIndex === 0 && <Badge bg="primary" className="me-2">Latest</Badge>}
-                    <Badge bg={run.status === 'completed' ? 'success' : run.status === 'failed' ? 'danger' : 'warning'}>
-                      {run.status}
-                    </Badge>
-                  </Accordion.Header>
-                  <Accordion.Body>
-                    <Row className="mb-4 g-3">
-                      <Col md={6}>
-                        <p className="mb-1"><strong>Provider:</strong> {run.provider}</p>
-                        <p className="mb-1"><strong>Model:</strong> {run.model_name || 'N/A'}</p>
-                        <p className="mb-1"><strong>Config Hash:</strong> {run.config_hash || 'N/A'}</p>
-                      </Col>
-                      <Col md={6}>
-                        <p className="mb-1"><strong>Started:</strong> {formatDateTime(run.started_at)}</p>
-                        <p className="mb-1"><strong>Completed:</strong> {formatDateTime(run.completed_at)}</p>
-                        <p className="mb-1"><strong>Score Delta:</strong> {formatScoreDelta(run, evaluationAudit[runIndex + 1])}</p>
-                        {run.raw_summary && (
-                          <p className="mb-1"><strong>Summary:</strong> {run.raw_summary.total_score?.toFixed?.(1) || run.raw_summary.total_score || 0}% / {run.raw_summary.answer_count || 0} answers</p>
-                        )}
-                      </Col>
-                    </Row>
-                    {run.error && <p className="text-danger"><strong>Error:</strong> {run.error}</p>}
-                    {run.scores.map((score: any, sIdx: number) => (
-                      <InterviewFeedbackCard
-                        key={score.id}
-                        questionNumber={sIdx + 1}
-                        questionText={score.question || `Question ${score.question_id}`}
-                        score={score.score}
-                        feedbackEn={score.feedback_en}
-                        feedbackAr={score.feedback_ar}
-                        evidence={score.evidence}
-                      />
-                    ))}
-                  </Accordion.Body>
-                </Accordion.Item>
-              ))}
-            </Accordion>
-          )}
-        </Card.Body>
-      </Card>
+          </Card.Body>
+        </Card>
+      )}
     </div>
   )
 }

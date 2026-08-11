@@ -190,8 +190,12 @@ async def generate_interview_pdf(interview_id: int, db: Session) -> str:
     return filename
 
 
-async def generate_candidate_pdf(response_id: int, db: Session) -> str:
-    """Generate PDF report for a specific candidate"""
+async def generate_candidate_pdf(response_id: int, db: Session, include_internal: bool = True) -> str:
+    """Generate PDF report for a specific candidate.
+
+    include_internal=False is used for the candidate (employee) view and
+    omits the Evaluation Agent and Question-by-Question sections.
+    """
     
     response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
     if not response:
@@ -281,7 +285,7 @@ async def generate_candidate_pdf(response_id: int, db: Session) -> str:
     elements.append(results_table)
     elements.append(Spacer(1, 20))
 
-    if evaluation_run:
+    if evaluation_run and include_internal:
         elements.append(Paragraph("Evaluation Agent", heading_style))
 
         evaluation_data = [
@@ -326,49 +330,51 @@ async def generate_candidate_pdf(response_id: int, db: Session) -> str:
     elements.append(Spacer(1, 30))
     
     # Question-by-Question Breakdown
-    elements.append(Paragraph("Question-by-Question Breakdown", heading_style))
-    
-    for idx, answer in enumerate(answers, 1):
-        question = db.query(InterviewQuestion).filter(InterviewQuestion.id == answer.question_id).first()
-        evaluation_score = scores_by_answer_id.get(answer.id)
-        
-        if question:
-            elements.append(Paragraph(f"Question {idx}: {question.question_text}", 
-                                     ParagraphStyle('Q', parent=styles['Heading3'], fontSize=12, spaceBefore=15)))
-            
-            answer_data = [
-                ['Your Answer:', as_pdf_paragraph(answer.answer_text or 'No answer provided', styles)],
-                ['Score:', f'{answer.score or 0:.1f}%'],
-                ['Feedback:', as_pdf_paragraph(evaluation_score.feedback_en or answer.feedback or '', styles) if evaluation_score else as_pdf_paragraph(answer.feedback or '', styles)]
-            ]
+    if include_internal:
+        elements.append(Paragraph("Question-by-Question Breakdown", heading_style))
 
-            if evaluation_score and evaluation_score.feedback_ar:
-                answer_data.append(['Arabic Feedback:', as_pdf_paragraph(evaluation_score.feedback_ar, styles)])
+        for idx, answer in enumerate(answers, 1):
+            question = db.query(InterviewQuestion).filter(InterviewQuestion.id == answer.question_id).first()
+            evaluation_score = scores_by_answer_id.get(answer.id)
 
-            if evaluation_score:
-                evidence_lines = format_evaluation_evidence(evaluation_score.evidence_json)
-                if evidence_lines:
-                    answer_data.append(['Evaluation Evidence:', as_pdf_paragraph('<br/>'.join(evidence_lines), styles, already_escaped=True)])
-            
-            answer_table = Table(answer_data, colWidths=[1.5*inch, 4.5*inch])
-            answer_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (0, -1), HexColor('#ecf0f1')),
-                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                ('GRID', (0, 0), (-1, -1), 1, HexColor('#bdc3c7')),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-            
-            elements.append(answer_table)
-            elements.append(Spacer(1, 15))
+            if question:
+                elements.append(Paragraph(f"Question {idx}: {question.question_text}", 
+                                         ParagraphStyle('Q', parent=styles['Heading3'], fontSize=12, spaceBefore=15)))
+
+                answer_data = [
+                    ['Your Answer:', as_pdf_paragraph(answer.answer_text or 'No answer provided', styles)],
+                    ['Score:', f'{answer.score or 0:.1f}%'],
+                    ['Feedback:', as_pdf_paragraph(evaluation_score.feedback_en or answer.feedback or '', styles) if evaluation_score else as_pdf_paragraph(answer.feedback or '', styles)]
+                ]
+
+                if evaluation_score and evaluation_score.feedback_ar:
+                    answer_data.append(['Arabic Feedback:', as_pdf_paragraph(evaluation_score.feedback_ar, styles)])
+
+                if evaluation_score:
+                    evidence_lines = format_evaluation_evidence(evaluation_score.evidence_json)
+                    if evidence_lines:
+                        answer_data.append(['Evaluation Evidence:', as_pdf_paragraph('<br/>'.join(evidence_lines), styles, already_escaped=True)])
+
+                answer_table = Table(answer_data, colWidths=[1.5*inch, 4.5*inch])
+                answer_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (0, -1), HexColor('#ecf0f1')),
+                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 9),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('GRID', (0, 0), (-1, -1), 1, HexColor('#bdc3c7')),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ]))
+
+                elements.append(answer_table)
+                elements.append(Spacer(1, 15))
     
     # Feedback section
-    elements.append(Paragraph("Overall Feedback", heading_style))
-    
-    feedback_text = "Thank you for completing the interview. Your performance has been evaluated across multiple dimensions including answer quality, communication clarity, and professional presentation. The employer will review your results and contact you if you move forward in the selection process."
-    
-    elements.append(Paragraph(feedback_text, ParagraphStyle('Feedback', parent=styles['Normal'], fontSize=10, spaceBefore=10)))
+    if include_internal:
+        elements.append(Paragraph("Overall Feedback", heading_style))
+        feedback_text = "Thank you for completing the interview. Your performance has been evaluated across multiple dimensions including answer quality, communication clarity, and professional presentation. The employer will review your results and contact you if you move forward in the selection process."
+        elements.append(Paragraph(feedback_text, ParagraphStyle('Feedback', parent=styles['Normal'], fontSize=10, spaceBefore=10)))
+    else:
+        elements.append(Paragraph("This report was generated with AI-assisted evaluation. ", ParagraphStyle('Disclosure', parent=styles['Normal'], fontSize=9, spaceBefore=10)))
     
     doc.build(elements)
     

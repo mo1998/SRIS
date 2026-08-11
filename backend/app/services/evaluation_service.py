@@ -572,8 +572,13 @@ def extract_feedback(feedback: str, language: str) -> str:
     return feedback
 
 
-def generate_candidate_report(response_id: int, db: Session) -> Dict:
-    """Generate detailed report for a candidate"""
+def generate_candidate_report(response_id: int, db: Session, include_internal: bool = True) -> Dict:
+    """Generate detailed report for a candidate.
+
+    include_internal=False is used for the candidate (employee) view and
+    restricts the report to Candidate Information, Environment Quality,
+    Overall Score, and Emotion & Confidence Analysis only.
+    """
     response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
     if not response:
         return {}
@@ -611,13 +616,7 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
             "audio_file_path": answer.audio_file_path
         })
     
-    disclosure_text = (
-        "This report was generated with AI-assisted evaluation. "
-        "Scores and feedback are subject to human review. "
-        "Final hiring decisions are made by human reviewers."
-    )
-
-    return {
+    public_report = {
         "response_id": response.id,
         "candidate_name": response.candidate_name,
         "candidate_email": response.candidate_email,
@@ -630,6 +629,20 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
         "lighting": response.lighting_score or 0.0,
         "dominant_emotion": response.dominant_emotion or "neutral",
         "confidence_score": response.confidence_score or 50.0,
+        "generated_at": datetime.utcnow(),
+    }
+
+    if not include_internal:
+        return public_report
+
+    disclosure_text = (
+        "This report was generated with AI-assisted evaluation. "
+        "Scores and feedback are subject to human review. "
+        "Final hiring decisions are made by human reviewers."
+    )
+
+    return {
+        **public_report,
         "reviewer_decision": response.reviewer_decision.value if response.reviewer_decision else "pending",
         "ai_disclosure": disclosure_text,
         "answers": answer_details,
@@ -640,7 +653,6 @@ def generate_candidate_report(response_id: int, db: Session) -> Dict:
         "evaluation_model": evaluation_run.model_name if evaluation_run else None,
         "evaluation_status": evaluation_run.status if evaluation_run else None,
         "evaluation_completed_at": evaluation_run.completed_at if evaluation_run else None,
-        "generated_at": datetime.utcnow(),
     }
 
 
