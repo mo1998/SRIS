@@ -364,6 +364,21 @@ class AuditLog(Base):
     organization = relationship("Organization")
 
 
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    type = Column(String(50), nullable=False, default="general")
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=True)
+    link = Column(String(255), nullable=True)
+    is_read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User")
+
+
 class ReviewerScorecard(Base):
     __tablename__ = "reviewer_scorecards"
 

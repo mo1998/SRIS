@@ -101,5 +101,13 @@ export const api = {
     getPlagiarismReport: (interviewId: number) => 
       axios.get(`${API_URL}/reports/interview/${interviewId}/plagiarism`),
     getMyResults: () => axios.get(`${API_URL}/reports/my-results`)
+  },
+
+  // In-app notifications
+  notifications: {
+    list: (limit = 20) => axios.get(`${API_URL}/notifications/`, { params: { limit } }),
+    unreadCount: () => axios.get(`${API_URL}/notifications/unread-count`),
+    markRead: (notificationId: number) => axios.post(`${API_URL}/notifications/${notificationId}/read`),
+    markAllRead: () => axios.post(`${API_URL}/notifications/read-all`)
   }
 }

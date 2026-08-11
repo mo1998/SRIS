@@ -21,6 +21,8 @@ def sweep_expired_invitations(db: Session) -> int:
 
     Returns the number of invitations transitioned.
     """
+    from app.services.notification_service import create_notification
+
     now = datetime.utcnow()
     expired = (
         db.query(Invitation)
@@ -33,6 +35,19 @@ def sweep_expired_invitations(db: Session) -> int:
     )
     for invitation in expired:
         invitation.status = InvitationStatus.EXPIRED
+        interview = db.query(Interview).filter(Interview.id == invitation.interview_id).first()
+        if interview:
+            try:
+                create_notification(
+                    db,
+                    interview.employer_id,
+                    "Invitation expired",
+                    f"{invitation.candidate_name}'s invitation to \"{interview.title}\" expired without completion.",
+                    notification_type="invitation_expired",
+                    link=f"/interviews/{interview.id}",
+                )
+            except Exception as e:
+                logger.warning("Expiry notification failed for invitation %s: %s", invitation.id, e)
     if expired:
         db.commit()
     return len(expired)
@@ -98,6 +113,19 @@ def send_invitation_reminders(db: Session) -> int:
         invitation.last_reminder_at = now
         invitation.reminder_count = reminder_number
         sent_count += 1
+
+        from app.services.notification_service import create_notification
+        try:
+            create_notification(
+                db,
+                interview.employer_id,
+                "Reminder sent to candidate",
+                f"Reminder {reminder_number} sent to {invitation.candidate_name} for \"{interview.title}\".",
+                notification_type="reminder_sent",
+                link=f"/interviews/{interview.id}",
+            )
+        except Exception as e:
+            logger.warning("Reminder notification failed for invitation %s: %s", invitation.id, e)
 
     if sent_count:
         db.commit()

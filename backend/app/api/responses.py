@@ -6,8 +6,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, 
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
+import logging
 import os
 import uuid
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.config import settings
@@ -557,6 +560,32 @@ async def complete_interview_response(
         await fire_event("response.completed", payload, org_id)
     except Exception as exc:
         print(f"Webhook fire failed: {exc}")
+
+    # Notify the interview employer + organization members that a candidate
+    # submitted their interview.
+    from app.services.notification_service import create_notification_for_members
+    interview = db.query(Interview).filter(Interview.id == candidate_response.interview_id).first()
+    if interview:
+        recipient_ids = {interview.employer_id}
+        if interview.organization_id:
+            member_ids = (
+                db.query(TeamMembership.user_id)
+                .filter(TeamMembership.organization_id == interview.organization_id)
+                .all()
+            )
+            recipient_ids.update(row[0] for row in member_ids)
+        recipient_ids.discard(None)
+        try:
+            create_notification_for_members(
+                db,
+                list(recipient_ids),
+                "Candidate submitted interview",
+                f"{candidate_response.candidate_name} completed \"{interview.title}\" and is ready for review.",
+                notification_type="response_completed",
+                link=f"/interviews/{interview.id}",
+            )
+        except Exception as exc:
+            logger.warning("Notification creation failed for response %s: %s", response_id, exc)
 
     return candidate_response
 

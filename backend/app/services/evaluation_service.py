@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models import CandidateResponse, EvaluationRun, EvaluationScore, QuestionAnswer, InterviewQuestion, Interview
+from app.models import CandidateResponse, EvaluationRun, EvaluationScore, QuestionAnswer, InterviewQuestion, Interview, TeamMembership
 
 
 STOPWORDS = {
@@ -442,6 +442,31 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
     evaluation_run.completed_at = datetime.utcnow()
     
     db.commit()
+    
+    # Notify the interview employer + organization members that evaluation
+    # finished and a score is available.
+    from app.services.notification_service import create_notification_for_members
+    if interview:
+        recipient_ids = {interview.employer_id}
+        if interview.organization_id:
+            member_ids = (
+                db.query(TeamMembership.user_id)
+                .filter(TeamMembership.organization_id == interview.organization_id)
+                .all()
+            )
+            recipient_ids.update(row[0] for row in member_ids)
+        recipient_ids.discard(None)
+        try:
+            create_notification_for_members(
+                db,
+                list(recipient_ids),
+                "Evaluation completed",
+                f"{response.candidate_name}'s interview for \"{interview.title}\" scored {round(response.total_score or 0.0, 1)}%.",
+                notification_type="evaluation_completed",
+                link=f"/interviews/{interview.id}",
+            )
+        except Exception as exc:
+            logger.warning("Evaluation notification failed for response %s: %s", response.id, exc)
     
     # Send completion email
     if response.candidate_email:

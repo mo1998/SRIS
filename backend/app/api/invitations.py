@@ -135,6 +135,19 @@ async def create_invitation(
     except Exception as exc:
         print(f"Webhook fire failed: {exc}")
 
+    from app.services.notification_service import create_notification
+    try:
+        create_notification(
+            db,
+            interview.employer_id,
+            "Interview invitation sent",
+            f"Invitation sent to {invitation.candidate_name} for \"{interview.title}\".",
+            notification_type="invitation_sent",
+            link=f"/interviews/{interview.id}",
+        )
+    except Exception as exc:
+        print(f"Notification creation failed: {exc}")
+
     return invitation
 
 
