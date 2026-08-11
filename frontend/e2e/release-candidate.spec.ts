@@ -238,6 +238,9 @@ test('release candidate employee flow can open detailed report without re-evalua
 
   await page.goto('/employee/candidate/99')
   await expect(page.getByText('Candidate Performance Report')).toBeVisible()
-  await expect(page.getByText('Evaluation Audit Trail')).toBeVisible()
+  await expect(page.getByText('Environment Quality')).toBeVisible()
+  await expect(page.getByText('Emotion & Confidence Analysis')).toBeVisible()
+  await expect(page.getByText('Question-by-Question Breakdown')).toHaveCount(0)
+  await expect(page.getByText('Evaluation Audit Trail')).toHaveCount(0)
   await expect(page.getByRole('button', { name: /re-evaluate/i })).toHaveCount(0)
 })

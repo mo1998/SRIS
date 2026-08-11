@@ -400,9 +400,10 @@ async def get_candidate_report(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
     
     require_candidate_report_access(response, current_user, db)
-    
-    report = generate_candidate_report(response_id, db)
-    
+
+    is_candidate_view = current_user.email == response.candidate_email
+    report = generate_candidate_report(response_id, db, include_internal=not is_candidate_view)
+
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not available")
     
@@ -510,10 +511,12 @@ async def download_candidate_report_pdf(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
     
     require_candidate_report_access(response, current_user, db)
-    
+
+    is_candidate_view = current_user.email == response.candidate_email
+
     from app.services.report_service import generate_candidate_pdf
-    
-    pdf_path = await generate_candidate_pdf(response_id, db)
+
+    pdf_path = await generate_candidate_pdf(response_id, db, include_internal=not is_candidate_view)
     
     if not os.path.exists(pdf_path):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to generate PDF")
@@ -546,7 +549,7 @@ async def get_my_interview_results(
     
     reports = []
     for response in responses:
-        report = generate_candidate_report(response.id, db)
+        report = generate_candidate_report(response.id, db, include_internal=False)
         if report:
             reports.append(report)
     

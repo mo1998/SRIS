@@ -496,8 +496,8 @@ class CandidateReport(BaseModel):
     confidence_score: float
     reviewer_decision: Optional[ReviewerDecisionEnum] = None
     ai_disclosure: Optional[str] = None
-    answers: List[ReportQuestionAnswerSchema]
-    feedback: str
+    answers: List[ReportQuestionAnswerSchema] = []
+    feedback: str = ""
     evaluation_provider: Optional[str] = None
     evaluation_model: Optional[str] = None
     evaluation_status: Optional[str] = None
