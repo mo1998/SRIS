@@ -66,7 +66,26 @@ python scripts/load_test.py --base-url http://localhost:8000 --candidates 20 --c
 npm run test:e2e --prefix frontend
 ```
 
-Use `PHASE6_RELEASE_RUNBOOK.md` for the final production-like Docker, local LLM, SMTP, product smoke, backup/restore, and release decision gates.
+### Release Verification
+
+Before a production release, run the local release bundle and confirm the environment gates below:
+
+```bash
+scripts/release_check.sh
+scripts/release_check.sh --with-e2e   # when Playwright browsers are available
+```
+
+Production-like Docker candidate with `DEBUG=False` (guardrails active): boot the stack, confirm `GET /health` returns HTTP 200 with `Cache-Control: no-store`, request/security headers, and the backend and `evaluation-worker` logs stay clean.
+
+Product smoke: register an employer, create and activate an interview, send one invitation, complete a candidate response, confirm an evaluation run is queued and processed, and verify reports, evaluation audit, analytics, and PDF export render.
+
+Local LLM gate (only after model weights are explicitly approved): start the OpenAI-compatible endpoint, confirm `/api/reports/evaluation/health` reports the intended provider/model, and verify fallback evaluation evidence is recorded when the endpoint is unavailable.
+
+SMTP gate: with real or staging SMTP configured, confirm `/api/reports/email/health` reports configured status, invitations send, resend is rate-limited, and send failures do not break candidate completion.
+
+Backup/restore rehearsal: with a non-empty dataset, run `./backup.sh` and `./backup.sh --verify backups/<directory>`, then restore into a clean environment and confirm the employer can log in and interview/report/evaluation/audit data plus uploaded files are intact.
+
+Release is ready when `scripts/release_check.sh` and CI pass, the production-like candidate boots with guardrails enabled, the product smoke passes, and the local LLM, SMTP, and backup/restore gates pass or are explicitly deferred.
 
 ### Production
 ```bash
