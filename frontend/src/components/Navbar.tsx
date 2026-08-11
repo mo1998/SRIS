@@ -3,6 +3,7 @@ import { Navbar as BSNavbar, Nav, Container, Button } from 'react-bootstrap'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { FiBriefcase } from 'react-icons/fi'
+import LanguageSwitcher from '../i18n/LanguageSwitcher'
 
 const Navbar: React.FC = () => {
   const { t } = useTranslation()
@@ -19,6 +20,7 @@ const Navbar: React.FC = () => {
         <BSNavbar.Toggle aria-controls="navbar-nav" />
         <BSNavbar.Collapse id="navbar-nav">
           <Nav className="ms-auto align-items-lg-center gap-2">
+            <LanguageSwitcher />
             <Nav.Link as={Link} to="/login" className="text-muted">{t('login.signIn')}</Nav.Link>
             <Button as={Link as any} to="/register" variant="primary" size="sm" className="px-3">
               {t('common.getStarted')}

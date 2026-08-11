@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../services/api'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
+import LanguageSwitcher from '../i18n/LanguageSwitcher'
 
 const ResultsPortal: React.FC = () => {
   const { t } = useTranslation()
@@ -25,6 +26,9 @@ const ResultsPortal: React.FC = () => {
 
   return (
     <Container className="py-5" style={{ maxWidth: 860 }}>
+      <div style={{ position: 'fixed', top: '0.75rem', right: '0.75rem', zIndex: 1100 }}>
+        <LanguageSwitcher />
+      </div>
       <Link to="/login" className="text-muted small d-inline-block mb-3">← {t('resultsPortal.back')}</Link>
       {error ? (
         <Alert variant="warning">{error}</Alert>
