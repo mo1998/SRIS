@@ -127,7 +127,7 @@ def get_email_health() -> Dict[str, object]:
         missing_settings.append("RESEND_API_KEY")
     if provider.name == "mailpit" and not settings.MAILPIT_API_URL:
         missing_settings.append("MAILPIT_API_URL")
-    if settings.MAIL_FROM in PLACEHOLDER_EMAIL_VALUES:
+    if provider.name != "disabled" and settings.MAIL_FROM in PLACEHOLDER_EMAIL_VALUES:
         missing_settings.append("MAIL_FROM")
 
     configured = provider.name != "disabled" and len(missing_settings) == 0
