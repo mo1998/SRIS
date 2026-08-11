@@ -1,5 +1,6 @@
 import React from 'react'
 import { Modal, Button } from 'react-bootstrap'
+import { useTranslation } from 'react-i18next'
 
 interface ConfirmModalProps {
   show: boolean
@@ -13,21 +14,26 @@ interface ConfirmModalProps {
 }
 
 const ConfirmModal: React.FC<ConfirmModalProps> = ({
-  show, title, message, confirmLabel = 'Confirm',
+  show, title, message, confirmLabel,
   confirmVariant = 'danger', onConfirm, onCancel, loading
-}) => (
-  <Modal show={show} onHide={onCancel} centered>
-    <Modal.Header closeButton>
-      <Modal.Title>{title}</Modal.Title>
-    </Modal.Header>
-    <Modal.Body>{message}</Modal.Body>
-    <Modal.Footer>
-      <Button variant="secondary" onClick={onCancel} disabled={loading}>Cancel</Button>
-      <Button variant={confirmVariant} onClick={onConfirm} disabled={loading}>
-        {loading ? 'Processing...' : confirmLabel}
-      </Button>
-    </Modal.Footer>
-  </Modal>
-)
+}) => {
+  const { t } = useTranslation()
+  const resolvedConfirmLabel = confirmLabel ?? t('common.confirm')
+
+  return (
+    <Modal show={show} onHide={onCancel} centered>
+      <Modal.Header closeButton>
+        <Modal.Title>{title}</Modal.Title>
+      </Modal.Header>
+      <Modal.Body>{message}</Modal.Body>
+      <Modal.Footer>
+        <Button variant="secondary" onClick={onCancel} disabled={loading}>{t('common.cancel')}</Button>
+        <Button variant={confirmVariant} onClick={onConfirm} disabled={loading}>
+          {loading ? t('common.processing') : resolvedConfirmLabel}
+        </Button>
+      </Modal.Footer>
+    </Modal>
+  )
+}
 
 export default ConfirmModal

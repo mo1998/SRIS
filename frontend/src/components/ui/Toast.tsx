@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback } from 'react'
 import { Toast as BsToast, ToastContainer as BsToastContainer } from 'react-bootstrap'
 import { FiCheckCircle, FiAlertCircle, FiAlertTriangle, FiInfo, FiX } from 'react-icons/fi'
+import { useTranslation } from 'react-i18next'
 
 type ToastType = 'success' | 'error' | 'warning' | 'info'
 
@@ -33,6 +34,7 @@ export const showToast = (type: ToastType, title: string, message?: string) => {
 }
 
 const SingleToast: React.FC<{ toast: ToastMessage; onRemove: (id: string) => void }> = ({ toast, onRemove }) => {
+  const { t } = useTranslation()
   useEffect(() => {
     const timer = setTimeout(() => onRemove(toast.id), 5000)
     return () => clearTimeout(timer)
@@ -46,7 +48,7 @@ const SingleToast: React.FC<{ toast: ToastMessage; onRemove: (id: string) => voi
           <strong>{toast.title}</strong>
           {toast.message && <div className="small mt-1">{toast.message}</div>}
         </div>
-        <button className="btn-close btn-close-white ms-2" onClick={() => onRemove(toast.id)} aria-label="Close" />
+        <button className="btn-close btn-close-white ms-2" onClick={() => onRemove(toast.id)} aria-label={t('common.close')} />
       </div>
     </BsToast>
   )

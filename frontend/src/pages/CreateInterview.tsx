@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Form, Button, Card, Alert, Row, Col, Badge } from 'react-bootstrap'
 import { api } from '../services/api'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { FiPlus, FiTrash2, FiSave, FiLayers, FiBookOpen } from 'react-icons/fi'
 import PageHeader from '../components/ui/PageHeader'
 import ErrorAlert from '../components/ui/ErrorAlert'
@@ -9,6 +10,7 @@ import LoadingSpinner from '../components/ui/LoadingSpinner'
 
 const CreateInterview: React.FC = () => {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [templates, setTemplates] = useState<any[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null)
@@ -75,7 +77,7 @@ const CreateInterview: React.FC = () => {
         pass_score: template.pass_score,
       }))
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load template')
+      setError(err.response?.data?.detail || t('createInterview.loadTemplateFailed'))
     } finally {
       setTemplateLoading(false)
     }
@@ -157,7 +159,7 @@ const CreateInterview: React.FC = () => {
       const response = await api.interviews.create(interviewData)
       navigate(`/employer/interviews/${response.data.id}`)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to create interview')
+      setError(err.response?.data?.detail || t('createInterview.createFailed'))
     } finally {
       setLoading(false)
     }
@@ -165,7 +167,7 @@ const CreateInterview: React.FC = () => {
 
   const handleCreateFromTemplate = async () => {
     if (!selectedTemplate) {
-      setError('Select a template first')
+      setError(t('createInterview.selectTemplateFirst'))
       return
     }
 
@@ -182,7 +184,7 @@ const CreateInterview: React.FC = () => {
       })
       navigate(`/employer/interviews/${response.data.id}`)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to create interview from template')
+      setError(err.response?.data?.detail || t('createInterview.templateFailed'))
     } finally {
       setLoading(false)
     }
@@ -190,7 +192,7 @@ const CreateInterview: React.FC = () => {
 
   const handleLoadTemplateQuestions = () => {
     if (!selectedTemplate || !selectedTemplate.questions?.length) {
-      setError('Selected template has no questions to load')
+      setError(t('createInterview.templateNoQuestions'))
       return
     }
     const loaded = selectedTemplate.questions.map((question: any, idx: number) => ({
@@ -223,7 +225,7 @@ const CreateInterview: React.FC = () => {
 
   const handleSaveQuestionToBank = async (question: any) => {
     if (!question.question_text.trim()) {
-      setError('Question text is required to save to bank')
+      setError(t('createInterview.questionTextRequired'))
       return
     }
     try {
@@ -237,7 +239,7 @@ const CreateInterview: React.FC = () => {
       setError('')
       loadQuestionBank()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to save question to bank')
+      setError(err.response?.data?.detail || t('createInterview.saveFailed'))
     }
   }
 
@@ -246,13 +248,13 @@ const CreateInterview: React.FC = () => {
       await api.interviews.deleteQuestionBankEntry(entryId)
       setBankEntries(bankEntries.filter((entry) => entry.id !== entryId))
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to delete question from bank')
+      setError(err.response?.data?.detail || t('createInterview.deleteFailed'))
     }
   }
   
   return (
     <div>
-      <PageHeader title="Create New Interview" subtitle="Set up interview details and questions" />
+      <PageHeader title={t('createInterview.title')} subtitle={t('createInterview.subtitle')} />
       
       <ErrorAlert message={error} onClose={() => setError('')} />
 
@@ -260,19 +262,19 @@ const CreateInterview: React.FC = () => {
         <Card.Header>
           <h5 className="mb-0">
             <FiLayers className="me-2" />
-            Start From Template
+            {t('createInterview.startFromTemplate')}
           </h5>
         </Card.Header>
         <Card.Body>
           <Row className="align-items-end">
             <Col md={8}>
               <Form.Group className="mb-3" controlId="interview-template">
-                <Form.Label>Template</Form.Label>
+                <Form.Label>{t('createInterview.template')}</Form.Label>
                 <Form.Select
                   value={selectedTemplateId}
                   onChange={(event) => handleTemplateSelect(event.target.value)}
                 >
-                  <option value="">Choose a template...</option>
+                  <option value="">{t('createInterview.chooseTemplate')}</option>
                   {templates.map((template) => (
                     <option key={template.id} value={template.id}>
                       {template.name}
@@ -290,19 +292,19 @@ const CreateInterview: React.FC = () => {
                 onClick={handleCreateFromTemplate}
               >
                 <FiLayers className="me-2" />
-                Create from Template
+                {t('createInterview.createFromTemplate')}
               </Button>
             </Col>
           </Row>
 
-          {templateLoading && <p className="mb-0">Loading template...</p>}
+          {templateLoading && <p className="mb-0">{t('createInterview.loadingTemplate')}</p>}
 
           {selectedTemplate && (
             <div>
               <div className="d-flex gap-2 align-items-center mb-2">
                 <h6 className="mb-0">{selectedTemplate.name}</h6>
                 <Badge bg="secondary">{selectedTemplate.role_category}</Badge>
-                <Badge bg="light" text="dark">{selectedTemplate.duration_minutes} min</Badge>
+                <Badge bg="light" text="dark">{t('dashboard.minutesShort', { count: selectedTemplate.duration_minutes })}</Badge>
                 <Button
                   type="button"
                   variant="success"
@@ -311,7 +313,7 @@ const CreateInterview: React.FC = () => {
                   disabled={!selectedTemplate.questions?.length}
                 >
                   <FiPlus className="me-1" />
-                  Load Questions into Editor
+                  {t('createInterview.loadQuestions')}
                 </Button>
               </div>
               <p className="text-muted">{selectedTemplate.description}</p>
@@ -320,7 +322,7 @@ const CreateInterview: React.FC = () => {
                   <li key={question.id} className="mb-2">
                     <strong>{question.question_text}</strong>
                     <br />
-                    <small className="text-muted">Weight: {question.weight}x</small>
+                    <small className="text-muted">{t('interviewDetail.weightX', { weight: question.weight })}</small>
                     {(question.rubric_criteria || []).length > 0 && (
                       <ul className="mt-1">
                         {question.rubric_criteria.map((criterion: any) => (
@@ -345,15 +347,15 @@ const CreateInterview: React.FC = () => {
         <Card.Header>
           <h5 className="mb-0">
             <FiBookOpen className="me-2" />
-            Question Bank
+            {t('createInterview.questionBank')}
           </h5>
         </Card.Header>
         <Card.Body>
           {bankLoading ? (
-            <p className="text-muted mb-0">Loading saved questions...</p>
+            <p className="text-muted mb-0">{t('createInterview.loadingBank')}</p>
           ) : bankEntries.length === 0 ? (
             <p className="text-muted mb-0">
-              No saved questions yet. Use the "Save to Bank" button on any question below to reuse it later.
+              {t('createInterview.noSavedQuestions')}
             </p>
           ) : (
             <Row>
@@ -366,13 +368,13 @@ const CreateInterview: React.FC = () => {
                           <Badge bg="secondary" className="mb-2">{entry.question_type}</Badge>
                           <p className="mb-1">{entry.question_text}</p>
                           <small className="text-muted">
-                            Weight: {entry.weight}x
-                            {entry.expected_answer ? ' | Has reference answer' : ''}
+                            {t('interviewDetail.weightX', { weight: entry.weight })}
+                            {entry.expected_answer ? t('createInterview.hasReferenceAnswer') : ''}
                           </small>
                         </div>
                         <div className="d-flex gap-1">
                           <Button variant="outline-primary" size="sm" onClick={() => handleAddFromBank(entry)}>
-                            <FiPlus /> Add
+                            <FiPlus /> {t('common.add')}
                           </Button>
                           <Button variant="outline-danger" size="sm" onClick={() => handleDeleteFromBank(entry.id)}>
                             <FiTrash2 />
@@ -391,13 +393,13 @@ const CreateInterview: React.FC = () => {
       <Form onSubmit={handleSubmit}>
         <Card className="mb-4">
           <Card.Header>
-            <h5 className="mb-0">Interview Details</h5>
+            <h5 className="mb-0">{t('createInterview.details')}</h5>
           </Card.Header>
           <Card.Body>
             <Row>
               <Col md={6}>
                 <Form.Group className="mb-3" controlId="interview-title">
-                  <Form.Label>Interview Title *</Form.Label>
+                  <Form.Label>{t('createInterview.titleRequired')}</Form.Label>
                   <Form.Control
                     type="text"
                     value={formData.title}
@@ -408,7 +410,7 @@ const CreateInterview: React.FC = () => {
               </Col>
               <Col md={6}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Duration (minutes)</Form.Label>
+                  <Form.Label>{t('createInterview.durationMinutes')}</Form.Label>
                   <Form.Control
                     type="number"
                     value={formData.duration_minutes}
@@ -421,7 +423,7 @@ const CreateInterview: React.FC = () => {
             </Row>
             
             <Form.Group className="mb-3">
-              <Form.Label>Description</Form.Label>
+              <Form.Label>{t('common.description')}</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={3}
@@ -433,7 +435,7 @@ const CreateInterview: React.FC = () => {
             <Row>
               <Col md={6}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Maximum Attempts</Form.Label>
+                  <Form.Label>{t('createInterview.maximumAttempts')}</Form.Label>
                   <Form.Control
                     type="number"
                     value={formData.max_attempts}
@@ -445,7 +447,7 @@ const CreateInterview: React.FC = () => {
               </Col>
               <Col md={6}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Pass Score (%)</Form.Label>
+                  <Form.Label>{t('createInterview.passScorePercent')}</Form.Label>
                   <Form.Control
                     type="number"
                     value={formData.pass_score}
@@ -459,22 +461,22 @@ const CreateInterview: React.FC = () => {
           </Card.Body>
         </Card>
         
-        <h4 className="mb-3">Questions</h4>
+        <h4 className="mb-3">{t('createInterview.questions')}</h4>
         
         {questions.map((question, index) => (
           <Card key={index} className="mb-3">
             <Card.Header className="d-flex justify-content-between align-items-center">
-              <h6 className="mb-0">Question {index + 1}</h6>
+              <h6 className="mb-0">{t('createInterview.questionN', { n: index + 1 })}</h6>
               <div className="d-flex gap-2">
                 <Button
                   variant="outline-primary"
                   size="sm"
                   onClick={() => handleSaveQuestionToBank(question)}
                   disabled={!question.question_text.trim()}
-                  title="Save this question to your reusable question bank"
+                  title={t('createInterview.saveToBankTooltip')}
                 >
                   <FiBookOpen className="me-1" />
-                  Save to Bank
+                  {t('createInterview.saveToBank')}
                 </Button>
                 <Button
                   variant="outline-danger"
@@ -488,7 +490,7 @@ const CreateInterview: React.FC = () => {
             </Card.Header>
             <Card.Body>
               <Form.Group className="mb-3" controlId={`question-text-${index}`}>
-                <Form.Label>Question Text *</Form.Label>
+                <Form.Label>{t('createInterview.questionText')}</Form.Label>
                 <Form.Control
                   as="textarea"
                   rows={2}
@@ -499,33 +501,33 @@ const CreateInterview: React.FC = () => {
               </Form.Group>
               
               <Form.Group className="mb-3">
-                <Form.Label>Expected Answer (for AI evaluation)</Form.Label>
+                <Form.Label>{t('createInterview.expectedAnswer')}</Form.Label>
                 <Form.Control
                   as="textarea"
                   rows={3}
                   value={question.expected_answer}
                   onChange={(e) => updateQuestion(index, 'expected_answer', e.target.value)}
-                  placeholder="Provide a reference answer to help AI evaluate responses"
+                  placeholder={t('createInterview.expectedAnswerPlaceholder')}
                 />
               </Form.Group>
               
               <Row>
                 <Col md={6}>
                   <Form.Group className="mb-3">
-                    <Form.Label>Question Type</Form.Label>
+                    <Form.Label>{t('createInterview.questionType')}</Form.Label>
                     <Form.Select
                       value={question.question_type}
                       onChange={(e) => updateQuestion(index, 'question_type', e.target.value)}
                     >
-                      <option value="text">Text/Voice Answer</option>
-                      <option value="multiple_choice">Multiple Choice</option>
-                      <option value="coding">Coding</option>
+                      <option value="text">{t('createInterview.textVoice')}</option>
+                      <option value="multiple_choice">{t('createInterview.multipleChoice')}</option>
+                      <option value="coding">{t('createInterview.coding')}</option>
                     </Form.Select>
                   </Form.Group>
                 </Col>
                 <Col md={6}>
                   <Form.Group className="mb-3">
-                    <Form.Label>Weight (importance)</Form.Label>
+                    <Form.Label>{t('createInterview.weightImportance')}</Form.Label>
                     <Form.Control
                       type="number"
                       value={question.weight}
@@ -540,7 +542,7 @@ const CreateInterview: React.FC = () => {
 
               <div className="border-top pt-3 mt-2">
                 <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h6 className="mb-0">Rubric Criteria</h6>
+                  <h6 className="mb-0">{t('createInterview.rubricCriteria')}</h6>
                   <Button
                     type="button"
                     variant="outline-secondary"
@@ -548,18 +550,18 @@ const CreateInterview: React.FC = () => {
                     onClick={() => addRubricCriterion(index)}
                   >
                     <FiPlus className="me-1" />
-                    Add Criterion
+                    {t('interviewDetail.addCriterion')}
                   </Button>
                 </div>
 
                 {(question.rubric_criteria || []).length === 0 ? (
-                  <p className="text-muted mb-0">No rubric criteria added yet.</p>
+                  <p className="text-muted mb-0">{t('createInterview.noCriteria')}</p>
                 ) : (
                   question.rubric_criteria.map((criterion: any, criterionIndex: number) => (
                     <Card key={criterionIndex} className="mb-3 bg-light">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-start gap-2 mb-3">
-                          <strong>Criterion {criterionIndex + 1}</strong>
+                          <strong>{t('createInterview.criterionN', { n: criterionIndex + 1 })}</strong>
                           <Button
                             type="button"
                             variant="outline-danger"
@@ -572,17 +574,17 @@ const CreateInterview: React.FC = () => {
                         <Row>
                           <Col md={8}>
                             <Form.Group className="mb-3" controlId={`rubric-name-${index}-${criterionIndex}`}>
-                              <Form.Label>Name</Form.Label>
+                              <Form.Label>{t('common.name')}</Form.Label>
                               <Form.Control
                                 value={criterion.name}
                                 onChange={(event) => updateRubricCriterion(index, criterionIndex, 'name', event.target.value)}
-                                placeholder="Clarity, completeness, examples..."
+                                placeholder={t('createInterview.criterionNamePlaceholder')}
                               />
                             </Form.Group>
                           </Col>
                           <Col md={4}>
                             <Form.Group className="mb-3" controlId={`rubric-weight-${index}-${criterionIndex}`}>
-                              <Form.Label>Weight</Form.Label>
+                              <Form.Label>{t('common.weight')}</Form.Label>
                               <Form.Control
                                 type="number"
                                 value={criterion.weight}
@@ -595,13 +597,13 @@ const CreateInterview: React.FC = () => {
                           </Col>
                         </Row>
                         <Form.Group controlId={`rubric-description-${index}-${criterionIndex}`}>
-                          <Form.Label>Description</Form.Label>
+                          <Form.Label>{t('common.description')}</Form.Label>
                           <Form.Control
                             as="textarea"
                             rows={2}
                             value={criterion.description}
                             onChange={(event) => updateRubricCriterion(index, criterionIndex, 'description', event.target.value)}
-                            placeholder="What should a strong answer demonstrate?"
+                            placeholder={t('createInterview.criterionPlaceholder')}
                           />
                         </Form.Group>
                       </Card.Body>
@@ -615,16 +617,16 @@ const CreateInterview: React.FC = () => {
         
         <Button variant="outline-primary" onClick={addQuestion} className="mb-4">
           <FiPlus className="me-2" />
-          Add Question
+          {t('createInterview.addQuestion')}
         </Button>
         
         <div className="d-flex gap-2">
           <Button variant="primary" type="submit" disabled={loading}>
             <FiSave className="me-2" />
-            {loading ? 'Creating...' : 'Create Interview'}
+            {loading ? t('createInterview.creating') : t('createInterview.create')}
           </Button>
           <Button variant="secondary" onClick={() => navigate(-1)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
         </div>
       </Form>

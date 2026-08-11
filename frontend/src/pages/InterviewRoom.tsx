@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { Container, Row, Col, Card, Button, Alert, ProgressBar, Form } from 'react-bootstrap'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import Webcam from 'react-webcam'
 import { api } from '../services/api'
 import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiCheck, FiArrowRight, FiCamera } from 'react-icons/fi'
@@ -8,6 +9,7 @@ import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiCheck, FiArrowRight, FiCamera }
 const InterviewRoom: React.FC = () => {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const webcamRef = useRef<Webcam>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const videoRecorderRef = useRef<MediaRecorder | null>(null)
@@ -51,7 +53,7 @@ const InterviewRoom: React.FC = () => {
       setInterview(verifiedInvitation.interview)
       setQuestions(verifiedInvitation.interview?.questions || [])
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Invalid invitation')
+      setError(err.response?.data?.detail || t('interviewRoom.invalidInvitation'))
     } finally {
       setLoading(false)
     }
@@ -59,12 +61,12 @@ const InterviewRoom: React.FC = () => {
   
   const startInterview = async () => {
     if (!privacyAcknowledged || !participationConsented) {
-      setError('Please review and accept the candidate consent before starting.')
+      setError(t('interviewRoom.consentFirst'))
       return
     }
 
     if (deviceCheckStatus !== 'passed') {
-      setError('Please complete the camera and microphone check before starting.')
+      setError(t('interviewRoom.deviceFirst'))
       return
     }
 
@@ -81,7 +83,7 @@ const InterviewRoom: React.FC = () => {
       setStep('interview')
       syncServerTimer(response.data.id)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to start interview')
+      setError(err.response?.data?.detail || t('interviewRoom.startFailed'))
     }
   }
 
@@ -106,7 +108,7 @@ const InterviewRoom: React.FC = () => {
 
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Camera and microphone access is not available in this browser.')
+        throw new Error(t('interviewRoom.noMedia'))
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
@@ -118,7 +120,7 @@ const InterviewRoom: React.FC = () => {
       setIsMicOn(false)
       setIsCameraOn(false)
       setDeviceCheckStatus('failed')
-      setDeviceCheckError(err.message || 'Allow camera and microphone access to continue.')
+      setDeviceCheckError(err.message || t('interviewRoom.allowAccess'))
     }
   }
   
@@ -255,7 +257,7 @@ const InterviewRoom: React.FC = () => {
         await completeInterview()
       }
     } catch (err: any) {
-      setAnswerError(err.response?.data?.detail || 'Failed to submit answer. Your answer is still saved locally; try again.')
+      setAnswerError(err.response?.data?.detail || t('interviewRoom.submitFailed'))
     } finally {
       setIsSubmittingAnswer(false)
     }
@@ -268,7 +270,7 @@ const InterviewRoom: React.FC = () => {
       await api.responses.complete(responseId)
       setStep('complete')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to complete interview')
+      setError(err.response?.data?.detail || t('interviewRoom.completeFailed'))
     }
   }
 
@@ -387,14 +389,14 @@ const InterviewRoom: React.FC = () => {
   }, [step, responseId])
 
   if (loading) {
-    return <Container className="mt-5"><p>Loading interview...</p></Container>
+    return <Container className="mt-5"><p>{t('interviewRoom.loading')}</p></Container>
   }
   
   if (error && !invitation) {
     return (
       <Container className="mt-5">
         <Alert variant="danger">{error}</Alert>
-        <Button onClick={() => navigate('/login')}>Go to Login</Button>
+        <Button onClick={() => navigate('/login')}>{t('interviewRoom.goToLogin')}</Button>
       </Container>
     )
   }
@@ -406,8 +408,8 @@ const InterviewRoom: React.FC = () => {
           <Card.Body>
             <div className="text-center mb-4">
               <FiCheck className="text-success mb-3" size={56} />
-              <h1>Invitation Verified</h1>
-              <p className="text-muted mb-0">Review the interview details before continuing.</p>
+              <h1>{t('interviewRoom.verified')}</h1>
+              <p className="text-muted mb-0">{t('interviewRoom.reviewDetails')}</p>
             </div>
 
             <Card className="mb-4 bg-light">
@@ -416,14 +418,14 @@ const InterviewRoom: React.FC = () => {
                 {interview?.description && <p>{interview.description}</p>}
                 <Row>
                   <Col sm={6}>
-                    <p className="mb-1"><strong>Candidate:</strong> {invitation?.candidate_name}</p>
-                    <p className="mb-1"><strong>Email:</strong> {invitation?.candidate_email}</p>
+                    <p className="mb-1"><strong>{t('interviewRoom.candidate')}</strong> {invitation?.candidate_name}</p>
+                    <p className="mb-1"><strong>{t('common.email')}:</strong> {invitation?.candidate_email}</p>
                   </Col>
                   <Col sm={6}>
-                    <p className="mb-1"><strong>Duration:</strong> {interview?.duration_minutes} minutes</p>
-                    <p className="mb-1"><strong>Questions:</strong> {questions.length}</p>
+                    <p className="mb-1"><strong>{t('interviewRoom.duration')}</strong> {t('interviewRoom.minutes', { count: interview?.duration_minutes })}</p>
+                    <p className="mb-1"><strong>{t('interviewRoom.questions')}</strong> {questions.length}</p>
                     {invitation?.expires_at && (
-                      <p className="mb-1"><strong>Expires:</strong> {new Date(invitation.expires_at).toLocaleDateString()}</p>
+                      <p className="mb-1"><strong>{t('interviewRoom.expires')}</strong> {new Date(invitation.expires_at).toLocaleDateString()}</p>
                     )}
                   </Col>
                 </Row>
@@ -432,7 +434,7 @@ const InterviewRoom: React.FC = () => {
 
             <div className="d-flex justify-content-center">
               <Button variant="primary" size="lg" onClick={() => setStep('setup')}>
-                Continue to Setup
+                {t('interviewRoom.continueToSetup')}
               </Button>
             </div>
           </Card.Body>
@@ -452,35 +454,35 @@ const InterviewRoom: React.FC = () => {
             
             <Card className="mb-4 bg-light">
               <Card.Body>
-                <h5>Interview Instructions</h5>
+                <h5>{t('interviewRoom.instructionsTitle')}</h5>
                 <ul className="text-start">
-                  <li>Find a quiet place with good lighting</li>
-                  <li>Ensure your face is clearly visible</li>
-                  <li>Speak clearly when answering questions</li>
-                  <li>You can record your answers with the microphone</li>
-                  <li>The AI will evaluate your responses</li>
+                  <li>{t('interviewRoom.instructionQuiet')}</li>
+                  <li>{t('interviewRoom.instructionFace')}</li>
+                  <li>{t('interviewRoom.instructionSpeak')}</li>
+                  <li>{t('interviewRoom.instructionRecord')}</li>
+                  <li>{t('interviewRoom.instructionAI')}</li>
                 </ul>
               </Card.Body>
             </Card>
 
             <Card className="mb-4 text-start">
               <Card.Body>
-                <h5>Privacy and Consent</h5>
+                <h5>{t('interviewRoom.privacyTitle')}</h5>
                 <p className="text-muted">
-                  Your answers, optional audio, and interview metadata may be stored and reviewed by the employer for this hiring process.
+                  {t('interviewRoom.privacyText')}
                 </p>
                 <Form.Check
                   id="privacy-acknowledgement"
                   className="mb-2"
                   type="checkbox"
-                  label="I understand how my interview data will be used."
+                  label={t('interviewRoom.understandDataUse')}
                   checked={privacyAcknowledged}
                   onChange={(event) => setPrivacyAcknowledged(event.target.checked)}
                 />
                 <Form.Check
                   id="participation-consent"
                   type="checkbox"
-                  label="I consent to participate in this remote interview."
+                  label={t('interviewRoom.consentParticipate')}
                   checked={participationConsented}
                   onChange={(event) => setParticipationConsented(event.target.checked)}
                 />
@@ -489,16 +491,16 @@ const InterviewRoom: React.FC = () => {
 
             <Card className="mb-4 text-start">
               <Card.Body>
-                <h5>Device Setup</h5>
+                <h5>{t('interviewRoom.deviceTitle')}</h5>
                 <p className="text-muted">
-                  Check your camera and microphone before the interview starts. You can still answer with text if you choose not to record audio.
+                  {t('interviewRoom.deviceText')}
                 </p>
                 <div className="d-flex flex-wrap gap-2 align-items-center mb-3">
                   <Button type="button" variant="outline-primary" onClick={checkDevices} disabled={deviceCheckStatus === 'checking'}>
-                    {deviceCheckStatus === 'checking' ? 'Checking Devices...' : 'Check Camera and Microphone'}
+                    {deviceCheckStatus === 'checking' ? t('interviewRoom.checkingDevices') : t('interviewRoom.checkDevices')}
                   </Button>
-                  {deviceCheckStatus === 'passed' && <span className="text-success">Camera and microphone are available.</span>}
-                  {deviceCheckStatus === 'failed' && <span className="text-danger">Device check failed.</span>}
+                  {deviceCheckStatus === 'passed' && <span className="text-success">{t('interviewRoom.devicesAvailable')}</span>}
+                  {deviceCheckStatus === 'failed' && <span className="text-danger">{t('interviewRoom.deviceFailed')}</span>}
                 </div>
                 {deviceCheckError && <Alert variant="warning" className="mb-0">{deviceCheckError}</Alert>}
               </Card.Body>
@@ -506,13 +508,13 @@ const InterviewRoom: React.FC = () => {
             
             <Row className="mb-4">
               <Col>
-                <h6>Duration: {interview?.duration_minutes} minutes</h6>
-                <h6>Questions: {questions.length}</h6>
+                <h6>{t('interviewRoom.durationLine', { count: interview?.duration_minutes })}</h6>
+                <h6>{t('interviewRoom.questionsLine', { count: questions.length })}</h6>
               </Col>
             </Row>
             
             <Button variant="primary" size="lg" onClick={startInterview} disabled={!privacyAcknowledged || !participationConsented || deviceCheckStatus !== 'passed'}>
-              Start Interview
+              {t('interviewRoom.start')}
             </Button>
           </Card.Body>
         </Card>
@@ -526,12 +528,12 @@ const InterviewRoom: React.FC = () => {
         <Card className="max-w-2xl mx-auto text-center">
           <Card.Body>
             <FiCheck className="text-success mb-3" size={64} />
-            <h1>Interview Completed!</h1>
-            <p className="lead">Thank you for completing the interview.</p>
-            <p>Your responses have been recorded and will be evaluated by the AI system.</p>
-            <p>The employer will review your results and contact you if you move forward.</p>
+            <h1>{t('interviewRoom.completeTitle')}</h1>
+            <p className="lead">{t('interviewRoom.thankYou')}</p>
+            <p>{t('interviewRoom.recorded')}</p>
+            <p>{t('interviewRoom.employerReview')}</p>
             <Button variant="primary" onClick={() => navigate('/login')}>
-              Go to Login
+              {t('interviewRoom.goToLogin')}
             </Button>
           </Card.Body>
         </Card>
@@ -547,8 +549,8 @@ const InterviewRoom: React.FC = () => {
             <Card.Header>
               <div className="d-flex flex-column flex-md-row gap-2 justify-content-between align-items-md-center">
                 <div>
-                  <h5 className="mb-1">Question {currentQuestionIndex + 1} of {questions.length}</h5>
-                  <small className="text-muted">Time remaining: {formatTime(remainingSeconds)}</small>
+                  <h5 className="mb-1">{t('interviewRoom.questionOf', { current: currentQuestionIndex + 1, total: questions.length })}</h5>
+                  <small className="text-muted">{t('interviewRoom.timeRemaining', { time: formatTime(remainingSeconds) })}</small>
                 </div>
                 <ProgressBar className="w-100" now={progress} label={`${Math.round(progress)}%`} style={{ maxWidth: '220px' }} />
               </div>
@@ -557,22 +559,22 @@ const InterviewRoom: React.FC = () => {
               {error && <Alert variant="danger">{error}</Alert>}
               {answerError && <Alert variant="danger">{answerError}</Alert>}
               {remainingSeconds === 0 && (
-                <Alert variant="warning">Time is up. Submit your current answer to complete the interview.</Alert>
+                <Alert variant="warning">{t('interviewRoom.timeUp')}</Alert>
               )}
-              {restoredDraft && <Alert variant="info">Your saved draft was restored on this question.</Alert>}
+              {restoredDraft && <Alert variant="info">{t('interviewRoom.draftRestored')}</Alert>}
               <h4 className="mb-4">{currentQuestion?.question_text}</h4>
               
               <Form.Group className="mb-3" controlId="candidate-answer-text">
-                <Form.Label>Your Answer</Form.Label>
+                <Form.Label>{t('interviewRoom.yourAnswer')}</Form.Label>
                 <Form.Control
                   as="textarea"
                   rows={6}
                   value={answerText}
                   onChange={(e) => setAnswerText(e.target.value)}
-                  placeholder="Type your answer here or record audio..."
+                  placeholder={t('interviewRoom.answerPlaceholder')}
                 />
                 <Form.Text className="text-muted">
-                  {lastSavedAt ? `Draft saved locally at ${lastSavedAt.toLocaleTimeString()}` : 'Your typed answer is saved locally while you work.'}
+                  {lastSavedAt ? t('interviewRoom.draftSavedAt', { time: lastSavedAt.toLocaleTimeString() }) : t('interviewRoom.draftSavedNote')}
                 </Form.Text>
               </Form.Group>
               
@@ -583,7 +585,7 @@ const InterviewRoom: React.FC = () => {
                   disabled={isSubmittingAnswer || isVideoRecording}
                 >
                   {isRecording ? <FiMicOff className="me-2" /> : <FiMic className="me-2" />}
-                  {isRecording ? 'Stop Audio' : 'Record Audio'}
+                  {isRecording ? t('interviewRoom.stopAudio') : t('interviewRoom.recordAudio')}
                 </Button>
                 <Button
                   variant={isVideoRecording ? 'danger' : 'outline-secondary'}
@@ -591,15 +593,15 @@ const InterviewRoom: React.FC = () => {
                   disabled={isSubmittingAnswer || isRecording}
                 >
                   {isVideoRecording ? <FiVideoOff className="me-2" /> : <FiCamera className="me-2" />}
-                  {isVideoRecording ? 'Stop Video' : 'Record Video'}
+                  {isVideoRecording ? t('interviewRoom.stopVideo') : t('interviewRoom.recordVideo')}
                 </Button>
                 {videoPreviewUrl && !isVideoRecording && (
                   <Button variant="outline-danger" size="sm" onClick={clearVideo}>
-                    Remove Video
+                    {t('interviewRoom.removeVideo')}
                   </Button>
                 )}
               </div>
-              {audioChunks.length > 0 && <Alert variant="info">Audio recording is ready and will upload with this answer.</Alert>}
+              {audioChunks.length > 0 && <Alert variant="info">{t('interviewRoom.audioReady')}</Alert>}
               {videoPreviewUrl && !isVideoRecording && (
                 <div className="mb-3">
                   <video src={videoPreviewUrl} controls style={{ width: '100%', maxHeight: 320, borderRadius: 8 }} />
@@ -608,7 +610,7 @@ const InterviewRoom: React.FC = () => {
               {isSubmittingAnswer && (
                 <div className="mb-3">
                   <div className="d-flex justify-content-between mb-1">
-                    <small>Submitting answer</small>
+                    <small>{t('interviewRoom.submitting')}</small>
                     <small>{uploadProgress}%</small>
                   </div>
                   <ProgressBar now={uploadProgress} />
@@ -621,15 +623,15 @@ const InterviewRoom: React.FC = () => {
                   disabled={currentQuestionIndex === 0}
                   onClick={() => setCurrentQuestionIndex(currentQuestionIndex - 1)}
                 >
-                  Previous
+                  {t('interviewRoom.previous')}
                 </Button>
                 <Button variant="primary" onClick={submitAnswer} disabled={isSubmittingAnswer || (!answerText.trim() && audioChunks.length === 0 && videoChunks.length === 0)}>
                   {currentQuestionIndex < questions.length - 1 ? (
                     <>
-                      {answerError ? 'Retry Submission' : 'Next'} <FiArrowRight className="ms-2" />
+                      {answerError ? t('interviewRoom.retry') : t('interviewRoom.next')} <FiArrowRight className="ms-2" />
                     </>
                   ) : (
-                    answerError ? 'Retry Submission' : 'Submit & Complete'
+                    answerError ? t('interviewRoom.retry') : t('interviewRoom.submitComplete')
                   )}
                 </Button>
               </div>
@@ -640,7 +642,7 @@ const InterviewRoom: React.FC = () => {
         <Col lg={4}>
           <Card className="mb-4">
             <Card.Header>
-              <h6 className="mb-0">Video & Audio</h6>
+              <h6 className="mb-0">{t('interviewRoom.videoAudio')}</h6>
             </Card.Header>
             <Card.Body>
               <Webcam
@@ -674,11 +676,11 @@ const InterviewRoom: React.FC = () => {
           
           <Card>
             <Card.Header>
-              <h6 className="mb-0">Device Status</h6>
+              <h6 className="mb-0">{t('interviewRoom.deviceStatus')}</h6>
             </Card.Header>
             <Card.Body>
-              <p className="mb-2"><strong>Camera:</strong> {isCameraOn ? 'Available' : 'Unavailable'}</p>
-              <p className="mb-0"><strong>Microphone:</strong> {isMicOn ? 'Available' : 'Unavailable'}</p>
+              <p className="mb-2"><strong>{t('interviewRoom.camera')}</strong> {isCameraOn ? t('interviewRoom.available') : t('interviewRoom.unavailable')}</p>
+              <p className="mb-0"><strong>{t('interviewRoom.microphone')}</strong> {isMicOn ? t('interviewRoom.available') : t('interviewRoom.unavailable')}</p>
             </Card.Body>
           </Card>
         </Col>

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FiBell } from 'react-icons/fi'
 import { api } from '../services/api'
 
@@ -12,21 +13,22 @@ interface NotificationItem {
   created_at: string
 }
 
-const timeAgo = (iso: string): string => {
-  const then = new Date(iso).getTime()
-  const seconds = Math.floor((Date.now() - then) / 1000)
-  if (seconds < 60) return 'just now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-  return `${Math.floor(seconds / 86400)}d ago`
-}
-
 const NotificationBell: React.FC = () => {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [error, setError] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const timeAgo = (iso: string): string => {
+    const then = new Date(iso).getTime()
+    const seconds = Math.floor((Date.now() - then) / 1000)
+    if (seconds < 60) return t('notifications.justNow')
+    if (seconds < 3600) return t('notifications.minutesAgo', { count: Math.floor(seconds / 60) })
+    if (seconds < 86400) return t('notifications.hoursAgo', { count: Math.floor(seconds / 3600) })
+    return t('notifications.daysAgo', { count: Math.floor(seconds / 86400) })
+  }
 
   const load = async () => {
     try {
@@ -34,7 +36,7 @@ const NotificationBell: React.FC = () => {
       setNotifications(res.data.notifications || [])
       setUnreadCount(res.data.unread_count || 0)
     } catch (err: any) {
-      setError(err.response?.status === 401 ? '' : 'Failed to load notifications')
+      setError(err.response?.status === 401 ? '' : t('notifications.loadFailed'))
     }
   }
 
@@ -86,7 +88,7 @@ const NotificationBell: React.FC = () => {
         className="btn btn-link text-muted p-1"
         style={{ fontSize: '1.25rem', position: 'relative' }}
         onClick={() => { setOpen(!open); if (!open) load() }}
-        aria-label="Notifications"
+        aria-label={t('notifications.title')}
       >
         <FiBell />
         {unreadCount > 0 && (
@@ -130,10 +132,10 @@ const NotificationBell: React.FC = () => {
           }}
         >
           <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
-            <strong style={{ fontSize: '0.875rem' }}>Notifications</strong>
+            <strong style={{ fontSize: '0.875rem' }}>{t('notifications.title')}</strong>
             {unreadCount > 0 && (
               <button className="btn btn-link btn-sm p-0 text-decoration-none" onClick={handleMarkAll}>
-                Mark all read
+                {t('notifications.markAllRead')}
               </button>
             )}
           </div>
@@ -142,7 +144,7 @@ const NotificationBell: React.FC = () => {
             {error && <div className="px-3 py-2 text-danger" style={{ fontSize: '0.8rem' }}>{error}</div>}
             {notifications.length === 0 && (
               <div className="px-3 py-4 text-center text-muted" style={{ fontSize: '0.85rem' }}>
-                No notifications yet
+                {t('notifications.noNotifications')}
               </div>
             )}
             {notifications.map((n) => (

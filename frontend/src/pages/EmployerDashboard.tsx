@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Alert, Card, Row, Col, Button, Table, Badge, Form } from 'react-bootstrap'
+import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { useNavigate } from 'react-router-dom'
 import { FiPlus, FiUsers, FiCheckCircle, FiXCircle, FiEye, FiUserPlus, FiBarChart2, FiMail, FiActivity } from 'react-icons/fi'
@@ -31,10 +32,6 @@ const STATUS_BG: Record<string, string> = {
   cancelled: 'danger',
 }
 
-const getStatusBadge = (status: string) => (
-  <Badge bg={STATUS_BG[status] || 'secondary'}>{status.charAt(0).toUpperCase() + status.slice(1)}</Badge>
-)
-
 const EmployerDashboard: React.FC = () => {
   const [interviews, setInterviews] = useState<any[]>([])
   const [organization, setOrganization] = useState<any>(null)
@@ -50,6 +47,18 @@ const EmployerDashboard: React.FC = () => {
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const navigate = useNavigate()
   const toast = useToast()
+  const { t } = useTranslation()
+
+  const statusLabelMap: Record<string, string> = {
+    draft: t('dashboard.draft'),
+    active: t('dashboard.active'),
+    completed: t('dashboard.completed'),
+    cancelled: t('dashboard.cancelled'),
+  }
+
+  const getStatusBadge = (status: string) => (
+    <Badge bg={STATUS_BG[status] || 'secondary'}>{statusLabelMap[status] || status.charAt(0).toUpperCase() + status.slice(1)}</Badge>
+  )
 
   useEffect(() => {
     loadInterviews()
@@ -70,7 +79,7 @@ const EmployerDashboard: React.FC = () => {
       setEvaluationHealth(evaluationHealthResponse.data)
       setEmailHealth(emailHealthResponse.data)
     } catch (error) {
-      toast.error('Failed to load dashboard', 'Could not fetch dashboard data')
+      toast.error(t('dashboard.loadFailed'), t('dashboard.loadError'))
     } finally {
       setLoading(false)
     }
@@ -85,9 +94,9 @@ const EmployerDashboard: React.FC = () => {
       setMemberships((current) => [...current, response.data])
       setMemberEmail('')
       setMemberRole('reviewer')
-      toast.success('Team member added')
+      toast.success(t('dashboard.memberAdded'))
     } catch (err: any) {
-      setTeamError(err.response?.data?.detail || 'Failed to add team member')
+      setTeamError(err.response?.data?.detail || t('dashboard.memberAddFailed'))
     } finally {
       setAddingMember(false)
     }
@@ -98,9 +107,9 @@ const EmployerDashboard: React.FC = () => {
     try {
       await api.interviews.delete(deletingId)
       setInterviews(prev => prev.filter(i => i.id !== deletingId))
-      toast.success('Interview deleted')
+      toast.success(t('dashboard.deleted'))
     } catch {
-      toast.error('Failed to delete interview')
+      toast.error(t('dashboard.deleteFailed'))
     } finally {
       setShowDeleteModal(false)
       setDeletingId(null)
@@ -112,7 +121,7 @@ const EmployerDashboard: React.FC = () => {
   const draftCount = interviews.filter(i => i.status === 'draft').length
 
   const statusChartData = {
-    labels: ['Active', 'Completed', 'Draft', 'Cancelled'],
+    labels: [t('dashboard.active'), t('dashboard.completed'), t('dashboard.draft'), t('dashboard.cancelled')],
     datasets: [{
       data: [activeCount, completedCount, draftCount, interviews.length - activeCount - completedCount - draftCount],
       backgroundColor: ['#10b981', '#4f46e5', '#f59e0b', '#ef4444'],
@@ -121,42 +130,42 @@ const EmployerDashboard: React.FC = () => {
   }
 
   const monthlyData = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    labels: [t('dashboard.jan'), t('dashboard.feb'), t('dashboard.mar'), t('dashboard.apr'), t('dashboard.may'), t('dashboard.jun')],
     datasets: [{
-      label: 'Interviews',
+      label: t('dashboard.interviews'),
       data: [2, 4, 3, 6, 5, 8],
       backgroundColor: 'var(--color-primary)',
       borderRadius: 6,
     }],
   }
 
-  if (loading) return <LoadingSpinner text="Loading dashboard..." />
+  if (loading) return <LoadingSpinner text={t('dashboard.loading')} />
 
   return (
     <div>
       <PageHeader
-        title="Employer Dashboard"
-        subtitle="Overview of your organization's interview activity"
+        title={t('dashboard.title')}
+        subtitle={t('dashboard.subtitle')}
         actions={
           <Button variant="primary" onClick={() => navigate('/employer/interviews/create')}>
             <FiPlus className="me-2" />
-            Create Interview
+            {t('dashboard.createInterview')}
           </Button>
         }
       />
 
       <Row className="mb-4 g-3">
         <Col xs={12} sm={6} xxl={3}>
-          <StatCard icon={<FiBarChart2 />} label="Total Interviews" value={interviews.length} />
+          <StatCard icon={<FiBarChart2 />} label={t('dashboard.totalInterviews')} value={interviews.length} />
         </Col>
         <Col xs={12} sm={6} xxl={3}>
-          <StatCard icon={<FiCheckCircle />} label="Active" value={activeCount} variant="success" />
+          <StatCard icon={<FiCheckCircle />} label={t('dashboard.active')} value={activeCount} variant="success" />
         </Col>
         <Col xs={12} sm={6} xxl={3}>
-          <StatCard icon={<FiUsers />} label="Completed" value={completedCount} variant="info" />
+          <StatCard icon={<FiUsers />} label={t('dashboard.completed')} value={completedCount} variant="info" />
         </Col>
         <Col xs={12} sm={6} xxl={3}>
-          <StatCard icon={<FiXCircle />} label="Team Members" value={memberships.length} variant="warning" />
+          <StatCard icon={<FiXCircle />} label={t('dashboard.teamMembers')} value={memberships.length} variant="warning" />
         </Col>
       </Row>
 
@@ -164,7 +173,7 @@ const EmployerDashboard: React.FC = () => {
         <Col md={7}>
           <Card className="h-100">
             <Card.Header>
-              <h6 className="mb-0 fw-semibold">Interview Trends</h6>
+              <h6 className="mb-0 fw-semibold">{t('dashboard.interviewTrends')}</h6>
             </Card.Header>
             <Card.Body>
               <Bar data={monthlyData} options={{ responsive: true, plugins: { legend: { display: false } } }} />
@@ -174,11 +183,11 @@ const EmployerDashboard: React.FC = () => {
         <Col md={5}>
           <Card className="h-100">
             <Card.Header>
-              <h6 className="mb-0 fw-semibold">Status Distribution</h6>
+              <h6 className="mb-0 fw-semibold">{t('dashboard.statusDistribution')}</h6>
             </Card.Header>
             <Card.Body className="d-flex align-items-center justify-content-center">
               {interviews.length === 0 ? (
-                <p className="text-muted mb-0">No interviews yet</p>
+                <p className="text-muted mb-0">{t('dashboard.noInterviewsYet')}</p>
               ) : (
                 <div style={{ maxWidth: 220 }}>
                   <Doughnut data={statusChartData} options={{ cutout: '70%', plugins: { legend: { position: 'bottom' } } }} />
@@ -194,24 +203,24 @@ const EmployerDashboard: React.FC = () => {
           <Card className="h-100">
             <Card.Header>
               <h6 className="mb-0 fw-semibold d-flex align-items-center gap-2">
-                <FiActivity /> Evaluation Agent
+                <FiActivity /> {t('dashboard.evaluationAgent')}
               </h6>
             </Card.Header>
             <Card.Body>
               {evaluationHealth ? (
                 <Row>
-                  <Col xs={6}><p className="mb-1 text-muted small">Status</p><Badge bg={evaluationHealth.healthy ? 'success' : 'warning'}>{evaluationHealth.status}</Badge></Col>
-                  <Col xs={6}><p className="mb-1 text-muted small">Provider</p><p className="mb-0 fw-medium">{evaluationHealth.provider}</p></Col>
-                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">Model</p><p className="mb-0 fw-medium">{evaluationHealth.model_name || 'N/A'}</p></Col>
-                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">Fallback</p><p className="mb-0 fw-medium">{evaluationHealth.fallback_provider || 'N/A'}</p></Col>
-                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">Prompt Version</p><p className="mb-0 fw-medium">{evaluationHealth.prompt_version || 'N/A'}</p></Col>
-                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">Config Hash</p><p className="mb-0 fw-medium">{evaluationHealth.config_hash || 'N/A'}</p></Col>
+                  <Col xs={6}><p className="mb-1 text-muted small">{t('dashboard.status')}</p><Badge bg={evaluationHealth.healthy ? 'success' : 'warning'}>{evaluationHealth.status}</Badge></Col>
+                  <Col xs={6}><p className="mb-1 text-muted small">{t('dashboard.provider')}</p><p className="mb-0 fw-medium">{evaluationHealth.provider}</p></Col>
+                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">{t('dashboard.model')}</p><p className="mb-0 fw-medium">{evaluationHealth.model_name || t('common.n/a')}</p></Col>
+                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">{t('dashboard.fallback')}</p><p className="mb-0 fw-medium">{evaluationHealth.fallback_provider || t('common.n/a')}</p></Col>
+                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">{t('dashboard.promptVersion')}</p><p className="mb-0 fw-medium">{evaluationHealth.prompt_version || t('common.n/a')}</p></Col>
+                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">{t('dashboard.configHash')}</p><p className="mb-0 fw-medium">{evaluationHealth.config_hash || t('common.n/a')}</p></Col>
                   {evaluationHealth.last_error && (
                     <Col xs={12} className="mt-3"><Alert variant="warning" className="mb-0 py-2 small">{evaluationHealth.last_error}</Alert></Col>
                   )}
                 </Row>
               ) : (
-                <p className="text-muted mb-0 small">Unavailable.</p>
+                <p className="text-muted mb-0 small">{t('dashboard.unavailable')}</p>
               )}
             </Card.Body>
           </Card>
@@ -220,19 +229,19 @@ const EmployerDashboard: React.FC = () => {
           <Card className="h-100">
             <Card.Header>
               <h6 className="mb-0 fw-semibold d-flex align-items-center gap-2">
-                <FiMail /> Email Delivery
+                <FiMail /> {t('dashboard.emailDelivery')}
               </h6>
             </Card.Header>
             <Card.Body>
               {emailHealth ? (
                 <Row>
-                  <Col xs={6}><p className="mb-1 text-muted small">Status</p><Badge bg={emailHealth.configured ? 'success' : 'warning'}>{emailHealth.status}</Badge></Col>
-                  <Col xs={6}><p className="mb-1 text-muted small">From</p><p className="mb-0 fw-medium">{emailHealth.mail_from}</p></Col>
-                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">Server</p><p className="mb-0 fw-medium">{emailHealth.mail_server}:{emailHealth.mail_port}</p></Col>
-                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">Missing</p><p className="mb-0 fw-medium">{emailHealth.missing_settings?.length ? emailHealth.missing_settings.join(', ') : 'None'}</p></Col>
+                  <Col xs={6}><p className="mb-1 text-muted small">{t('dashboard.status')}</p><Badge bg={emailHealth.configured ? 'success' : 'warning'}>{emailHealth.status}</Badge></Col>
+                  <Col xs={6}><p className="mb-1 text-muted small">{t('dashboard.from')}</p><p className="mb-0 fw-medium">{emailHealth.mail_from}</p></Col>
+                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">{t('dashboard.server')}</p><p className="mb-0 fw-medium">{emailHealth.mail_server}:{emailHealth.mail_port}</p></Col>
+                  <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">{t('dashboard.missing')}</p><p className="mb-0 fw-medium">{emailHealth.missing_settings?.length ? emailHealth.missing_settings.join(', ') : t('common.none')}</p></Col>
                 </Row>
               ) : (
-                <p className="text-muted mb-0 small">Unavailable.</p>
+                <p className="text-muted mb-0 small">{t('dashboard.unavailable')}</p>
               )}
             </Card.Body>
           </Card>
@@ -243,16 +252,16 @@ const EmployerDashboard: React.FC = () => {
         <Col lg={5}>
           <Card className="h-100">
             <Card.Header>
-              <h6 className="mb-0 fw-semibold">Organization</h6>
+              <h6 className="mb-0 fw-semibold">{t('dashboard.organization')}</h6>
             </Card.Header>
             <Card.Body>
               {organization ? (
                 <>
                   <h4 className="fw-bold">{organization.name}</h4>
-                  <p className="text-muted mb-0">Team members: {memberships.length}</p>
+                  <p className="text-muted mb-0">{t('dashboard.teamMembersCount', { count: memberships.length })}</p>
                 </>
               ) : (
-                <p className="text-muted mb-0">No organization found.</p>
+                <p className="text-muted mb-0">{t('dashboard.noOrganization')}</p>
               )}
             </Card.Body>
           </Card>
@@ -261,7 +270,7 @@ const EmployerDashboard: React.FC = () => {
         <Col lg={7}>
           <Card>
             <Card.Header>
-              <h6 className="mb-0 fw-semibold">Team Access</h6>
+              <h6 className="mb-0 fw-semibold">{t('dashboard.teamAccess')}</h6>
             </Card.Header>
             <Card.Body>
               <ErrorAlert message={teamError} onClose={() => setTeamError('')} />
@@ -269,34 +278,34 @@ const EmployerDashboard: React.FC = () => {
               <Form onSubmit={handleAddMember} className="mb-3">
                 <Row className="g-2 align-items-end">
                   <Col md={6}>
-                    <Form.Label className="small text-muted">Email</Form.Label>
+                    <Form.Label className="small text-muted">{t('common.email')}</Form.Label>
                     <Form.Control type="email" value={memberEmail} onChange={(e) => setMemberEmail(e.target.value)}
-                      placeholder="teammate@example.com" required size="sm" />
+                      placeholder={t('dashboard.addMemberPlaceholder')} required size="sm" />
                   </Col>
                   <Col md={4}>
-                    <Form.Label className="small text-muted">Role</Form.Label>
+                    <Form.Label className="small text-muted">{t('common.role')}</Form.Label>
                     <Form.Select value={memberRole} onChange={(e) => setMemberRole(e.target.value)} size="sm">
-                      <option value="reviewer">Reviewer</option>
-                      <option value="recruiter">Recruiter</option>
-                      <option value="admin">Admin</option>
+                      <option value="reviewer">{t('dashboard.reviewer')}</option>
+                      <option value="recruiter">{t('dashboard.recruiter')}</option>
+                      <option value="admin">{t('dashboard.admin')}</option>
                     </Form.Select>
                   </Col>
                   <Col md={2}>
                     <Button type="submit" variant="outline-primary" className="w-100" disabled={addingMember} size="sm">
-                      <FiUserPlus className="me-1" /> Add
+                      <FiUserPlus className="me-1" /> {t('dashboard.add')}
                     </Button>
                   </Col>
                 </Row>
               </Form>
 
               {memberships.length === 0 ? (
-                <p className="text-muted mb-0 small">No team memberships found.</p>
+                <p className="text-muted mb-0 small">{t('dashboard.noTeamMemberships')}</p>
               ) : (
                 <Table size="sm" responsive className="mb-0">
                   <thead>
                     <tr>
-                      <th>User ID</th>
-                      <th>Role</th>
+                      <th>{t('dashboard.userId')}</th>
+                      <th>{t('common.role')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -316,26 +325,26 @@ const EmployerDashboard: React.FC = () => {
 
       <Card>
         <Card.Header>
-          <h6 className="mb-0 fw-semibold">Your Interviews</h6>
+          <h6 className="mb-0 fw-semibold">{t('dashboard.yourInterviews')}</h6>
         </Card.Header>
         <Card.Body>
           {interviews.length === 0 ? (
             <EmptyState
-              title="No interviews yet"
-              description="Create your first interview to get started."
-              actionLabel="Create Interview"
+              title={t('dashboard.noInterviewsYet')}
+              description={t('dashboard.createFirst')}
+              actionLabel={t('dashboard.createInterview')}
               onAction={() => navigate('/employer/interviews/create')}
             />
           ) : (
             <Table striped bordered hover responsive>
               <thead>
                 <tr>
-                  <th>Title</th>
-                  <th>Status</th>
-                  <th>Duration</th>
-                  <th>Pass Score</th>
-                  <th>Created</th>
-                  <th>Actions</th>
+                  <th>{t('common.title')}</th>
+                  <th>{t('common.status')}</th>
+                  <th>{t('dashboard.duration')}</th>
+                  <th>{t('dashboard.passScore')}</th>
+                  <th>{t('dashboard.created')}</th>
+                  <th>{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -343,17 +352,17 @@ const EmployerDashboard: React.FC = () => {
                   <tr key={interview.id}>
                     <td className="fw-medium">{interview.title}</td>
                     <td>{getStatusBadge(interview.status)}</td>
-                    <td>{interview.duration_minutes} min</td>
+                    <td>{t('dashboard.minutesShort', { count: interview.duration_minutes })}</td>
                     <td>{interview.pass_score}%</td>
                     <td className="text-muted small">{new Date(interview.created_at).toLocaleDateString()}</td>
                     <td>
                       <div className="d-flex gap-2">
                         <Button variant="outline-primary" size="sm" onClick={() => navigate(`/employer/interviews/${interview.id}`)}>
-                          <FiEye /> View
+                          <FiEye /> {t('common.view')}
                         </Button>
                         {interview.status === 'draft' && (
                           <Button variant="outline-danger" size="sm" onClick={() => { setDeletingId(interview.id); setShowDeleteModal(true) }}>
-                            Delete
+                            {t('dashboard.delete')}
                           </Button>
                         )}
                       </div>
@@ -368,9 +377,9 @@ const EmployerDashboard: React.FC = () => {
 
       <ConfirmModal
         show={showDeleteModal}
-        title="Delete Interview"
-        message="Are you sure you want to delete this interview? This action cannot be undone."
-        confirmLabel="Delete"
+        title={t('dashboard.deleteTitle')}
+        message={t('dashboard.deleteConfirm')}
+        confirmLabel={t('dashboard.delete')}
         onConfirm={handleDelete}
         onCancel={() => { setShowDeleteModal(false); setDeletingId(null) }}
       />

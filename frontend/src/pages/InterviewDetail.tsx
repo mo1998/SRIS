@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Row, Col, Button, Table, Badge, Modal, Form, Alert, Tabs, Tab } from 'react-bootstrap'
 import { useParams, Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { FiMail, FiDownload, FiEye, FiActivity, FiEdit, FiPlus, FiTrash2 } from 'react-icons/fi'
 
@@ -8,6 +9,7 @@ const MAX_BULK_INVITATIONS = 100
 
 const InterviewDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
+  const { t } = useTranslation()
   const [interview, setInterview] = useState<any>(null)
   const [responses, setResponses] = useState<any[]>([])
   const [evaluationAnalytics, setEvaluationAnalytics] = useState<any>(null)
@@ -86,7 +88,7 @@ const InterviewDetail: React.FC = () => {
   }))
   
   const handleActivate = async () => {
-    if (!confirm('Activate this interview? Candidates will be able to start taking it.')) {
+    if (!confirm(t('interviewDetail.activateConfirm'))) {
       return
     }
     
@@ -94,12 +96,12 @@ const InterviewDetail: React.FC = () => {
       await api.interviews.activate(parseInt(id!))
       loadData()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to activate')
+      setError(err.response?.data?.detail || t('interviewDetail.activateFailed'))
     }
   }
   
   const handleComplete = async () => {
-    if (!confirm('Complete this interview? No more candidates will be able to join.')) {
+    if (!confirm(t('interviewDetail.completeConfirm'))) {
       return
     }
     
@@ -107,7 +109,7 @@ const InterviewDetail: React.FC = () => {
       await api.interviews.complete(parseInt(id!))
       loadData()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to complete')
+      setError(err.response?.data?.detail || t('interviewDetail.completeFailed'))
     }
   }
 
@@ -127,7 +129,7 @@ const InterviewDetail: React.FC = () => {
       })
       setIsEditingDetails(false)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to update interview')
+      setError(err.response?.data?.detail || t('interviewDetail.updateFailed'))
     }
   }
 
@@ -204,7 +206,7 @@ const InterviewDetail: React.FC = () => {
       setQuestionDrafts(normalizeQuestions(response.data.questions || []))
       setIsEditingQuestions(false)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to update questions')
+      setError(err.response?.data?.detail || t('interviewDetail.questionsFailed'))
     }
   }
   
@@ -221,7 +223,7 @@ const InterviewDetail: React.FC = () => {
       setInvitationMessage('')
       loadData()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to send invitation')
+      setError(err.response?.data?.detail || t('interviewDetail.inviteFailed'))
     }
   }
   
@@ -243,23 +245,23 @@ const InterviewDetail: React.FC = () => {
       let rowHasErrors = false
 
       if (extraColumns.length > 0) {
-        validationErrors.push(`Row ${rowNumber}: use only email, name`)
+        validationErrors.push(t('interviewDetail.rowOnlyEmailName', { row: rowNumber }))
         rowHasErrors = true
       }
       if (!email) {
-        validationErrors.push(`Row ${rowNumber}: email is required`)
+        validationErrors.push(t('interviewDetail.rowEmailRequired', { row: rowNumber }))
         rowHasErrors = true
       } else if (!/^\S+@\S+\.\S+$/.test(email)) {
-        validationErrors.push(`Row ${rowNumber}: email is invalid`)
+        validationErrors.push(t('interviewDetail.rowEmailInvalid', { row: rowNumber }))
         rowHasErrors = true
       } else if (seenEmails.has(email.toLowerCase())) {
-        validationErrors.push(`Row ${rowNumber}: duplicate email`)
+        validationErrors.push(t('interviewDetail.rowDuplicate', { row: rowNumber }))
         rowHasErrors = true
       } else {
         seenEmails.add(email.toLowerCase())
       }
       if (!name) {
-        validationErrors.push(`Row ${rowNumber}: name is required`)
+        validationErrors.push(t('interviewDetail.rowNameRequired', { row: rowNumber }))
         rowHasErrors = true
       }
 
@@ -274,11 +276,11 @@ const InterviewDetail: React.FC = () => {
     })
 
     if (lines.length === 0) {
-      validationErrors.push('Add at least one candidate')
+      validationErrors.push(t('interviewDetail.addAtLeastOne'))
     }
 
     if (lines.length > MAX_BULK_INVITATIONS) {
-      validationErrors.push(`Bulk invite limit is ${MAX_BULK_INVITATIONS} candidates`)
+      validationErrors.push(t('interviewDetail.bulkLimit', { count: MAX_BULK_INVITATIONS }))
     }
 
     if (validationErrors.length > 0) {
@@ -293,7 +295,7 @@ const InterviewDetail: React.FC = () => {
       setInviteTab('list')
       loadData()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to send invitations')
+      setError(err.response?.data?.detail || t('interviewDetail.bulkInviteFailed'))
     }
   }
 
@@ -303,12 +305,12 @@ const InterviewDetail: React.FC = () => {
       await api.invitations.resend(invitationId)
       loadData()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to resend invitation')
+      setError(err.response?.data?.detail || t('interviewDetail.resendFailed'))
     }
   }
 
   const handleRevokeInvitation = async (invitationId: number) => {
-    if (!confirm('Revoke this invitation? The candidate will no longer be able to use it.')) {
+    if (!confirm(t('interviewDetail.revokeConfirm'))) {
       return
     }
 
@@ -317,7 +319,7 @@ const InterviewDetail: React.FC = () => {
       await api.invitations.revoke(invitationId)
       loadData()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to revoke invitation')
+      setError(err.response?.data?.detail || t('interviewDetail.revokeFailed'))
     }
   }
 
@@ -332,7 +334,7 @@ const InterviewDetail: React.FC = () => {
       })
       setEmailPreview(response.data)
     } catch (err: any) {
-      setPreviewError(err.response?.data?.detail || 'Failed to load email preview')
+      setPreviewError(err.response?.data?.detail || t('interviewDetail.previewFailed'))
     } finally {
       setPreviewLoading(false)
     }
@@ -387,14 +389,14 @@ const InterviewDetail: React.FC = () => {
       setComparisonData(comparisonRes.data)
       setQuestionAnalytics(analyticsRes.data)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load comparison')
+      setError(err.response?.data?.detail || t('interviewDetail.comparisonFailed'))
     } finally {
       setComparisonLoading(false)
     }
   }
 
   const handleBatchReevaluate = async () => {
-    if (!confirm('Queue re-evaluation for all completed responses in this interview?')) {
+    if (!confirm(t('interviewDetail.reevaluateConfirm'))) {
       return
     }
 
@@ -403,17 +405,17 @@ const InterviewDetail: React.FC = () => {
     setBatchReevaluating(true)
     try {
       const response = await api.reports.reevaluateInterview(parseInt(id!))
-      setMessage(`Queued ${response.data.length} evaluation run${response.data.length === 1 ? '' : 's'}`)
+      setMessage(t('interviewDetail.queued', { count: response.data.length }))
       loadData()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to queue re-evaluation')
+      setError(err.response?.data?.detail || t('interviewDetail.queueFailed'))
     } finally {
       setBatchReevaluating(false)
     }
   }
 
   const handleDeleteResponse = async (responseId: number) => {
-    if (!confirm('Delete this candidate response and all evaluation data?')) {
+    if (!confirm(t('interviewDetail.deleteResponseConfirm'))) {
       return
     }
 
@@ -421,26 +423,26 @@ const InterviewDetail: React.FC = () => {
     setMessage('')
     try {
       await api.responses.delete(responseId)
-      setMessage('Candidate response deleted')
+      setMessage(t('interviewDetail.responseDeleted'))
       loadData()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to delete response')
+      setError(err.response?.data?.detail || t('interviewDetail.deleteResponseFailed'))
     }
   }
   
   if (loading) {
-    return <p>Loading...</p>
+    return <p>{t('interviewDetail.loading')}</p>
   }
   
   if (!interview) {
-    return <p>Interview not found</p>
+    return <p>{t('interviewDetail.notFound')}</p>
   }
   
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'draft': return <Badge bg="secondary">Draft</Badge>
-      case 'active': return <Badge bg="success">Active</Badge>
-      case 'completed': return <Badge bg="primary">Completed</Badge>
+      case 'draft': return <Badge bg="secondary">{t('interviewDetail.statusDraft')}</Badge>
+      case 'active': return <Badge bg="success">{t('interviewDetail.statusActive')}</Badge>
+      case 'completed': return <Badge bg="primary">{t('interviewDetail.statusCompleted')}</Badge>
       default: return <Badge bg="secondary">{status}</Badge>
     }
   }
@@ -464,49 +466,49 @@ const InterviewDetail: React.FC = () => {
               variant="success"
               onClick={handleActivate}
               disabled={!canActivate}
-              title={!canActivate ? 'Add at least one question before activating' : undefined}
+              title={!canActivate ? t('interviewDetail.addQuestionFirst') : undefined}
             >
               <FiActivity className="me-2" />
-              Activate Interview
+              {t('interviewDetail.activate')}
             </Button>
           )}
           {interview.status === 'active' && (
             <Button variant="warning" onClick={handleComplete}>
-              Complete Interview
+              {t('interviewDetail.complete')}
             </Button>
           )}
           <Button variant="outline-primary" onClick={() => setShowInviteModal(true)}>
             <FiMail className="me-2" />
-            Invite Candidates
+            {t('interviewDetail.inviteCandidates')}
           </Button>
           {responses.length > 0 && (
             <Button variant="outline-dark" onClick={handleDownloadReport}>
               <FiDownload className="me-2" />
-              Download Report
+              {t('interviewDetail.downloadReport')}
             </Button>
           )}
           {responses.some((response) => response.status === 'completed') && (
             <Button variant="outline-primary" onClick={handleBatchReevaluate} disabled={batchReevaluating}>
-              {batchReevaluating ? 'Queueing...' : 'Re-evaluate All'}
+              {batchReevaluating ? t('interviewDetail.queueing') : t('interviewDetail.reevaluateAll')}
             </Button>
           )}
           {responses.some((response) => response.status === 'completed') && (
             <Button variant="outline-primary" onClick={handleShowComparison}>
               <FiActivity className="me-2" />
-              Compare
+              {t('interviewDetail.compare')}
             </Button>
           )}
           {responses.length > 0 && (
             <Button variant="outline-dark" onClick={handleExportCsv}>
               <FiDownload className="me-2" />
-              Export CSV
+              {t('interviewDetail.exportCsv')}
             </Button>
           )}
         </div>
       </div>
 
       {interview.status === 'draft' && !canActivate && (
-        <Alert variant="warning">Add at least one question before activating this interview.</Alert>
+        <Alert variant="warning">{t('interviewDetail.addQuestionBeforeActivate')}</Alert>
       )}
       
       <Row>
@@ -514,7 +516,7 @@ const InterviewDetail: React.FC = () => {
           <Card className="mb-4">
             <Card.Header>
               <div className="d-flex justify-content-between align-items-center">
-                <h5 className="mb-0">Interview Details</h5>
+                <h5 className="mb-0">{t('interviewDetail.details')}</h5>
                 {interview.status === 'draft' && (
                   <Button
                     variant="outline-primary"
@@ -522,7 +524,7 @@ const InterviewDetail: React.FC = () => {
                     onClick={() => setIsEditingDetails((current) => !current)}
                   >
                     <FiEdit className="me-1" />
-                    {isEditingDetails ? 'Cancel' : 'Edit'}
+                    {isEditingDetails ? t('interviewDetail.cancel') : t('interviewDetail.edit')}
                   </Button>
                 )}
               </div>
@@ -531,7 +533,7 @@ const InterviewDetail: React.FC = () => {
               {isEditingDetails ? (
                 <Form onSubmit={handleUpdateDetails}>
                   <Form.Group className="mb-3" controlId="edit-interview-title">
-                    <Form.Label>Title</Form.Label>
+                    <Form.Label>{t('common.title')}</Form.Label>
                     <Form.Control
                       value={editData.title}
                       onChange={(event) => setEditData({ ...editData, title: event.target.value })}
@@ -539,7 +541,7 @@ const InterviewDetail: React.FC = () => {
                     />
                   </Form.Group>
                   <Form.Group className="mb-3" controlId="edit-interview-description">
-                    <Form.Label>Description</Form.Label>
+                    <Form.Label>{t('common.description')}</Form.Label>
                     <Form.Control
                       as="textarea"
                       rows={3}
@@ -550,7 +552,7 @@ const InterviewDetail: React.FC = () => {
                   <Row>
                     <Col sm={6}>
                       <Form.Group className="mb-3" controlId="edit-interview-duration">
-                        <Form.Label>Duration</Form.Label>
+                        <Form.Label>{t('dashboard.duration')}</Form.Label>
                         <Form.Control
                           type="number"
                           value={editData.duration_minutes}
@@ -562,7 +564,7 @@ const InterviewDetail: React.FC = () => {
                     </Col>
                     <Col sm={6}>
                       <Form.Group className="mb-3" controlId="edit-interview-attempts">
-                        <Form.Label>Max Attempts</Form.Label>
+                        <Form.Label>{t('interviewDetail.maxAttempts')}</Form.Label>
                         <Form.Control
                           type="number"
                           value={editData.max_attempts}
@@ -574,7 +576,7 @@ const InterviewDetail: React.FC = () => {
                     </Col>
                   </Row>
                   <Form.Group className="mb-3" controlId="edit-interview-pass-score">
-                    <Form.Label>Pass Score</Form.Label>
+                    <Form.Label>{t('interviewDetail.passScore')}</Form.Label>
                     <Form.Control
                       type="number"
                       value={editData.pass_score}
@@ -583,15 +585,15 @@ const InterviewDetail: React.FC = () => {
                       max={100}
                     />
                   </Form.Group>
-                  <Button type="submit" size="sm">Save Details</Button>
+                  <Button type="submit" size="sm">{t('interviewDetail.saveDetails')}</Button>
                 </Form>
               ) : (
                 <>
-                  <p><strong>Description:</strong> {interview.description || 'N/A'}</p>
-                  <p><strong>Duration:</strong> {interview.duration_minutes} minutes</p>
-                  <p><strong>Max Attempts:</strong> {interview.max_attempts}</p>
-                  <p><strong>Pass Score:</strong> {interview.pass_score}%</p>
-                  <p><strong>Created:</strong> {new Date(interview.created_at).toLocaleDateString()}</p>
+                  <p><strong>{t('common.description')}:</strong> {interview.description || t('common.n/a')}</p>
+                  <p><strong>{t('dashboard.duration')}:</strong> {t('interviewDetail.minutes', { count: interview.duration_minutes })}</p>
+                  <p><strong>{t('interviewDetail.maxAttempts')}:</strong> {interview.max_attempts}</p>
+                  <p><strong>{t('interviewDetail.passScore')}:</strong> {interview.pass_score}%</p>
+                  <p><strong>{t('dashboard.created')}:</strong> {new Date(interview.created_at).toLocaleDateString()}</p>
                 </>
               )}
             </Card.Body>
@@ -600,7 +602,7 @@ const InterviewDetail: React.FC = () => {
           <Card>
             <Card.Header>
               <div className="d-flex justify-content-between align-items-center">
-                <h5 className="mb-0">Questions ({interview.questions?.length || 0})</h5>
+                <h5 className="mb-0">{t('interviewDetail.questionsCount', { count: interview.questions?.length || 0 })}</h5>
                 {interview.status === 'draft' && (
                   <Button
                     variant="outline-primary"
@@ -611,7 +613,7 @@ const InterviewDetail: React.FC = () => {
                     }}
                   >
                     <FiEdit className="me-1" />
-                    {isEditingQuestions ? 'Cancel' : 'Edit'}
+                    {isEditingQuestions ? t('interviewDetail.cancel') : t('interviewDetail.edit')}
                   </Button>
                 )}
               </div>
@@ -623,49 +625,49 @@ const InterviewDetail: React.FC = () => {
                     <Card key={questionIndex} className="mb-3 bg-light">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-center mb-3">
-                          <strong>Question {questionIndex + 1}</strong>
+                          <strong>{t('interviewDetail.questionN', { n: questionIndex + 1 })}</strong>
                           <Button type="button" size="sm" variant="outline-danger" onClick={() => removeQuestionDraft(questionIndex)} disabled={questionDrafts.length === 1}>
                             <FiTrash2 />
                           </Button>
                         </div>
                         <Form.Group className="mb-3" controlId={`edit-question-text-${questionIndex}`}>
-                          <Form.Label>Question Text</Form.Label>
+                          <Form.Label>{t('interviewDetail.questionText')}</Form.Label>
                           <Form.Control as="textarea" rows={2} value={question.question_text} onChange={(event) => updateQuestionDraft(questionIndex, 'question_text', event.target.value)} required />
                         </Form.Group>
                         <Form.Group className="mb-3" controlId={`edit-question-expected-${questionIndex}`}>
-                          <Form.Label>Expected Answer</Form.Label>
+                          <Form.Label>{t('interviewDetail.expectedAnswer')}</Form.Label>
                           <Form.Control as="textarea" rows={2} value={question.expected_answer} onChange={(event) => updateQuestionDraft(questionIndex, 'expected_answer', event.target.value)} />
                         </Form.Group>
                         <Form.Group className="mb-3" controlId={`edit-question-weight-${questionIndex}`}>
-                          <Form.Label>Weight</Form.Label>
+                          <Form.Label>{t('common.weight')}</Form.Label>
                           <Form.Control type="number" min={0.5} max={5} step={0.5} value={question.weight} onChange={(event) => updateQuestionDraft(questionIndex, 'weight', parseFloat(event.target.value))} />
                         </Form.Group>
 
                         <div className="d-flex justify-content-between align-items-center mb-2">
-                          <small className="text-muted">Rubric Criteria</small>
+                          <small className="text-muted">{t('interviewDetail.rubricCriteria')}</small>
                           <Button type="button" size="sm" variant="outline-secondary" onClick={() => addCriterionDraft(questionIndex)}>
                             <FiPlus className="me-1" />
-                            Add Criterion
+                            {t('interviewDetail.addCriterion')}
                           </Button>
                         </div>
                         {(question.rubric_criteria || []).map((criterion: any, criterionIndex: number) => (
                           <div key={criterionIndex} className="border rounded p-2 mb-2 bg-white">
                             <div className="d-flex justify-content-between align-items-center mb-2">
-                              <strong className="small">Criterion {criterionIndex + 1}</strong>
+                              <strong className="small">{t('interviewDetail.criterionN', { n: criterionIndex + 1 })}</strong>
                               <Button type="button" size="sm" variant="outline-danger" onClick={() => removeCriterionDraft(questionIndex, criterionIndex)}>
                                 <FiTrash2 />
                               </Button>
                             </div>
                             <Form.Group className="mb-2" controlId={`edit-criterion-name-${questionIndex}-${criterionIndex}`}>
-                              <Form.Label>Name</Form.Label>
+                              <Form.Label>{t('common.name')}</Form.Label>
                               <Form.Control value={criterion.name} onChange={(event) => updateCriterionDraft(questionIndex, criterionIndex, 'name', event.target.value)} />
                             </Form.Group>
                             <Form.Group className="mb-2" controlId={`edit-criterion-description-${questionIndex}-${criterionIndex}`}>
-                              <Form.Label>Description</Form.Label>
+                              <Form.Label>{t('common.description')}</Form.Label>
                               <Form.Control as="textarea" rows={2} value={criterion.description} onChange={(event) => updateCriterionDraft(questionIndex, criterionIndex, 'description', event.target.value)} />
                             </Form.Group>
                             <Form.Group controlId={`edit-criterion-weight-${questionIndex}-${criterionIndex}`}>
-                              <Form.Label>Weight</Form.Label>
+                              <Form.Label>{t('common.weight')}</Form.Label>
                               <Form.Control type="number" min={0.5} max={5} step={0.5} value={criterion.weight} onChange={(event) => updateCriterionDraft(questionIndex, criterionIndex, 'weight', parseFloat(event.target.value))} />
                             </Form.Group>
                           </div>
@@ -676,20 +678,20 @@ const InterviewDetail: React.FC = () => {
                   <div className="d-flex gap-2">
                     <Button type="button" size="sm" variant="outline-secondary" onClick={addQuestionDraft}>
                       <FiPlus className="me-1" />
-                      Add Question
+                      {t('interviewDetail.addQuestion')}
                     </Button>
-                    <Button type="submit" size="sm">Save Questions</Button>
+                    <Button type="submit" size="sm">{t('interviewDetail.saveQuestions')}</Button>
                   </div>
                 </Form>
               ) : (
                 interview.questions?.map((q: any, idx: number) => (
                   <div key={q.id} className="mb-3">
-                    <strong>Q{idx + 1}:</strong> {q.question_text}
+                    <strong>{t('interviewDetail.questionShort', { n: idx + 1 })}</strong> {q.question_text}
                     <br />
-                    <small className="text-muted">Weight: {q.weight}x</small>
+                    <small className="text-muted">{t('interviewDetail.weightX', { weight: q.weight })}</small>
                     {(q.rubric_criteria || []).length > 0 && (
                       <div className="mt-2 ms-3">
-                        <small className="text-muted d-block mb-1">Rubric criteria</small>
+                        <small className="text-muted d-block mb-1">{t('interviewDetail.rubricCriteriaSmall')}</small>
                         <ul className="mb-0">
                           {q.rubric_criteria.map((criterion: any) => (
                             <li key={criterion.id}>
@@ -713,42 +715,42 @@ const InterviewDetail: React.FC = () => {
         <Col md={8}>
           <Card className="mb-4">
             <Card.Header>
-              <h5 className="mb-0">Candidate Responses ({responses.length})</h5>
+              <h5 className="mb-0">{t('interviewDetail.candidateResponses', { count: responses.length })}</h5>
             </Card.Header>
             <Card.Body>
               {evaluationAnalytics && (
                 <Row className="mb-3">
                   <Col md={3}>
-                    <strong>Eval Runs</strong>
+                    <strong>{t('interviewDetail.evalRuns')}</strong>
                     <p className="mb-0">{evaluationAnalytics.total_evaluation_runs}</p>
                   </Col>
                   <Col md={3}>
-                    <strong>Completed</strong>
+                    <strong>{t('common.completed')}</strong>
                     <p className="mb-0">{evaluationAnalytics.completed_runs}</p>
                   </Col>
                   <Col md={3}>
-                    <strong>Avg Latest</strong>
+                    <strong>{t('interviewDetail.avgLatest')}</strong>
                     <p className="mb-0">{evaluationAnalytics.average_latest_score.toFixed(1)}%</p>
                   </Col>
                   <Col md={3}>
-                    <strong>Fallbacks</strong>
+                    <strong>{t('interviewDetail.fallbacks')}</strong>
                     <p className="mb-0">{evaluationAnalytics.fallback_count}</p>
                   </Col>
                 </Row>
               )}
               {responses.length === 0 ? (
-                <p className="text-center text-muted">No responses yet. Invite candidates to get started!</p>
+                <p className="text-center text-muted">{t('interviewDetail.noResponses')}</p>
               ) : (
                 <Table striped bordered hover responsive>
                   <thead>
                     <tr>
-                      <th>Rank</th>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Score</th>
-                      <th>Status</th>
-                      <th>Confidence</th>
-                      <th>Actions</th>
+                      <th>{t('interviewDetail.rank')}</th>
+                      <th>{t('common.name')}</th>
+                      <th>{t('common.email')}</th>
+                      <th>{t('common.score')}</th>
+                      <th>{t('common.status')}</th>
+                      <th>{t('interviewDetail.confidence')}</th>
+                      <th>{t('common.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -767,16 +769,16 @@ const InterviewDetail: React.FC = () => {
                           </Badge>
                         </td>
                         <td>{response.status}</td>
-                        <td>{response.confidence_score?.toFixed(1) || 'N/A'}%</td>
+                        <td>{response.confidence_score?.toFixed(1) || t('common.n/a')}%</td>
                         <td>
                           <div className="d-flex gap-2">
                             <Link to={`/employer/candidate/${response.id}`}>
                               <Button variant="outline-primary" size="sm">
-                                <FiEye /> View Report
+                                <FiEye /> {t('interviewDetail.viewReport')}
                               </Button>
                             </Link>
                             <Button variant="outline-danger" size="sm" onClick={() => handleDeleteResponse(response.id)}>
-                              <FiTrash2 /> Delete
+                              <FiTrash2 /> {t('common.delete')}
                             </Button>
                           </div>
                         </td>
@@ -790,20 +792,20 @@ const InterviewDetail: React.FC = () => {
           
           <Card>
             <Card.Header>
-              <h5 className="mb-0">Invitations ({invitations.length})</h5>
+              <h5 className="mb-0">{t('interviewDetail.invitations', { count: invitations.length })}</h5>
             </Card.Header>
             <Card.Body>
               {invitations.length === 0 ? (
-                <p className="text-muted">No invitations sent yet</p>
+                <p className="text-muted">{t('interviewDetail.noInvitations')}</p>
               ) : (
                 <Table size="sm">
                   <thead>
                     <tr>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Status</th>
-                      <th>Sent</th>
-                      <th>Actions</th>
+                      <th>{t('common.name')}</th>
+                      <th>{t('common.email')}</th>
+                      <th>{t('common.status')}</th>
+                      <th>{t('interviewDetail.sent')}</th>
+                      <th>{t('common.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -821,7 +823,7 @@ const InterviewDetail: React.FC = () => {
                             {inv.status}
                           </Badge>
                         </td>
-                        <td>{inv.sent_at ? new Date(inv.sent_at).toLocaleDateString() : 'Not sent'}</td>
+                        <td>{inv.sent_at ? new Date(inv.sent_at).toLocaleDateString() : t('interviewDetail.notSent')}</td>
                         <td>
                           <div className="d-flex gap-2">
                             <Button
@@ -830,7 +832,7 @@ const InterviewDetail: React.FC = () => {
                               onClick={() => handleResendInvitation(inv.id)}
                               disabled={inv.status === 'completed' || inv.status === 'revoked'}
                             >
-                              Resend
+                              {t('interviewDetail.resend')}
                             </Button>
                             <Button
                               size="sm"
@@ -838,7 +840,7 @@ const InterviewDetail: React.FC = () => {
                               onClick={() => handleRevokeInvitation(inv.id)}
                               disabled={inv.status === 'completed' || inv.status === 'revoked'}
                             >
-                              Revoke
+                              {t('interviewDetail.revoke')}
                             </Button>
                           </div>
                         </td>
@@ -855,14 +857,14 @@ const InterviewDetail: React.FC = () => {
       {/* Invite Modal */}
       <Modal show={showInviteModal} onHide={() => setShowInviteModal(false)}>
         <Modal.Header closeButton>
-          <Modal.Title>Invite Candidates</Modal.Title>
+          <Modal.Title>{t('interviewDetail.inviteTitle')}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Tabs activeKey={inviteTab} onSelect={handleInviteTabSelect}>
-            <Tab eventKey="single" title="Single Invite">
+            <Tab eventKey="single" title={t('interviewDetail.singleInvite')}>
               <Form className="mt-3">
                 <Form.Group className="mb-3" controlId="single-invite-candidate-name">
-                  <Form.Label>Candidate Name</Form.Label>
+                  <Form.Label>{t('interviewDetail.candidateName')}</Form.Label>
                   <Form.Control
                     type="text"
                     value={inviteData.candidate_name}
@@ -870,7 +872,7 @@ const InterviewDetail: React.FC = () => {
                   />
                 </Form.Group>
                 <Form.Group className="mb-3" controlId="single-invite-candidate-email">
-                  <Form.Label>Candidate Email</Form.Label>
+                  <Form.Label>{t('interviewDetail.candidateEmail')}</Form.Label>
                   <Form.Control
                     type="email"
                     value={inviteData.candidate_email}
@@ -878,7 +880,7 @@ const InterviewDetail: React.FC = () => {
                   />
                 </Form.Group>
                 <Form.Group className="mb-3" controlId="single-invite-message">
-                  <Form.Label>Single Email Message</Form.Label>
+                  <Form.Label>{t('interviewDetail.singleMessage')}</Form.Label>
                   <Form.Control
                     as="textarea"
                     rows={3}
@@ -891,14 +893,14 @@ const InterviewDetail: React.FC = () => {
                   />
                 </Form.Group>
                 <Button variant="primary" onClick={handleInvite}>
-                  Send Invitation
+                  {t('interviewDetail.sendInvitation')}
                 </Button>
               </Form>
             </Tab>
-            <Tab eventKey="bulk" title="Bulk Invite">
+            <Tab eventKey="bulk" title={t('interviewDetail.bulkInvite')}>
               <Form className="mt-3">
                 <Form.Group className="mb-3" controlId="bulk-invite-candidates">
-                  <Form.Label>Enter candidates (one per line: email, name)</Form.Label>
+                  <Form.Label>{t('interviewDetail.bulkCandidates')}</Form.Label>
                   <Form.Control
                     as="textarea"
                     rows={5}
@@ -920,7 +922,7 @@ const InterviewDetail: React.FC = () => {
                   </Alert>
                 )}
                 <Form.Group className="mb-3" controlId="bulk-invite-message">
-                  <Form.Label>Bulk Email Message</Form.Label>
+                  <Form.Label>{t('interviewDetail.bulkMessage')}</Form.Label>
                   <Form.Control
                     as="textarea"
                     rows={3}
@@ -933,32 +935,32 @@ const InterviewDetail: React.FC = () => {
                   />
                 </Form.Group>
                 <Button variant="primary" onClick={handleBulkInvite}>
-                  Send All Invitations
+                  {t('interviewDetail.sendAll')}
                 </Button>
               </Form>
             </Tab>
-            <Tab eventKey="preview" title="Email Preview">
+            <Tab eventKey="preview" title={t('interviewDetail.emailPreview')}>
               <div className="mt-3">
                 {previewError && <Alert variant="danger">{previewError}</Alert>}
                 <Button variant="outline-primary" size="sm" onClick={handlePreviewEmail} disabled={previewLoading} className="mb-3">
-                  {previewLoading ? 'Loading Preview...' : 'Refresh Preview'}
+                  {previewLoading ? t('interviewDetail.loadingPreview') : t('interviewDetail.refreshPreview')}
                 </Button>
                 {emailPreview && (
                   <>
-                    <p><strong>Subject:</strong> {emailPreview.subject}</p>
+                    <p><strong>{t('interviewDetail.subject')}</strong> {emailPreview.subject}</p>
                     <div className="border rounded bg-light p-3" data-testid="email-preview" dangerouslySetInnerHTML={{ __html: emailPreview.html_body }} />
                   </>
                 )}
               </div>
             </Tab>
-            <Tab eventKey="list" title="Sent Invitations">
+            <Tab eventKey="list" title={t('interviewDetail.sentInvitations')}>
               <Table size="sm" className="mt-3">
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                    <th>{t('common.name')}</th>
+                    <th>{t('common.email')}</th>
+                    <th>{t('common.status')}</th>
+                    <th>{t('common.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -974,7 +976,7 @@ const InterviewDetail: React.FC = () => {
                           onClick={() => handleRevokeInvitation(inv.id)}
                           disabled={inv.status === 'completed' || inv.status === 'revoked'}
                         >
-                          Revoke
+                          {t('interviewDetail.revoke')}
                         </Button>
                       </td>
                     </tr>
@@ -989,20 +991,20 @@ const InterviewDetail: React.FC = () => {
       {/* Comparison Modal */}
       <Modal show={showComparisonModal} onHide={() => setShowComparisonModal(false)} size="lg">
         <Modal.Header closeButton>
-          <Modal.Title>Candidate Comparison</Modal.Title>
+          <Modal.Title>{t('interviewDetail.comparison')}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {comparisonLoading ? (
-            <p className="text-center text-muted">Loading comparison...</p>
+            <p className="text-center text-muted">{t('interviewDetail.loadingComparison')}</p>
           ) : comparisonData ? (
             <>
               <Table striped bordered hover responsive size="sm">
                 <thead>
                   <tr>
-                    <th>Candidate</th>
-                    <th>Overall Score</th>
-                    <th>Pass/Fail</th>
-                    <th>Questions</th>
+                    <th>{t('interviewDetail.candidate')}</th>
+                    <th>{t('interviewDetail.overallScore')}</th>
+                    <th>{t('interviewDetail.passFail')}</th>
+                    <th>{t('interviewDetail.questions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1020,7 +1022,7 @@ const InterviewDetail: React.FC = () => {
                       </td>
                       <td>
                         <Badge bg={candidate.passed ? 'success' : 'danger'}>
-                          {candidate.passed ? 'Pass' : 'Fail'}
+                          {candidate.passed ? t('interviewDetail.pass') : t('interviewDetail.fail')}
                         </Badge>
                       </td>
                       <td>
@@ -1037,7 +1039,7 @@ const InterviewDetail: React.FC = () => {
                               {candidate.question_scores?.map((answer: any, i: number) => (
                                 <td key={i}>
                                   <Badge bg={answer.score === null ? 'light' : answer.score >= 70 ? 'success' : answer.score >= 50 ? 'warning' : 'danger'}>
-                                    {answer.score === null ? 'N/A' : `${answer.score.toFixed(0)}%`}
+                                    {answer.score === null ? t('common.n/a') : `${answer.score.toFixed(0)}%`}
                                   </Badge>
                                 </td>
                               ))}
@@ -1053,15 +1055,15 @@ const InterviewDetail: React.FC = () => {
               {questionAnalytics && questionAnalytics.questions?.length > 0 && (
                 <>
                   <hr />
-                  <h6>Question Analytics</h6>
+                  <h6>{t('interviewDetail.questionAnalytics')}</h6>
                   <Table striped bordered hover responsive size="sm">
                     <thead>
                       <tr>
-                        <th>Question</th>
-                        <th>Responses</th>
-                        <th>Avg Score</th>
-                        <th>Difficulty</th>
-                        <th>Discrimination</th>
+                        <th>{t('interviewDetail.question')}</th>
+                        <th>{t('interviewDetail.responses')}</th>
+                        <th>{t('interviewDetail.avgScore')}</th>
+                        <th>{t('interviewDetail.difficulty')}</th>
+                        <th>{t('interviewDetail.discrimination')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1075,7 +1077,7 @@ const InterviewDetail: React.FC = () => {
                               {q.difficulty}
                             </Badge>
                           </td>
-                          <td>{q.discrimination?.toFixed(2) ?? 'N/A'}</td>
+                          <td>{q.discrimination?.toFixed(2) ?? t('common.n/a')}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1084,7 +1086,7 @@ const InterviewDetail: React.FC = () => {
               )}
             </>
           ) : (
-            <p className="text-center text-muted">No completed responses to compare.</p>
+            <p className="text-center text-muted">{t('interviewDetail.noComparison')}</p>
           )}
         </Modal.Body>
       </Modal>

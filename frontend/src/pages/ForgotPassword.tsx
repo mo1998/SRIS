@@ -1,11 +1,13 @@
 import React, { useState } from 'react'
 import { Form, Button, Card, Alert } from 'react-bootstrap'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { FiMail, FiArrowLeft } from 'react-icons/fi'
 import { api } from '../services/api'
 import ErrorAlert from '../components/ui/ErrorAlert'
 
 const ForgotPassword: React.FC = () => {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [sent, setSent] = useState(false)
@@ -21,7 +23,7 @@ const ForgotPassword: React.FC = () => {
       setSent(true)
     } catch (err: any) {
       const detail = err.response?.data?.detail
-      setError(Array.isArray(detail) ? detail.map((d: any) => d.msg).join('; ') || 'Request failed' : detail || 'Request failed')
+      setError(Array.isArray(detail) ? detail.map((d: any) => d.msg).join('; ') || t('forgotPassword.failed') : detail || t('forgotPassword.failed'))
     } finally {
       setLoading(false)
     }
@@ -35,15 +37,15 @@ const ForgotPassword: React.FC = () => {
             style={{ width: 56, height: 56, background: 'var(--color-primary-light)', color: 'var(--color-primary)', fontSize: '1.5rem' }}>
             <FiMail />
           </div>
-          <h4 className="fw-bold mb-1">Forgot password</h4>
-          <p className="text-muted mb-0" style={{ fontSize: '0.875rem' }}>We'll email you a link to reset it</p>
+          <h4 className="fw-bold mb-1">{t('forgotPassword.title')}</h4>
+          <p className="text-muted mb-0" style={{ fontSize: '0.875rem' }}>{t('forgotPassword.subtitle')}</p>
         </div>
 
         <Card className="shadow-sm">
           <Card.Body className="p-4">
             {sent ? (
               <Alert variant="success" className="mb-0">
-                If that email is registered, a password reset link has been sent. Check your inbox.
+                {t('forgotPassword.sent')}
               </Alert>
             ) : (
               <>
@@ -51,14 +53,14 @@ const ForgotPassword: React.FC = () => {
 
                 <Form onSubmit={handleSubmit}>
                   <Form.Group className="mb-4">
-                    <Form.Label className="small fw-medium text-muted">Email</Form.Label>
+                    <Form.Label className="small fw-medium text-muted">{t('forgotPassword.email')}</Form.Label>
                     <div className="input-group">
                       <span className="input-group-text bg-light"><FiMail className="text-muted" /></span>
                       <Form.Control
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@example.com"
+                        placeholder={t('forgotPassword.emailPlaceholder')}
                         required
                         autoFocus
                       />
@@ -66,14 +68,14 @@ const ForgotPassword: React.FC = () => {
                   </Form.Group>
 
                   <Button variant="primary" type="submit" className="w-100 mb-3" disabled={loading}>
-                    {loading ? 'Sending...' : 'Send reset link'}
+                    {loading ? t('forgotPassword.sending') : t('forgotPassword.sendResetLink')}
                   </Button>
                 </Form>
               </>
             )}
 
             <p className="text-center mb-0" style={{ fontSize: '0.875rem' }}>
-              <Link to="/login" className="fw-medium"><FiArrowLeft className="me-1" />Back to sign in</Link>
+              <Link to="/login" className="fw-medium"><FiArrowLeft className="me-1" />{t('forgotPassword.backToSignIn')}</Link>
             </p>
           </Card.Body>
         </Card>

@@ -1,11 +1,13 @@
 import React, { useState } from 'react'
 import { Form, Button, Card, Alert } from 'react-bootstrap'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../store/authStore'
 import { Link, useNavigate } from 'react-router-dom'
 import { FiLogIn, FiMail, FiLock } from 'react-icons/fi'
 import ErrorAlert from '../components/ui/ErrorAlert'
 
 const Login: React.FC = () => {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -24,9 +26,9 @@ const Login: React.FC = () => {
     } catch (err: any) {
       const detail = err.response?.data?.detail
       if (Array.isArray(detail)) {
-        setError(detail.map((d: any) => d.msg).join('; ') || 'Login failed')
+        setError(detail.map((d: any) => d.msg).join('; ') || t('login.failed'))
       } else {
-        setError(detail || 'Login failed')
+        setError(detail || t('login.failed'))
       }
     } finally {
       setLoading(false)
@@ -41,8 +43,8 @@ const Login: React.FC = () => {
             style={{ width: 56, height: 56, background: 'var(--color-primary-light)', color: 'var(--color-primary)', fontSize: '1.5rem' }}>
             <FiLogIn />
           </div>
-          <h4 className="fw-bold mb-1">Welcome back</h4>
-          <p className="text-muted mb-0" style={{ fontSize: '0.875rem' }}>Sign in to your SRIS account</p>
+          <h4 className="fw-bold mb-1">{t('login.welcomeBack')}</h4>
+          <p className="text-muted mb-0" style={{ fontSize: '0.875rem' }}>{t('login.subtitle')}</p>
         </div>
         
         <Card className="shadow-sm">
@@ -51,44 +53,44 @@ const Login: React.FC = () => {
             
             <Form onSubmit={handleSubmit}>
               <Form.Group className="mb-3">
-                <Form.Label className="small fw-medium text-muted">Email</Form.Label>
+                <Form.Label className="small fw-medium text-muted">{t('login.email')}</Form.Label>
                 <div className="input-group">
                   <span className="input-group-text bg-light"><FiMail className="text-muted" /></span>
                   <Form.Control
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
+                    placeholder={t('login.emailPlaceholder')}
                     required
                   />
                 </div>
               </Form.Group>
               
               <Form.Group className="mb-4">
-                <Form.Label className="small fw-medium text-muted">Password</Form.Label>
+                <Form.Label className="small fw-medium text-muted">{t('login.password')}</Form.Label>
                 <div className="input-group">
                   <span className="input-group-text bg-light"><FiLock className="text-muted" /></span>
                   <Form.Control
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
+                    placeholder={t('login.passwordPlaceholder')}
                     required
                   />
                 </div>
               </Form.Group>
               
               <Button variant="primary" type="submit" className="w-100 mb-2" disabled={loading}>
-                {loading ? 'Signing in...' : 'Sign in'}
+                {loading ? t('login.signingIn') : t('login.signIn')}
               </Button>
             </Form>
 
             <div className="text-center mb-3">
-              <Link to="/forgot-password" className="small fw-medium" style={{ fontSize: '0.875rem' }}>Forgot password?</Link>
+              <Link to="/forgot-password" className="small fw-medium" style={{ fontSize: '0.875rem' }}>{t('login.forgotPassword')}</Link>
             </div>
 
             <p className="text-center mb-0" style={{ fontSize: '0.875rem' }}>
-              Don't have an account? <Link to="/register" className="fw-medium">Register</Link>
+              {t('login.noAccount')} <Link to="/register" className="fw-medium">{t('login.register')}</Link>
             </p>
           </Card.Body>
         </Card>
