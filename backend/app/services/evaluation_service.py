@@ -629,6 +629,8 @@ def generate_candidate_report(response_id: int, db: Session, include_internal: b
         "lighting": response.lighting_score or 0.0,
         "dominant_emotion": response.dominant_emotion or "neutral",
         "confidence_score": response.confidence_score or 50.0,
+        "started_at": response.started_at,
+        "completed_at": response.completed_at,
         "generated_at": datetime.utcnow(),
     }
 
