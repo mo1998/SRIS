@@ -184,6 +184,8 @@ CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs backend tests wit
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the one-command deployment, production variant, security checklist, system requirements, and release verification gates.
 
+See [PRODUCTION.md](PRODUCTION.md) for the production-hardening implementation plan (Resend email, hybrid LLM, SSL, monitoring, backups, CI/CD).
+
 ```bash
 ./deploy.sh                  # build and start
 ./deploy.sh production       # production variant with SSL
