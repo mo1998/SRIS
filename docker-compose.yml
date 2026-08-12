@@ -95,6 +95,7 @@ services:
 
   # Backend API
   backend:
+    image: sris-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -158,6 +159,7 @@ services:
 
   # RQ Worker for AI evaluation
   evaluation-worker:
+    image: sris-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -212,6 +214,7 @@ services:
 
   # Database Migration Service (runs once on startup)
   db-migrate:
+    image: sris-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
