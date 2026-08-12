@@ -4,7 +4,6 @@ import { BrowserRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import NotificationBell from './NotificationBell'
 
-const navigateMock = vi.hoisted(() => vi.fn())
 const apiMock = vi.hoisted(() => ({
   notifications: {
     list: vi.fn(),
@@ -12,11 +11,6 @@ const apiMock = vi.hoisted(() => ({
     markRead: vi.fn(),
     markAllRead: vi.fn(),
   },
-}))
-
-vi.mock('react-router-dom', async (importOriginal) => ({
-  ...(await importOriginal()),
-  useNavigate: () => navigateMock,
 }))
 
 vi.mock('../services/api', () => ({
@@ -36,7 +30,6 @@ const renderBell = () => render(
 
 describe('NotificationBell', () => {
   beforeEach(() => {
-    navigateMock.mockReset()
     apiMock.notifications.list.mockReset()
     apiMock.notifications.unreadCount.mockReset()
     apiMock.notifications.markRead.mockReset()
@@ -74,7 +67,7 @@ describe('NotificationBell', () => {
     expect(apiMock.notifications.markRead).toHaveBeenCalledWith(1)
   })
 
-  it('navigates to the notification link when tapped', async () => {
+  it('marks notification read and shows a distinct visual change without navigating', async () => {
     apiMock.notifications.list.mockResolvedValue({ data: { notifications, unread_count: 1 } })
     apiMock.notifications.unreadCount.mockResolvedValue({ data: { unread_count: 1 } })
     apiMock.notifications.markRead.mockResolvedValue({ data: {} })
@@ -86,12 +79,23 @@ describe('NotificationBell', () => {
       expect(screen.getByText('Candidate submitted interview')).toBeTruthy()
     })
 
-    await userEvent.click(screen.getByText('Candidate submitted interview'))
+    const candidateBtn = screen.getByText('Candidate submitted interview').closest('button')!
+
+    // Before tap: unread -> accent border present + highlighted background
+    expect(candidateBtn.style.borderLeft).toMatch(/var\(--color-primary\)/)
+    expect(candidateBtn.style.background).toMatch(/color-primary-50/)
+
+    await userEvent.click(candidateBtn)
 
     await waitFor(() => {
       expect(apiMock.notifications.markRead).toHaveBeenCalledWith(1)
-      expect(navigateMock).toHaveBeenCalledWith('/interviews/1')
     })
+
+    // After tap: clearly distinct read state (accent border + highlight removed)
+    expect(candidateBtn.style.borderLeft).not.toMatch(/var\(--color-primary\)/)
+    expect(candidateBtn.style.background).not.toMatch(/color-primary-50/)
+    // Dropdown stays open so the change is observable; nothing navigated away
+    expect(screen.getByText('Evaluation completed')).toBeInTheDocument()
   })
 
   it('marks all notifications read', async () => {
