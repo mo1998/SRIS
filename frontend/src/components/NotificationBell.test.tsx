@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import NotificationBell from './NotificationBell'
 
+const navigateMock = vi.hoisted(() => vi.fn())
 const apiMock = vi.hoisted(() => ({
   notifications: {
     list: vi.fn(),
@@ -11,6 +12,11 @@ const apiMock = vi.hoisted(() => ({
     markRead: vi.fn(),
     markAllRead: vi.fn(),
   },
+}))
+
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useNavigate: () => navigateMock,
 }))
 
 vi.mock('../services/api', () => ({
@@ -30,6 +36,7 @@ const renderBell = () => render(
 
 describe('NotificationBell', () => {
   beforeEach(() => {
+    navigateMock.mockReset()
     apiMock.notifications.list.mockReset()
     apiMock.notifications.unreadCount.mockReset()
     apiMock.notifications.markRead.mockReset()
@@ -65,6 +72,26 @@ describe('NotificationBell', () => {
 
     await userEvent.click(screen.getByText('Candidate submitted interview'))
     expect(apiMock.notifications.markRead).toHaveBeenCalledWith(1)
+  })
+
+  it('navigates to the notification link when tapped', async () => {
+    apiMock.notifications.list.mockResolvedValue({ data: { notifications, unread_count: 1 } })
+    apiMock.notifications.unreadCount.mockResolvedValue({ data: { unread_count: 1 } })
+    apiMock.notifications.markRead.mockResolvedValue({ data: {} })
+
+    renderBell()
+
+    await userEvent.click(screen.getByLabelText('Notifications'))
+    await waitFor(() => {
+      expect(screen.getByText('Candidate submitted interview')).toBeTruthy()
+    })
+
+    await userEvent.click(screen.getByText('Candidate submitted interview'))
+
+    await waitFor(() => {
+      expect(apiMock.notifications.markRead).toHaveBeenCalledWith(1)
+      expect(navigateMock).toHaveBeenCalledWith('/interviews/1')
+    })
   })
 
   it('marks all notifications read', async () => {

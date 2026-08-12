@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FiBell } from 'react-icons/fi'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 
 interface NotificationItem {
@@ -15,6 +16,7 @@ interface NotificationItem {
 
 const NotificationBell: React.FC = () => {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -80,6 +82,9 @@ const NotificationBell: React.FC = () => {
       } catch { /* silent */ }
     }
     setOpen(false)
+    if (n.link) {
+      navigate(n.link)
+    }
   }
 
   return (
@@ -156,12 +161,13 @@ const NotificationBell: React.FC = () => {
                   whiteSpace: 'normal',
                   padding: '0.6rem 1rem',
                   background: n.is_read ? 'transparent' : 'var(--color-primary-50, #f0f4ff)',
+                  borderLeft: n.is_read ? 'none' : '3px solid var(--color-primary)',
                   borderRadius: 0,
                   borderBottom: '1px solid var(--color-gray-100)',
                 }}
               >
-                <div className="d-flex justify-content-between gap-2">
-                  <strong style={{ fontSize: '0.8rem' }}>{n.title}</strong>
+                <div className="d-flex justify-content-between align-items-start gap-2">
+                  <strong style={{ fontSize: '0.8rem', fontWeight: n.is_read ? 500 : 700 }}>{n.title}</strong>
                   <small className="text-muted text-nowrap" style={{ fontSize: '0.7rem' }}>{timeAgo(n.created_at)}</small>
                 </div>
                 {n.message && (
