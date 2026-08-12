@@ -43,8 +43,8 @@ const ResultsPortal: React.FC = () => {
                 <Card className="text-center h-100 bg-light">
                   <Card.Body>
                     <div className="text-muted small text-uppercase">{t('resultsPortal.overallScore')}</div>
-                    <div className={`fs-1 fw-bold ${report.total_score >= 80 ? 'text-success' : report.total_score >= 60 ? 'text-warning' : 'text-danger'}`}>
-                      {report.total_score.toFixed(1)}%
+                    <div className={`fs-1 fw-bold ${(report.total_score ?? 0) >= 80 ? 'text-success' : (report.total_score ?? 0) >= 60 ? 'text-warning' : 'text-danger'}`}>
+                      {(report.total_score ?? 0).toFixed(1)}%
                     </div>
                   </Card.Body>
                 </Card>

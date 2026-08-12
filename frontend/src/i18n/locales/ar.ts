@@ -509,4 +509,8 @@ export default {
     passwordFailed: 'فشل تحديث كلمة المرور',
     passwordsDoNotMatch: 'كلمتا المرور غير متطابقتين',
   },
+  updateBanner: {
+    message: 'يتوفر إصدار جديد من التطبيق.',
+    reload: 'إعادة تحميل',
+  },
 }

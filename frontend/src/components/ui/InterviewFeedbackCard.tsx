@@ -84,6 +84,7 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
   const isFallback = !!evidence?.provider_fallback_from
   const sanitizedFeedbackEn = sanitizeFeedback(feedbackEn)
   const hasArabic = !!feedbackAr
+  const safeScore = typeof score === 'number' && !Number.isNaN(score) ? score : 0
 
   return (
     <Card
@@ -112,8 +113,8 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
             </div>
           </div>
           <div className="d-flex align-items-center gap-2 ms-3 flex-shrink-0">
-            <Badge bg={getScoreVariant(score)} className="rounded-pill px-3 py-2" style={{ fontSize: '0.8rem' }}>
-              {score.toFixed(1)}%
+            <Badge bg={getScoreVariant(safeScore)} className="rounded-pill px-3 py-2" style={{ fontSize: '0.8rem' }}>
+              {safeScore.toFixed(1)}%
             </Badge>
             {emotion && (
               <Badge bg={getEmotionVariant(emotion)} className="rounded-pill px-2 py-1" style={{ fontSize: '0.7rem' }}>

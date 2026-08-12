@@ -510,4 +510,8 @@ export default {
     passwordFailed: 'Failed to update password',
     passwordsDoNotMatch: 'Passwords do not match',
   },
+  updateBanner: {
+    message: 'A new version is available.',
+    reload: 'Reload',
+  },
 }
