@@ -168,6 +168,94 @@ class LocalVLLMEvaluationProvider:
             return fallback
 
 
+class CloudLLMEvaluationProvider:
+    """OpenAI-compatible cloud LLM provider (used when local vLLM is unavailable)."""
+
+    name = "cloud_llm"
+    version = "1.0.0"
+
+    SYSTEM_PROMPT = (
+        "You evaluate structured interview answers. Do not show reasoning. "
+        "Use the expected answer and rubric criteria as the scoring contract. "
+        "Return valid compact JSON only with keys: score, feedback_en, feedback_ar, "
+        "matched_criteria, missing_criteria, evidence. Score must be 0-100."
+    )
+
+    def __init__(self, fallback_provider: EvaluationProvider):
+        self.fallback_provider = fallback_provider
+
+    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None) -> EvaluationResult:
+        if not answer_text.strip():
+            return await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
+
+        if not settings.CLOUD_LLM_API_KEY:
+            return await self._fallback(answer_text, expected_answer, rubric_criteria, "CLOUD_LLM_API_KEY is not configured")
+
+        try:
+            payload = {
+                "model": settings.CLOUD_LLM_MODEL,
+                "messages": [
+                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Expected answer: {expected_answer}\n"
+                            f"Rubric criteria JSON: {json.dumps(rubric_criteria or [], ensure_ascii=False)}\n"
+                            f"Candidate answer: {answer_text}"
+                        ),
+                    },
+                ],
+                "temperature": 0,
+                "max_tokens": 512,
+            }
+            headers = {"Authorization": f"Bearer {settings.CLOUD_LLM_API_KEY}"}
+            async with httpx.AsyncClient(timeout=settings.CLOUD_LLM_TIMEOUT_SECONDS) as client:
+                response = await client.post(
+                    f"{settings.CLOUD_LLM_BASE_URL.rstrip('/')}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+                response.raise_for_status()
+            completion = response.json()["choices"][0]["message"]["content"]
+            parsed = parse_llm_json(completion)
+            score = normalize_llm_score(parsed.get("score", 0))
+            feedback_en = str(parsed.get("feedback_en") or "No English feedback returned.")
+            feedback_ar = str(parsed.get("feedback_ar") or "No Arabic feedback returned.")
+            evidence = {
+                "provider": self.name,
+                "provider_version": self.version,
+                "model": settings.CLOUD_LLM_MODEL,
+                "prompt_version": settings.EVALUATION_PROMPT_VERSION,
+                "matched_criteria": parsed.get("matched_criteria", []),
+                "missing_criteria": parsed.get("missing_criteria", []),
+                "evidence": parsed.get("evidence", ""),
+                "rubric_criteria": rubric_criteria or [],
+            }
+            return EvaluationResult(
+                score=score,
+                feedback=f"{self.name} {settings.CLOUD_LLM_MODEL}: {feedback_en} Arabic feedback: {feedback_ar}",
+                evidence=evidence,
+            )
+        except Exception as exc:
+            return await self._fallback(answer_text, expected_answer, rubric_criteria, str(exc))
+
+    async def _fallback(
+        self,
+        answer_text: str,
+        expected_answer: str,
+        rubric_criteria: Optional[List[Dict[str, object]]],
+        reason: str,
+    ) -> EvaluationResult:
+        fallback = await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
+        fallback.evidence.update({
+            "provider_fallback_from": self.name,
+            "provider_fallback_reason": reason,
+            "requested_model": settings.CLOUD_LLM_MODEL,
+        })
+        fallback.feedback = f"Cloud LLM evaluation unavailable; used fallback. {fallback.feedback}"
+        return fallback
+
+
 def normalize_tokens(text: str) -> List[str]:
     tokens = re.findall(r"[a-z0-9]+", (text or "").lower())
     return [token for token in tokens if token not in STOPWORDS and len(token) > 1]
@@ -198,13 +286,50 @@ def serialize_rubric_criteria(question: InterviewQuestion) -> List[Dict[str, obj
 
 
 baseline_provider = BaselineEvaluationProvider()
+cloud_provider = CloudLLMEvaluationProvider(baseline_provider)
 local_vllm_provider = LocalVLLMEvaluationProvider(baseline_provider)
 
 
+def _build_hybrid_provider() -> EvaluationProvider:
+    """Chain: local vLLM -> cloud -> deterministic baseline, gated by toggles."""
+    chain: EvaluationProvider = baseline_provider
+    if settings.CLOUD_LLM_ENABLED:
+        chain = CloudLLMEvaluationProvider(chain)
+    if settings.LOCAL_LLM_ENABLED:
+        chain = LocalVLLMEvaluationProvider(chain)
+    return chain
+
+
 def get_evaluation_provider() -> EvaluationProvider:
-    if settings.EVALUATION_PROVIDER == "deterministic_baseline":
+    mode = settings.EVALUATION_PROVIDER
+    if mode == "deterministic_baseline":
         return baseline_provider
-    return local_vllm_provider
+    if mode == "hybrid":
+        return _build_hybrid_provider()
+    if mode == "cloud":
+        return cloud_provider if settings.CLOUD_LLM_ENABLED else baseline_provider
+    # local_vllm (default)
+    if settings.LOCAL_LLM_ENABLED:
+        return local_vllm_provider
+    return baseline_provider
+
+
+def get_active_llm_model() -> Optional[str]:
+    """The primary LLM model configured for evaluation (local preferred)."""
+    if settings.LOCAL_LLM_ENABLED:
+        return settings.LOCAL_LLM_MODEL
+    if settings.CLOUD_LLM_ENABLED:
+        return settings.CLOUD_LLM_MODEL
+    return None
+
+
+def get_active_llm_base_url() -> Optional[str]:
+    """The base URL of the primary configured LLM endpoint."""
+    if settings.LOCAL_LLM_ENABLED:
+        return settings.LOCAL_LLM_BASE_URL
+    if settings.CLOUD_LLM_ENABLED:
+        return settings.CLOUD_LLM_BASE_URL
+    return None
 
 
 def get_emotion_provider_name() -> str:
@@ -516,7 +641,7 @@ def create_evaluation_run(response_id: int, db: Session, status: str = "queued")
         response_id=response_id,
         provider=provider.name,
         provider_version=getattr(provider, "version", None),
-        model_name=settings.LOCAL_LLM_MODEL,
+        model_name=get_active_llm_model(),
         config_hash=get_evaluation_config_hash(provider),
         status=status,
         started_at=datetime.utcnow(),
@@ -560,6 +685,10 @@ def get_evaluation_config_hash(provider: EvaluationProvider) -> str:
         "prompt_version": settings.EVALUATION_PROMPT_VERSION,
         "model": settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else None,
         "base_url": settings.LOCAL_LLM_BASE_URL if provider.name == "local_vllm" else None,
+        "cloud_model": settings.CLOUD_LLM_MODEL if provider.name == "cloud_llm" else None,
+        "cloud_base_url": settings.CLOUD_LLM_BASE_URL if provider.name == "cloud_llm" else None,
+        "local_enabled": settings.LOCAL_LLM_ENABLED,
+        "cloud_enabled": settings.CLOUD_LLM_ENABLED,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
@@ -1022,6 +1151,21 @@ def text_similarity(text_a: str, text_b: str) -> float:
     return len(set_a & set_b) / len(set_a | set_b)
 
 
+async def _probe_endpoint(base_url: str, timeout: float, headers: Optional[dict] = None) -> tuple[bool, Optional[str]]:
+    """Return (reachable, error) for an OpenAI-compatible /models endpoint."""
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            url = f"{base_url.rstrip('/')}/models"
+            if headers:
+                response = await client.get(url, headers=headers)
+            else:
+                response = await client.get(url)
+            response.raise_for_status()
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
+
+
 async def get_evaluation_health() -> Dict[str, object]:
     provider = get_evaluation_provider()
     health = {
@@ -1029,27 +1173,52 @@ async def get_evaluation_health() -> Dict[str, object]:
         "provider_version": getattr(provider, "version", None),
         "prompt_version": settings.EVALUATION_PROMPT_VERSION,
         "config_hash": get_evaluation_config_hash(provider),
-        "model_name": settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else None,
-        "base_url": settings.LOCAL_LLM_BASE_URL if provider.name == "local_vllm" else None,
+        "model_name": get_active_llm_model(),
+        "base_url": get_active_llm_base_url(),
         "healthy": True,
         "status": "available",
         "fallback_provider": getattr(getattr(provider, "fallback_provider", None), "name", None),
         "last_error": None,
+        "local_enabled": settings.LOCAL_LLM_ENABLED,
+        "cloud_enabled": settings.CLOUD_LLM_ENABLED,
+        "local_model": settings.LOCAL_LLM_MODEL if settings.LOCAL_LLM_ENABLED else None,
+        "local_base_url": settings.LOCAL_LLM_BASE_URL if settings.LOCAL_LLM_ENABLED else None,
+        "local_healthy": None,
+        "cloud_model": settings.CLOUD_LLM_MODEL if settings.CLOUD_LLM_ENABLED else None,
+        "cloud_base_url": settings.CLOUD_LLM_BASE_URL if settings.CLOUD_LLM_ENABLED else None,
+        "cloud_healthy": None,
         "checked_at": datetime.utcnow(),
     }
 
-    if provider.name != "local_vllm":
+    if provider.name == "deterministic_baseline":
+        health["status"] = "deterministic_available"
         return health
 
-    try:
-        async with httpx.AsyncClient(timeout=min(settings.LOCAL_LLM_TIMEOUT_SECONDS, 2.0)) as client:
-            response = await client.get(f"{settings.LOCAL_LLM_BASE_URL.rstrip('/')}/models")
-            response.raise_for_status()
-        health["status"] = "local_vllm_available"
-    except Exception as exc:
+    errors = []
+    if settings.LOCAL_LLM_ENABLED:
+        reachable, error = await _probe_endpoint(
+            settings.LOCAL_LLM_BASE_URL, min(settings.LOCAL_LLM_TIMEOUT_SECONDS, 2.0)
+        )
+        health["local_healthy"] = reachable
+        if error:
+            errors.append(f"local_vllm: {error}")
+    if settings.CLOUD_LLM_ENABLED:
+        headers = {"Authorization": f"Bearer {settings.CLOUD_LLM_API_KEY}"} if settings.CLOUD_LLM_API_KEY else {}
+        reachable, error = await _probe_endpoint(
+            settings.CLOUD_LLM_BASE_URL, min(settings.CLOUD_LLM_TIMEOUT_SECONDS, 2.0), headers=headers
+        )
+        health["cloud_healthy"] = reachable
+        if error:
+            errors.append(f"cloud_llm: {error}")
+
+    any_reachable = health["local_healthy"] or health["cloud_healthy"]
+    if any_reachable:
+        health["healthy"] = True
+        health["status"] = "available"
+    else:
         health["healthy"] = False
-        health["status"] = "local_vllm_unavailable_using_fallback"
-        health["last_error"] = str(exc)
+        health["status"] = "llm_unavailable_using_fallback"
+        health["last_error"] = "; ".join(errors) or "LLM endpoints unreachable"
 
     return health
 
@@ -1064,7 +1233,7 @@ def get_ai_disclosure() -> Dict[str, object]:
             "provider": provider.name,
             "provider_version": getattr(provider, "version", None),
             "purpose": "Automated scoring of candidate answers against rubric criteria and expected answers.",
-            "model": settings.LOCAL_LLM_MODEL if provider.name == "local_vllm" else "deterministic (no ML model)",
+            "model": get_active_llm_model() or "deterministic (no ML model)",
             "human_review_available": True,
             "human_review_description": "Employers can override AI scores, set reviewer decisions (shortlist/reject/hire), and add manual scorecards per candidate.",
         },

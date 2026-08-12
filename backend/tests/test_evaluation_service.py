@@ -2,7 +2,7 @@ import pytest
 
 from app.services import evaluation_service
 from app.config import settings
-from app.services.evaluation_service import baseline_provider, evaluate_answer_similarity, get_evaluation_health, local_vllm_provider, normalize_llm_score, parse_llm_json
+from app.services.evaluation_service import baseline_provider, evaluate_answer_similarity, get_active_llm_model, get_evaluation_health, get_evaluation_provider, local_vllm_provider, normalize_llm_score, parse_llm_json
 
 
 @pytest.mark.asyncio
@@ -217,3 +217,201 @@ def test_enqueue_evaluation_run_uses_rq_when_configured(monkeypatch):
     assert enqueued[0][0] == settings.EVALUATION_QUEUE_NAME
     assert enqueued[0][2] == (3, 4)
     assert enqueued[0][3] == 600
+
+@pytest.mark.asyncio
+async def test_cloud_provider_sends_openai_compatible_payload(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{
+                    "message": {
+                        "content": '{"score": 8, "feedback_en": "Clear structure", "feedback_ar": "هيكل واضح", "matched_criteria": ["structure"], "missing_criteria": [], "evidence": "Well organized"}'
+                    }
+                }]
+            }
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers):
+            captured["url"] = url
+            captured["json"] = json
+            captured["headers"] = headers
+            return FakeResponse()
+
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "cloud")
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "sk-cloud-test")
+    monkeypatch.setattr(settings, "CLOUD_LLM_MODEL", "gpt-test-mini")
+    monkeypatch.setattr(settings, "CLOUD_LLM_BASE_URL", "https://api.cloud.test/v1")
+    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", FakeClient)
+
+    provider = get_evaluation_provider()
+    result = await provider.evaluate_answer(
+        "I structure my answer.",
+        "Structure the answer.",
+        [{"name": "Structure", "description": "Clear organization", "weight": 1.0}],
+    )
+
+    assert captured["url"] == "https://api.cloud.test/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer sk-cloud-test"
+    assert captured["json"]["model"] == "gpt-test-mini"
+    assert "/no_think" not in captured["json"]["messages"][0]["content"]
+    assert result.score == 80.0
+    assert result.evidence["provider"] == "cloud_llm"
+    assert result.evidence["model"] == "gpt-test-mini"
+
+
+@pytest.mark.asyncio
+async def test_cloud_provider_falls_back_without_api_key(monkeypatch):
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "cloud")
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "")
+
+    provider = get_evaluation_provider()
+    result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
+
+    assert result.evidence["provider_fallback_from"] == "cloud_llm"
+    assert result.evidence["provider"] == "deterministic_baseline"
+    assert "CLOUD_LLM_API_KEY" in result.evidence["provider_fallback_reason"]
+
+
+@pytest.mark.asyncio
+async def test_cloud_provider_falls_back_on_endpoint_error(monkeypatch):
+    class FailingClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers):
+            raise RuntimeError("cloud outage")
+
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "cloud")
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "sk-cloud-test")
+    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", FailingClient)
+
+    provider = get_evaluation_provider()
+    result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
+
+    assert result.evidence["provider_fallback_from"] == "cloud_llm"
+    assert "cloud outage" in result.evidence["provider_fallback_reason"]
+
+
+def test_get_evaluation_provider_hybrid_chain(monkeypatch):
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "hybrid")
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+
+    provider = get_evaluation_provider()
+    assert provider.name == "local_vllm"
+    assert provider.fallback_provider.name == "cloud_llm"
+    assert provider.fallback_provider.fallback_provider.name == "deterministic_baseline"
+    assert get_active_llm_model() == settings.LOCAL_LLM_MODEL
+
+
+def test_get_evaluation_provider_hybrid_cloud_only(monkeypatch):
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "hybrid")
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", False)
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+
+    provider = get_evaluation_provider()
+    assert provider.name == "cloud_llm"
+    assert provider.fallback_provider.name == "deterministic_baseline"
+    assert get_active_llm_model() == settings.CLOUD_LLM_MODEL
+
+
+def test_get_evaluation_provider_hybrid_both_disabled_falls_back(monkeypatch):
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "hybrid")
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", False)
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
+
+    provider = get_evaluation_provider()
+    assert provider.name == "deterministic_baseline"
+    assert get_active_llm_model() is None
+
+
+def test_get_evaluation_provider_cloud_mode_respects_toggle(monkeypatch):
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "cloud")
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
+
+    provider = get_evaluation_provider()
+    assert provider.name == "deterministic_baseline"
+
+
+@pytest.mark.asyncio
+async def test_evaluation_health_reports_cloud_reachable(monkeypatch):
+    class HealthyClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, url, headers=None):
+            return type("Resp", (), {"raise_for_status": lambda self: None, "status_code": 200})()
+
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "hybrid")
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "sk-cloud-test")
+    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", HealthyClient)
+
+    health = await get_evaluation_health()
+
+    assert health["provider"] == "local_vllm"
+    assert health["local_healthy"] is True
+    assert health["cloud_healthy"] is True
+    assert health["healthy"] is True
+    assert health["status"] == "available"
+
+
+@pytest.mark.asyncio
+async def test_evaluation_health_hybrid_uses_cloud_when_local_down(monkeypatch):
+    class CloudOnlyClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, url, headers=None):
+            if url.startswith("http://local"):
+                raise RuntimeError("vllm offline")
+            return type("Resp", (), {"raise_for_status": lambda self: None, "status_code": 200})()
+
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "hybrid")
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "sk-cloud-test")
+    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", CloudOnlyClient)
+
+    health = await get_evaluation_health()
+
+    assert health["local_healthy"] is False
+    assert health["cloud_healthy"] is True
+    assert health["healthy"] is True
+    assert health["status"] == "available"

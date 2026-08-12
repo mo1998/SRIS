@@ -545,6 +545,14 @@ class EvaluationHealth(BaseModel):
     status: str
     fallback_provider: Optional[str] = None
     last_error: Optional[str] = None
+    local_enabled: bool = False
+    cloud_enabled: bool = False
+    local_model: Optional[str] = None
+    local_base_url: Optional[str] = None
+    local_healthy: Optional[bool] = None
+    cloud_model: Optional[str] = None
+    cloud_base_url: Optional[str] = None
+    cloud_healthy: Optional[bool] = None
     checked_at: datetime
 
 

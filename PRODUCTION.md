@@ -2,7 +2,8 @@
 
 Status: **partially implemented.** Phase 0 shipped (deploy/env/compose/SSL).
 Phase 1 shipped (Resend email provider + retry/backoff + health reporting).
-Phases 2-7 pending. Read before continuing implementation.
+Phase 2 shipped (hybrid LLM: local vLLM → cloud → deterministic, config-driven).
+Phases 3-7 pending. Read before continuing implementation.
 
 ## Decisions (locked)
 
