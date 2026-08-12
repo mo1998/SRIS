@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FiBell } from 'react-icons/fi'
-import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 
 interface NotificationItem {
@@ -16,7 +15,6 @@ interface NotificationItem {
 
 const NotificationBell: React.FC = () => {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -81,10 +79,8 @@ const NotificationBell: React.FC = () => {
         setUnreadCount((c) => Math.max(0, c - 1))
       } catch { /* silent */ }
     }
-    setOpen(false)
-    if (n.link) {
-      navigate(n.link)
-    }
+    // Do not navigate away — keep the dropdown open so the read-state change
+    // on the tapped notification is clearly and distinctly observable.
   }
 
   return (
@@ -164,6 +160,7 @@ const NotificationBell: React.FC = () => {
                   borderLeft: n.is_read ? 'none' : '3px solid var(--color-primary)',
                   borderRadius: 0,
                   borderBottom: '1px solid var(--color-gray-100)',
+                  transition: 'background-color 0.18s ease, border-color 0.18s ease, font-weight 0.18s ease',
                 }}
               >
                 <div className="d-flex justify-content-between align-items-start gap-2">
