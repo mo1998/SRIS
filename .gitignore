@@ -98,3 +98,7 @@ dump.rdb
 *.pem
 *.key
 *.crt
+
+# Frontend source utilities (avoid matching the global lib/ ignore above)
+!frontend/src/lib/
+!frontend/src/lib/**

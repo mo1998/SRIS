@@ -59,8 +59,8 @@ const MyResults: React.FC = () => {
                 <tr key={idx}>
                   <td className="fw-medium">{result.interview_title}</td>
                   <td>
-                    <span className={`badge rounded-pill fs-6 px-3 py-2 ${result.total_score >= 80 ? 'bg-success' : result.total_score >= 60 ? 'bg-warning text-dark' : 'bg-danger'}`}>
-                      {result.total_score.toFixed(1)}%
+                    <span className={`badge rounded-pill fs-6 px-3 py-2 ${(result.total_score ?? 0) >= 80 ? 'bg-success' : (result.total_score ?? 0) >= 60 ? 'bg-warning text-dark' : 'bg-danger'}`}>
+                      {(result.total_score ?? 0).toFixed(1)}%
                     </span>
                   </td>
                   <td>

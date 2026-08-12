@@ -16,6 +16,7 @@ import MyResults from './pages/MyResults'
 import AccountSettings from './pages/AccountSettings'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
+import UpdateBanner from './components/ui/UpdateBanner'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; roles?: string[] }> = ({ children, roles }) => {
   const { isAuthenticated, isLoading, user } = useAuth()
@@ -142,6 +143,7 @@ const AppRoutes: React.FC = () => {
 function App() {
   return (
     <AuthProvider>
+      <UpdateBanner />
       <AppRoutes />
     </AuthProvider>
   )
