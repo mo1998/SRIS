@@ -1,0 +1,23 @@
+# CI-only override: enables BuildKit GHA layer caching for backend images.
+# Loaded in GitHub Actions via COMPOSE_FILE. Dev machines are unaffected.
+# All services share the ./backend Dockerfile, so one cache scope reuses
+# the expensive apt + pip install layers across runs.
+services:
+  backend:
+    build:
+      cache_from:
+        - type=gha,scope=sris-backend
+      cache_to:
+        - type=gha,mode=max,scope=sris-backend
+  evaluation-worker:
+    build:
+      cache_from:
+        - type=gha,scope=sris-backend
+      cache_to:
+        - type=gha,mode=max,scope=sris-backend
+  db-migrate:
+    build:
+      cache_from:
+        - type=gha,scope=sris-backend
+      cache_to:
+        - type=gha,mode=max,scope=sris-backend

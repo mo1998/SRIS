@@ -26,7 +26,7 @@ jobs:
         run: python -m pip install -r backend/requirements-dev.txt
 
       - name: Run tests
-        run: python -m pytest backend/tests -q
+        run: python -m pytest backend/tests -q -n auto
 
       - name: Validate migrations
         working-directory: backend
@@ -77,7 +77,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and start services
+        env:
+          COMPOSE_FILE: docker-compose.yml:docker/ci/docker-compose.ci.yml
         run: |
           docker compose build postgres redis mailpit backend db-migrate
           docker compose up -d postgres redis mailpit

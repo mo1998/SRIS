@@ -2,7 +2,11 @@ import os
 import sys
 from pathlib import Path
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_sris.db"
+# Each xdist worker gets its own SQLite file to avoid cross-process lock contention.
+_worker = os.environ.get("PYTEST_XDIST_WORKER")
+_db_file = f"test_sris_{_worker}.db" if _worker else "test_sris.db"
+
+os.environ["DATABASE_URL"] = f"sqlite:///./{_db_file}"
 os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["DEBUG"] = "True"
 os.environ["EVALUATION_PROVIDER"] = "deterministic_baseline"
