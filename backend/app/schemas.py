@@ -488,12 +488,12 @@ class CandidateReport(BaseModel):
     interview_title: str
     total_score: float
     passed: bool
-    voice_quality: float
-    background_quality: float
-    face_visibility: float
-    lighting: float
-    dominant_emotion: str
-    confidence_score: float
+    voice_quality: Optional[float] = None
+    background_quality: Optional[float] = None
+    face_visibility: Optional[float] = None
+    lighting: Optional[float] = None
+    dominant_emotion: Optional[str] = None
+    confidence_score: Optional[float] = None
     reviewer_decision: Optional[ReviewerDecisionEnum] = None
     ai_disclosure: Optional[str] = None
     answers: List[ReportQuestionAnswerSchema] = []

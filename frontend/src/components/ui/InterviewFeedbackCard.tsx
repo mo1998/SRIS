@@ -133,6 +133,14 @@ const InterviewFeedbackCard: React.FC<InterviewFeedbackCardProps> = ({
 
         {expanded && (
           <div className="mt-4 pt-3 border-top">
+            {!answerText && (
+              <div className="mb-3">
+                <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{t('feedbackCard.candidateAnswer')}</small>
+                <p className="mb-0 mt-1 p-3 bg-light rounded text-muted" style={{ fontSize: '0.9rem' }}>
+                  {t('feedbackCard.noAnswerProvided')}
+                </p>
+              </div>
+            )}
             {answerText && (
               <div className="mb-3">
                 <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{t('feedbackCard.candidateAnswer')}</small>

@@ -218,4 +218,36 @@ describe('CandidateReport', () => {
     expect(await screen.findByText(/candidate performance report/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /re-evaluate/i })).not.toBeInTheDocument()
   })
+
+  it('renders N/A instead of fake zeros when quality/emotion data is missing', async () => {
+    apiMock.reports.getCandidateReport.mockResolvedValue({
+      data: {
+        response_id: 99,
+        candidate_name: 'Candidate One',
+        candidate_email: 'candidate@example.com',
+        interview_title: 'Support Screen',
+        total_score: 90,
+        passed: true,
+        voice_quality: null,
+        background_quality: null,
+        face_visibility: null,
+        lighting: null,
+        dominant_emotion: null,
+        confidence_score: null,
+        evaluation_provider: 'local_vllm',
+        evaluation_model: 'qwen3-8b-awq',
+        evaluation_status: 'completed',
+        answers: [{ question: 'Q', score: 90, emotion: null }],
+        feedback: 'Overall feedback',
+        generated_at: '2026-07-20T00:00:00Z',
+      },
+    })
+    apiMock.reports.getCandidateEvaluations.mockResolvedValue({ data: [] })
+
+    renderPage()
+
+    await screen.findByText(/candidate performance report/i)
+    expect(screen.getAllByText('No data collected')).toHaveLength(4)
+    expect(screen.getByText('No emotion analysis available')).toBeInTheDocument()
+  })
 })

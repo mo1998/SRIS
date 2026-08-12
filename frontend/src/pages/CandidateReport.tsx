@@ -88,9 +88,40 @@ const CandidateReport: React.FC = () => {
     return 'score-low'
   }
 
-  const getEmotionClass = (emotion: string) => {
-    return `emotion-${emotion.toLowerCase()}`
+  const getEmotionClass = (emotion?: string) => {
+    return emotion ? `emotion-${emotion.toLowerCase()}` : 'emotion-unknown'
   }
+
+  const formatPercent = (value?: number | null) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return t('common.n/a')
+    return `${value.toFixed(1)}%`
+  }
+
+  const qualityBadge = (value?: number | null) => {
+    if (value === null || value === undefined) {
+      return <Badge bg="secondary">{t('candidateReport.noQualityData')}</Badge>
+    }
+    return (
+      <Badge bg={value >= 80 ? 'success' : value >= 60 ? 'warning' : 'danger'}>
+        {value.toFixed(1)}%
+      </Badge>
+    )
+  }
+
+  const emotionDistribution = (): { emotion: string; count: number }[] => {
+    if (!report?.answers) return []
+    const counts = new Map<string, number>()
+    for (const answer of report.answers) {
+      const emotion = answer?.emotion
+      if (!emotion) continue
+      counts.set(emotion, (counts.get(emotion) || 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([emotion, count]) => ({ emotion, count }))
+      .sort((a, b) => b.count - a.count)
+  }
+  const distribution = emotionDistribution()
+  const emotionSampleCount = distribution.reduce((sum, d) => sum + d.count, 0)
 
   const formatDateTime = (value?: string) => {
     if (!value) return t('common.n/a')
@@ -140,7 +171,7 @@ const CandidateReport: React.FC = () => {
             <Col md={6} className="text-center">
               <h5>{t('candidateReport.overallScore')}</h5>
               <div className={`score-circle ${getScoreClass(report.total_score)}`}>
-                {report.total_score.toFixed(1)}%
+                {formatPercent(report.total_score)}
               </div>
               <Badge bg={report.passed ? 'success' : 'danger'} className="mt-2" style={{ fontSize: '16px' }}>
                 {report.passed ? t('candidateReport.passed') : t('candidateReport.failed')}
@@ -152,7 +183,16 @@ const CandidateReport: React.FC = () => {
               <h6>{t('candidateReport.evaluationAgent')}</h6>
               <p className="mb-1"><strong>{t('candidateReport.provider')}:</strong> {report.evaluation_provider || t('common.n/a')}</p>
               <p className="mb-1"><strong>{t('candidateReport.model')}:</strong> {report.evaluation_model || t('common.n/a')}</p>
-              <p className="mb-0"><strong>{t('candidateReport.status')}:</strong> {report.evaluation_status || t('common.n/a')}</p>
+              <p className="mb-0">
+                <strong>{t('candidateReport.status')}:</strong>{' '}
+                {report.evaluation_status ? (
+                  <Badge bg={report.evaluation_status === 'completed' ? 'success' : report.evaluation_status === 'failed' ? 'danger' : 'warning'}>
+                    {report.evaluation_status}
+                  </Badge>
+                ) : (
+                  t('common.n/a')
+                )}
+              </p>
             </div>
           )}
         </Card.Body>
@@ -169,35 +209,19 @@ const CandidateReport: React.FC = () => {
                 <tbody>
                   <tr>
                     <td>{t('candidateReport.voiceQuality')}</td>
-                    <td>
-                      <Badge bg={report.voice_quality >= 80 ? 'success' : report.voice_quality >= 60 ? 'warning' : 'danger'}>
-                        {report.voice_quality.toFixed(1)}%
-                      </Badge>
-                    </td>
+                    <td>{qualityBadge(report.voice_quality)}</td>
                   </tr>
                   <tr>
                     <td>{t('candidateReport.backgroundQuality')}</td>
-                    <td>
-                      <Badge bg={report.background_quality >= 80 ? 'success' : report.background_quality >= 60 ? 'warning' : 'danger'}>
-                        {report.background_quality.toFixed(1)}%
-                      </Badge>
-                    </td>
+                    <td>{qualityBadge(report.background_quality)}</td>
                   </tr>
                   <tr>
                     <td>{t('candidateReport.faceVisibility')}</td>
-                    <td>
-                      <Badge bg={report.face_visibility >= 80 ? 'success' : report.face_visibility >= 60 ? 'warning' : 'danger'}>
-                        {report.face_visibility.toFixed(1)}%
-                      </Badge>
-                    </td>
+                    <td>{qualityBadge(report.face_visibility)}</td>
                   </tr>
                   <tr>
                     <td>{t('candidateReport.lighting')}</td>
-                    <td>
-                      <Badge bg={report.lighting >= 80 ? 'success' : report.lighting >= 60 ? 'warning' : 'danger'}>
-                        {report.lighting.toFixed(1)}%
-                      </Badge>
-                    </td>
+                    <td>{qualityBadge(report.lighting)}</td>
                   </tr>
                 </tbody>
               </Table>
@@ -211,20 +235,43 @@ const CandidateReport: React.FC = () => {
               <h6 className="mb-0">{t('candidateReport.emotionConfidence')}</h6>
             </Card.Header>
             <Card.Body className="text-center">
-              <Row>
-                <Col>
-                  <h5>{t('candidateReport.dominantEmotion')}</h5>
-                  <span className={`emotion-badge ${getEmotionClass(report.dominant_emotion)}`}>
-                    {report.dominant_emotion}
-                  </span>
-                </Col>
-                <Col>
-                  <h5>{t('candidateReport.confidenceScore')}</h5>
-                  <div className={`score-circle ${getScoreClass(report.confidence_score)}`} style={{ width: '80px', height: '80px', fontSize: '18px' }}>
-                    {report.confidence_score.toFixed(1)}%
-                  </div>
-                </Col>
-              </Row>
+              {report.dominant_emotion || (report.confidence_score ?? null) !== null ? (
+                <>
+                  <Row>
+                    <Col>
+                      <h5>{t('candidateReport.dominantEmotion')}</h5>
+                      <span className={`emotion-badge ${getEmotionClass(report.dominant_emotion)}`}>
+                        {report.dominant_emotion}
+                      </span>
+                      {emotionSampleCount > 0 && (
+                        <p className="text-muted small mt-2 mb-0">{t('candidateReport.basedOnAnswers', { count: emotionSampleCount })}</p>
+                      )}
+                    </Col>
+                    <Col>
+                      <h5>{t('candidateReport.confidenceScore')}</h5>
+                      <div className={`score-circle ${getScoreClass(report.confidence_score ?? 0)}`} style={{ width: '80px', height: '80px', fontSize: '18px' }}>
+                        {formatPercent(report.confidence_score)}
+                      </div>
+                    </Col>
+                  </Row>
+                  {distribution.length > 1 && (
+                    <div className="mt-3">
+                      <small className="text-muted fw-semibold text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>
+                        {t('candidateReport.emotionDistribution')}
+                      </small>
+                      <div className="d-flex flex-wrap justify-content-center gap-1 mt-2">
+                        {distribution.map((d) => (
+                          <span key={d.emotion} className={`emotion-badge ${getEmotionClass(d.emotion)}`}>
+                            {d.emotion} ×{d.count}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-muted mb-0">{t('candidateReport.noEmotionData')}</p>
+              )}
             </Card.Body>
           </Card>
         </Col>

@@ -52,8 +52,16 @@ body {
 .emotion-happy { background-color: #28a745; }
 .emotion-neutral { background-color: #6c757d; }
 .emotion-confident { background-color: #007bff; }
-.emotion-nervous { background-color: #ffc107; }
+.emotion-angry { background-color: #dc3545; }
+.emotion-disgust { background-color: #6f42c1; }
+.emotion-fear { background-color: #fd7e14; }
+.emotion-sad { background-color: #007bff; }
+.emotion-surprise { background-color: #17a2b8; }
+.emotion-nervous { background-color: #e0a800; color: #212529; }
 .emotion-stressed { background-color: #dc3545; }
+.emotion-unknown,
+.emotion-undefined,
+.emotion-none { background-color: #6c757d; }
 
 .score-circle {
   width: 120px;

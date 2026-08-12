@@ -162,16 +162,22 @@ async def generate_interview_pdf(interview_id: int, db: Session) -> str:
     elements.append(Paragraph("Quality Metrics Summary", heading_style))
     
     if responses:
-        avg_voice = sum(r.voice_quality_score or 0 for r in responses) / len(responses)
-        avg_background = sum(r.background_quality_score or 0 for r in responses) / len(responses)
-        avg_face = sum(r.face_visibility_score or 0 for r in responses) / len(responses)
-        avg_lighting = sum(r.lighting_score or 0 for r in responses) / len(responses)
-        
+        def _avg(vals):
+            present = [v for v in vals if v is not None]
+            if not present:
+                return None
+            return sum(present) / len(present)
+
+        avg_voice = _avg([r.voice_quality_score for r in responses])
+        avg_background = _avg([r.background_quality_score for r in responses])
+        avg_face = _avg([r.face_visibility_score for r in responses])
+        avg_lighting = _avg([r.lighting_score for r in responses])
+
         quality_data = [
-            ['Average Voice Quality:', f'{avg_voice:.1f}%'],
-            ['Average Background Quality:', f'{avg_background:.1f}%'],
-            ['Average Face Visibility:', f'{avg_face:.1f}%'],
-            ['Average Lighting:', f'{avg_lighting:.1f}%']
+            ['Average Voice Quality:', _quality_value(avg_voice)],
+            ['Average Background Quality:', _quality_value(avg_background)],
+            ['Average Face Visibility:', _quality_value(avg_face)],
+            ['Average Lighting:', _quality_value(avg_lighting)]
         ]
         
         quality_table = Table(quality_data, colWidths=[2*inch, 4*inch])
@@ -188,6 +194,10 @@ async def generate_interview_pdf(interview_id: int, db: Session) -> str:
     doc.build(elements)
     
     return filename
+
+
+def _quality_value(value: Optional[float]) -> str:
+    return f'{value:.1f}%' if value is not None else 'N/A'
 
 
 async def generate_candidate_pdf(response_id: int, db: Session, include_internal: bool = True) -> str:
@@ -267,8 +277,8 @@ async def generate_candidate_pdf(response_id: int, db: Session, include_internal
     results_data = [
         ['Total Score:', f'{response.total_score or 0:.1f}%'],
         ['Result:', result_text],
-        ['Confidence Score:', f'{response.confidence_score or 50:.1f}%'],
-        ['Dominant Emotion:', (response.dominant_emotion or 'neutral').title()]
+        ['Confidence Score:', f'{response.confidence_score:.1f}%' if response.confidence_score is not None else 'N/A'],
+        ['Dominant Emotion:', (response.dominant_emotion or 'N/A').title()]
     ]
     
     results_table = Table(results_data, colWidths=[2*inch, 4*inch])
@@ -311,10 +321,10 @@ async def generate_candidate_pdf(response_id: int, db: Session, include_internal
     elements.append(Paragraph("Environment Quality Metrics", heading_style))
     
     quality_data = [
-        ['Voice Quality:', f'{response.voice_quality_score or 0:.1f}%'],
-        ['Background Quality:', f'{response.background_quality_score or 0:.1f}%'],
-        ['Face Visibility:', f'{response.face_visibility_score or 0:.1f}%'],
-        ['Lighting:', f'{response.lighting_score or 0:.1f}%']
+        ['Voice Quality:', _quality_value(response.voice_quality_score)],
+        ['Background Quality:', _quality_value(response.background_quality_score)],
+        ['Face Visibility:', _quality_value(response.face_visibility_score)],
+        ['Lighting:', _quality_value(response.lighting_score)]
     ]
     
     quality_table = Table(quality_data, colWidths=[2*inch, 4*inch])
