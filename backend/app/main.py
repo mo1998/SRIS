@@ -2,6 +2,7 @@
 Smart Remote Interview System (SRIS) - Main Application
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -56,7 +57,19 @@ async def lifespan(app: FastAPI):
             target=_maintenance_loop, args=(stop_event,), daemon=True, name="maintenance"
         )
         maintenance_thread.start()
+
+    # Forward cross-process (worker) events to WebSocket clients. The subscriber
+    # runs in a daemon thread (with its own event loop) so it survives reliably
+    # under gunicorn's multi-worker uvicorn workers; broadcasts are scheduled
+    # onto this process's uvicorn event loop.
+    from app.services import events
+    from app.services.events import start_subscriber_daemon
+
+    events.configure_event_loop(asyncio.get_running_loop())
+    start_subscriber_daemon()
+
     yield
+
     stop_event.set()
     if maintenance_thread is not None:
         maintenance_thread.join(timeout=5)
