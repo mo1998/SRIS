@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_current_user
 from app.database import get_db
 from app.models import User
+from app.services.events import emit_data_change
 from app.schemas import NotificationResponse, NotificationsListResponse
 from app.services.notification_service import (
     list_notifications,
@@ -66,6 +67,7 @@ async def mark_read(
     notification = mark_notification_read(db, current_user.id, notification_id)
     if not notification:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+    emit_data_change("notification", {"notification_id": notification.id, "is_read": True})
     return serialize_notification(notification)
 
 
@@ -75,4 +77,6 @@ async def mark_all_read_route(
     db: Session = Depends(get_db),
 ):
     """Mark all of the current user's notifications as read."""
-    return {"marked": mark_all_read(db, current_user.id)}
+    marked = mark_all_read(db, current_user.id)
+    emit_data_change("notification", {"is_read_all": True})
+    return {"marked": marked}

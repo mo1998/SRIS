@@ -12,6 +12,7 @@ from app.models import User, Interview, InterviewQuestion, InterviewStatus, Inte
 from app.schemas import InterviewCreate, InterviewFromTemplateCreate, InterviewResponse, InterviewTemplateResponse, InterviewUpdate, QuestionBankEntryCreate, QuestionBankEntryResponse, QuestionResponse
 from app.api.auth import get_current_user, require_role
 from app.services.audit_service import create_audit_log
+from app.services.events import emit_data_change
 
 router = APIRouter()
 
@@ -331,7 +332,8 @@ async def activate_interview(
     )
     db.commit()
     db.refresh(interview)
-    
+
+    emit_data_change("interview", {"interview_id": interview.id, "status": "active"})
     return interview
 
 
@@ -357,7 +359,8 @@ async def complete_interview(
     )
     db.commit()
     db.refresh(interview)
-    
+
+    emit_data_change("interview", {"interview_id": interview.id, "status": "completed"})
     return interview
 
 
