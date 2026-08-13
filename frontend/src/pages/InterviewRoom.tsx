@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import Webcam from 'react-webcam'
 import { api } from '../services/api'
 import LanguageSwitcher from '../i18n/LanguageSwitcher'
+import SystemCheck from './SystemCheck'
+import PracticeMode from './PracticeMode'
 import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiCheck, FiArrowRight, FiCamera } from 'react-icons/fi'
 
 const InterviewRoom: React.FC = () => {
@@ -28,7 +30,7 @@ const InterviewRoom: React.FC = () => {
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [step, setStep] = useState<'verification' | 'setup' | 'interview' | 'complete'>('verification')
+  const [step, setStep] = useState<'verification' | 'setup' | 'systemcheck' | 'practice' | 'interview' | 'complete'>('verification')
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false)
   const [participationConsented, setParticipationConsented] = useState(false)
   const [deviceCheckStatus, setDeviceCheckStatus] = useState<'idle' | 'checking' | 'passed' | 'failed'>('idle')
@@ -497,13 +499,26 @@ const InterviewRoom: React.FC = () => {
                   {t('interviewRoom.deviceText')}
                 </p>
                 <div className="d-flex flex-wrap gap-2 align-items-center mb-3">
-                  <Button type="button" variant="outline-primary" onClick={checkDevices} disabled={deviceCheckStatus === 'checking'}>
-                    {deviceCheckStatus === 'checking' ? t('interviewRoom.checkingDevices') : t('interviewRoom.checkDevices')}
+                  <Button type="button" variant="outline-primary" onClick={() => { setError(''); setStep('systemcheck') }}>
+                    <FiCamera className="me-2" />
+                    {t('interviewRoom.runSystemCheck')}
                   </Button>
                   {deviceCheckStatus === 'passed' && <span className="text-success">{t('interviewRoom.devicesAvailable')}</span>}
                   {deviceCheckStatus === 'failed' && <span className="text-danger">{t('interviewRoom.deviceFailed')}</span>}
                 </div>
                 {deviceCheckError && <Alert variant="warning" className="mb-0">{deviceCheckError}</Alert>}
+              </Card.Body>
+            </Card>
+
+            <Card className="mb-4 text-start">
+              <Card.Body>
+                <h5>{t('interviewRoom.practiceTitle')}</h5>
+                <p className="text-muted">
+                  {t('interviewRoom.practiceText')}
+                </p>
+                <Button type="button" variant="outline-success" onClick={() => { setError(''); setStep('practice') }}>
+                  {t('interviewRoom.practiceButton')}
+                </Button>
               </Card.Body>
             </Card>
             
@@ -523,6 +538,25 @@ const InterviewRoom: React.FC = () => {
     )
   }
   
+  if (step === 'systemcheck') {
+    return (
+      <SystemCheck
+        onDone={(passed) => {
+          setDeviceCheckStatus(passed ? 'passed' : 'failed')
+          if (!passed) {
+            setDeviceCheckError('')
+            setDeviceCheckStatus('failed')
+          }
+        }}
+        onCancel={() => setStep('setup')}
+      />
+    )
+  }
+
+  if (step === 'practice') {
+    return <PracticeMode onExit={() => setStep('setup')} />
+  }
+
   if (step === 'complete') {
     return (
       <Container className="mt-5">

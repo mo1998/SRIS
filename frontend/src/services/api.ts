@@ -50,6 +50,20 @@ export const api = {
     revoke: (invitationId: number) => axios.post(`${API_URL}/invitations/${invitationId}/revoke`),
     remove: (invitationId: number) => axios.delete(`${API_URL}/invitations/${invitationId}`)
   },
+
+  // Pre-interview system check
+  systemCheck: {
+    ping: () => axios.get(`${API_URL}/system-check/ping`),
+    download: (sizeMb: number) =>
+      axios.get(`${API_URL}/system-check/download`, {
+        params: { size_mb: sizeMb },
+        responseType: 'arraybuffer',
+      }),
+    upload: (payload: Blob) =>
+      axios.post(`${API_URL}/system-check/upload`, payload, {
+        headers: { 'Content-Type': 'application/octet-stream' },
+      }),
+  },
   
   // Responses
   responses: {
