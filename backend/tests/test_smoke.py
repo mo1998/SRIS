@@ -5,6 +5,35 @@ import json
 WAV_BYTES = b"RIFF\x24\x00\x00\x00WAVEfmt "
 
 
+def test_system_check_ping(client):
+    response = client.get("/api/system-check/ping")
+    assert response.status_code == 200, response.text
+    assert "timestamp" in response.json()
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_system_check_download_returns_expected_size(client):
+    response = client.get("/api/system-check/download?size_mb=2")
+    assert response.status_code == 200, response.text
+    assert response.headers["Content-Length"] == str(2 * 1024 * 1024)
+    assert len(response.content) == 2 * 1024 * 1024
+
+
+def test_system_check_download_rejects_oversized_payload(client):
+    response = client.get("/api/system-check/download?size_mb=21")
+    assert response.status_code == 422, response.text
+
+
+def test_system_check_upload_reports_received_bytes(client):
+    response = client.post(
+        "/api/system-check/upload",
+        content=b"x" * (1024 * 1024),
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["received_bytes"] == 1024 * 1024
+
+
 def register_user(client, email="employer@example.com", role="employer"):
     response = client.post(
         "/api/auth/register",

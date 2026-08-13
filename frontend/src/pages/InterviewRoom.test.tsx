@@ -29,6 +29,19 @@ vi.mock('react-webcam', () => ({
   default: () => <div data-testid="webcam" />,
 }))
 
+vi.mock('./SystemCheck', () => ({
+  default: ({ onDone, onCancel }: any) => (
+    <div>
+      <button onClick={() => { onDone(true); onCancel() }}>System check pass</button>
+      <button onClick={() => { onDone(false); onCancel() }}>System check fail</button>
+    </div>
+  ),
+}))
+
+vi.mock('./PracticeMode', () => ({
+  default: ({ onExit }: any) => <button onClick={onExit}>Finish practice</button>,
+}))
+
 const renderPage = (token = 'valid-token') => render(
   <MemoryRouter initialEntries={[`/interview/${token}`]}>
     <Routes>
@@ -102,7 +115,8 @@ describe('InterviewRoom token verification', () => {
     expect(screen.getByRole('button', { name: /start interview/i })).toBeDisabled()
 
     getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
-    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run system check/i }))
+    await userEvent.click(screen.getByRole('button', { name: /system check pass/i }))
     expect(await screen.findByText(/camera and microphone are available/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /start interview/i })).toBeEnabled()
   })
@@ -137,7 +151,8 @@ describe('InterviewRoom token verification', () => {
     await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
     await userEvent.click(screen.getByLabelText(/i consent to participate/i))
     getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
-    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run system check/i }))
+    await userEvent.click(screen.getByRole('button', { name: /system check pass/i }))
     expect(await screen.findByText(/camera and microphone are available/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /start interview/i }))
 
@@ -184,7 +199,8 @@ describe('InterviewRoom token verification', () => {
     await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
     await userEvent.click(screen.getByLabelText(/i consent to participate/i))
     getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
-    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run system check/i }))
+    await userEvent.click(screen.getByRole('button', { name: /system check pass/i }))
     await userEvent.click(await screen.findByRole('button', { name: /start interview/i }))
 
     expect(await screen.findByDisplayValue('Previously saved answer')).toBeInTheDocument()
@@ -232,7 +248,8 @@ describe('InterviewRoom token verification', () => {
     await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
     await userEvent.click(screen.getByLabelText(/i consent to participate/i))
     getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
-    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run system check/i }))
+    await userEvent.click(screen.getByRole('button', { name: /system check pass/i }))
     await userEvent.click(await screen.findByRole('button', { name: /start interview/i }))
     await userEvent.type(await screen.findByLabelText(/your answer/i), 'I would listen and follow up.')
     await userEvent.click(screen.getByRole('button', { name: /submit & complete/i }))
@@ -279,7 +296,8 @@ describe('InterviewRoom token verification', () => {
     await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
     await userEvent.click(screen.getByLabelText(/i consent to participate/i))
     getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
-    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run system check/i }))
+    await userEvent.click(screen.getByRole('button', { name: /system check pass/i }))
     await userEvent.click(await screen.findByRole('button', { name: /start interview/i }))
     await userEvent.type(await screen.findByLabelText(/your answer/i), 'Retryable answer')
     await userEvent.click(screen.getByRole('button', { name: /submit & complete/i }))
@@ -315,19 +333,49 @@ describe('InterviewRoom token verification', () => {
         },
       },
     })
-    getUserMediaMock.mockRejectedValue(new Error('Permission denied'))
-
     renderPage()
 
     expect(await screen.findByText(/invitation verified/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /continue to setup/i }))
     await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
     await userEvent.click(screen.getByLabelText(/i consent to participate/i))
-    await userEvent.click(screen.getByRole('button', { name: /check camera and microphone/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run system check/i }))
+    await userEvent.click(screen.getByRole('button', { name: /system check fail/i }))
 
     expect(await screen.findByText(/device check failed/i)).toBeInTheDocument()
-    expect(screen.getByText(/permission denied/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /start interview/i })).toBeDisabled()
+    expect(apiMock.responses.start).not.toHaveBeenCalled()
+  })
+
+  it('opens practice mode from setup and returns on exit', async () => {
+    apiMock.invitations.verify.mockResolvedValue({
+      data: {
+        id: 12,
+        interview_id: 4,
+        candidate_email: 'candidate@example.com',
+        candidate_name: 'Candidate One',
+        status: 'sent',
+        expires_at: '2026-07-25T00:00:00Z',
+        interview: {
+          id: 4,
+          title: 'Support Screen',
+          description: 'Structured support interview',
+          duration_minutes: 30,
+          max_attempts: 1,
+          questions: [
+            { id: 20, question_text: 'How do you handle an upset customer?', question_type: 'text', weight: 1, order_index: 0 },
+          ],
+        },
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText(/invitation verified/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /continue to setup/i }))
+    await userEvent.click(screen.getByRole('button', { name: /try a practice question/i }))
+    await userEvent.click(screen.getByRole('button', { name: /finish practice/i }))
+    expect(screen.getByText(/interview instructions/i)).toBeInTheDocument()
     expect(apiMock.responses.start).not.toHaveBeenCalled()
   })
 
