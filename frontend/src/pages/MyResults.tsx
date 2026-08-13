@@ -72,8 +72,8 @@ const MyResults: React.FC = () => {
                       {result.passed ? t('common.passed') : t('common.failed')}
                     </Badge>
                   </td>
-                  <td>{result.confidence_score?.toFixed(1)}%</td>
-                  <td>{result.voice_quality?.toFixed(1)}%</td>
+                  <td>{result.confidence_score != null ? `${result.confidence_score.toFixed(1)}%` : ''}</td>
+                  <td>{result.voice_quality != null ? `${result.voice_quality.toFixed(1)}%` : ''}</td>
                   <td className="text-muted small">
                     {result.completed_at ? new Date(result.completed_at).toLocaleDateString() : t('common.n/a')}
                   </td>

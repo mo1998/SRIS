@@ -48,4 +48,25 @@ describe('MyResults', () => {
     expect(screen.getByText('PASSED')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /view/i })).toBeInTheDocument()
   })
+
+  it('shows empty confidence and voice quality cells when no data is available', async () => {
+    apiMock.reports.getMyResults.mockResolvedValue({
+      data: [
+        {
+          response_id: 100,
+          interview_title: 'Missing Metrics Screen',
+          total_score: 90,
+          passed: true,
+          confidence_score: null,
+          voice_quality: null,
+          completed_at: '2026-07-20T00:00:00Z',
+        },
+      ],
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Missing Metrics Screen')).toBeInTheDocument()
+    expect(screen.queryByText('%')).not.toBeInTheDocument()
+  })
 })
