@@ -19,6 +19,7 @@ const apiMock = vi.hoisted(() => ({
     preview: vi.fn(),
     resend: vi.fn(),
     revoke: vi.fn(),
+    remove: vi.fn(),
   },
   reports: {
     downloadInterviewPdf: vi.fn(),
@@ -56,6 +57,7 @@ describe('InterviewDetail', () => {
     apiMock.invitations.preview.mockReset()
     apiMock.invitations.resend.mockReset()
     apiMock.invitations.revoke.mockReset()
+    apiMock.invitations.remove.mockReset()
     apiMock.reports.downloadInterviewPdf.mockReset()
     apiMock.reports.reevaluateInterview.mockReset()
     apiMock.reports.getInterviewEvaluationAnalytics.mockReset()
@@ -322,6 +324,34 @@ describe('InterviewDetail', () => {
     await waitFor(() => {
       expect(apiMock.invitations.revoke).toHaveBeenCalledWith(50)
     })
+  })
+
+  it('removes a completed invitation from the invitation table', async () => {
+    apiMock.invitations.list.mockResolvedValue({
+      data: [
+        {
+          id: 50,
+          candidate_name: 'Candidate One',
+          candidate_email: 'candidate@example.com',
+          status: 'completed',
+          sent_at: '2026-07-18T00:00:00Z',
+        },
+      ],
+    })
+    apiMock.invitations.remove.mockResolvedValue({ data: {} })
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    renderPage()
+
+    expect(await screen.findByText('Candidate One')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /remove/i }))
+
+    await waitFor(() => {
+      expect(apiMock.invitations.remove).toHaveBeenCalledWith(50)
+    })
+
+    confirmSpy.mockRestore()
   })
 
   it('validates bulk invite rows before submitting', async () => {

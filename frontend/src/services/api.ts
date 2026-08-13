@@ -47,7 +47,8 @@ export const api = {
     verify: (token: string) => axios.get(`${API_URL}/invitations/verify/${token}`),
     getResults: (token: string) => axios.get(`${API_URL}/invitations/${token}/results`),
     resend: (invitationId: number) => axios.post(`${API_URL}/invitations/${invitationId}/resend`),
-    revoke: (invitationId: number) => axios.post(`${API_URL}/invitations/${invitationId}/revoke`)
+    revoke: (invitationId: number) => axios.post(`${API_URL}/invitations/${invitationId}/revoke`),
+    remove: (invitationId: number) => axios.delete(`${API_URL}/invitations/${invitationId}`)
   },
   
   // Responses
