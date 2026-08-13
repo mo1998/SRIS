@@ -3,7 +3,7 @@ import { Card, Row, Col, Button, Table, Badge, Modal, Form, Alert, Tabs, Tab } f
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
-import { FiMail, FiDownload, FiEye, FiActivity, FiEdit, FiPlus, FiTrash2 } from 'react-icons/fi'
+import { FiMail, FiDownload, FiEye, FiActivity, FiEdit, FiPlus, FiTrash2, FiXCircle } from 'react-icons/fi'
 import { useRealTimeRefresh } from '../hooks/useRealTimeRefresh'
 
 const MAX_BULK_INVITATIONS = 100
@@ -327,18 +327,34 @@ const InterviewDetail: React.FC = () => {
     }
   }
 
-  const handleRemoveInvitation = async (invitationId: number) => {
-    if (!confirm(t('interviewDetail.removeConfirm'))) {
+  const handleCancelInvitation = async (invitationId: number) => {
+    if (!confirm(t('interviewDetail.cancelConfirm'))) {
       return
     }
 
     setError('')
     try {
-      await api.invitations.remove(invitationId)
-      setMessage(t('interviewDetail.invitationRemoved'))
+      await api.invitations.cancel(invitationId)
+      setMessage(t('interviewDetail.invitationCancelled'))
       loadData()
     } catch (err: any) {
-      setError(err.response?.data?.detail || t('interviewDetail.removeFailed'))
+      setError(err.response?.data?.detail || t('interviewDetail.cancelFailed'))
+    }
+  }
+
+  const handleCancelAllInvitations = async () => {
+    if (!confirm(t('interviewDetail.cancelAllConfirm'))) {
+      return
+    }
+
+    setError('')
+    setMessage('')
+    try {
+      await api.invitations.cancelAll(parseInt(id!))
+      setMessage(t('interviewDetail.invitationsCancelled'))
+      loadData()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || t('interviewDetail.cancelAllFailed'))
     }
   }
 
@@ -811,7 +827,15 @@ const InterviewDetail: React.FC = () => {
           
           <Card>
             <Card.Header>
-              <h5 className="mb-0">{t('interviewDetail.invitations', { count: invitations.length })}</h5>
+              <div className="d-flex justify-content-between align-items-center">
+                <h5 className="mb-0">{t('interviewDetail.invitations', { count: invitations.length })}</h5>
+                {invitations.some((inv) => inv.status === 'completed') && (
+                  <Button size="sm" variant="outline-danger" onClick={handleCancelAllInvitations}>
+                    <FiXCircle className="me-1" />
+                    {t('interviewDetail.cancelAll')}
+                  </Button>
+                )}
+              </div>
             </Card.Header>
             <Card.Body>
               {invitations.length === 0 ? (
@@ -845,30 +869,34 @@ const InterviewDetail: React.FC = () => {
                         <td>{inv.sent_at ? new Date(inv.sent_at).toLocaleDateString() : t('interviewDetail.notSent')}</td>
                         <td>
                           <div className="d-flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline-primary"
-                              onClick={() => handleResendInvitation(inv.id)}
-                              disabled={inv.status === 'completed' || inv.status === 'revoked'}
-                            >
-                              {t('interviewDetail.resend')}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline-danger"
-                              onClick={() => handleRevokeInvitation(inv.id)}
-                              disabled={inv.status === 'completed' || inv.status === 'revoked'}
-                            >
-                              {t('interviewDetail.revoke')}
-                            </Button>
-                            {inv.status === 'completed' && (
+                            {inv.status === 'completed' ? (
                               <Button
                                 size="sm"
-                                variant="outline-secondary"
-                                onClick={() => handleRemoveInvitation(inv.id)}
+                                variant="outline-danger"
+                                onClick={() => handleCancelInvitation(inv.id)}
                               >
-                                {t('interviewDetail.remove')}
+                                <FiXCircle className="me-1" />
+                                {t('interviewDetail.cancelInvitation')}
                               </Button>
+                            ) : (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline-primary"
+                                  onClick={() => handleResendInvitation(inv.id)}
+                                  disabled={inv.status === 'revoked'}
+                                >
+                                  {t('interviewDetail.resend')}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline-danger"
+                                  onClick={() => handleRevokeInvitation(inv.id)}
+                                  disabled={inv.status === 'revoked'}
+                                >
+                                  {t('interviewDetail.revoke')}
+                                </Button>
+                              </>
                             )}
                           </div>
                         </td>
@@ -999,21 +1027,23 @@ const InterviewDetail: React.FC = () => {
                       <td><Badge bg="secondary">{inv.status}</Badge></td>
                       <td>
                         <div className="d-flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline-danger"
-                            onClick={() => handleRevokeInvitation(inv.id)}
-                            disabled={inv.status === 'completed' || inv.status === 'revoked'}
-                          >
-                            {t('interviewDetail.revoke')}
-                          </Button>
-                          {inv.status === 'completed' && (
+                          {inv.status === 'completed' ? (
                             <Button
                               size="sm"
-                              variant="outline-secondary"
-                              onClick={() => handleRemoveInvitation(inv.id)}
+                              variant="outline-danger"
+                              onClick={() => handleCancelInvitation(inv.id)}
                             >
-                              {t('interviewDetail.remove')}
+                              <FiXCircle className="me-1" />
+                              {t('interviewDetail.cancelInvitation')}
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline-danger"
+                              onClick={() => handleRevokeInvitation(inv.id)}
+                              disabled={inv.status === 'revoked'}
+                            >
+                              {t('interviewDetail.revoke')}
                             </Button>
                           )}
                         </div>

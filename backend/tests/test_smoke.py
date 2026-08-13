@@ -1349,11 +1349,11 @@ def test_completed_invitation_can_be_deleted(client, monkeypatch):
     assert list_response.status_code == 200, list_response.text
     assert list_response.json()[0]["status"] == "completed"
 
-    delete_response = client.delete(
-        f"/api/invitations/{invitation['id']}",
+    cancel_response = client.delete(
+        f"/api/invitations/{invitation['id']}/cancel",
         headers={"Authorization": f"Bearer {owner_token}"},
     )
-    assert delete_response.status_code == 204, delete_response.text
+    assert cancel_response.status_code == 204, cancel_response.text
 
     list_after = client.get(
         f"/api/invitations/{interview['id']}",
@@ -1362,24 +1362,29 @@ def test_completed_invitation_can_be_deleted(client, monkeypatch):
     assert list_after.status_code == 200, list_after.text
     assert list_after.json() == []
 
-    # Response and evaluation data preserved; invitation link detached.
+    # Response and its answers are hard-deleted together with the invitation.
     response_after = client.get(
         f"/api/responses/{candidate_response['id']}",
         headers={"Authorization": f"Bearer {owner_token}"},
     )
-    assert response_after.status_code == 200, response_after.text
-    assert response_after.json()["status"] == "completed"
+    assert response_after.status_code == 404, response_after.text
 
     from app.database import SessionLocal
-    from app.models import AuditLog, CandidateResponse
+    from app.models import AuditLog, CandidateResponse, QuestionAnswer
 
     db = SessionLocal()
     try:
         stored_response = db.query(CandidateResponse).filter(CandidateResponse.id == candidate_response["id"]).first()
-        assert stored_response is not None
-        assert stored_response.invitation_id is None
+        assert stored_response is None
 
-        audit_log = db.query(AuditLog).filter(AuditLog.action == "invitation.deleted").first()
+        answer_count = (
+            db.query(QuestionAnswer)
+            .filter(QuestionAnswer.response_id == candidate_response["id"])
+            .count()
+        )
+        assert answer_count == 0
+
+        audit_log = db.query(AuditLog).filter(AuditLog.action == "invitation.cancelled").first()
         assert audit_log is not None
         assert audit_log.target_id == invitation["id"]
         assert json.loads(audit_log.details)["candidate_email"] == "completed@example.com"
@@ -1415,11 +1420,128 @@ def test_non_completed_invitation_cannot_be_deleted(client, monkeypatch):
     invitation = create_response.json()
 
     delete_response = client.delete(
-        f"/api/invitations/{invitation['id']}",
+        f"/api/invitations/{invitation['id']}/cancel",
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     assert delete_response.status_code == 400, delete_response.text
-    assert delete_response.json()["detail"] == "Only completed invitations can be removed"
+    assert delete_response.json()["detail"] == "Only completed invitations can be cancelled"
+
+
+def complete_invited_response(client, interview, invitation):
+    start_response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": invitation["candidate_email"],
+            "candidate_name": invitation["candidate_name"],
+            "invitation_token": invitation["unique_token"],
+        },
+    )
+    assert start_response.status_code == 201, start_response.text
+    candidate_response = start_response.json()
+
+    answer_response = client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "I listen, empathize, clarify, take ownership, resolve, and follow up with the customer.",
+            "time_taken_seconds": 120,
+        },
+    )
+    assert answer_response.status_code == 200, answer_response.text
+
+    complete_response = client.post(f"/api/responses/{candidate_response['id']}/complete")
+    assert complete_response.status_code == 200, complete_response.text
+    return candidate_response
+
+
+def test_cancel_all_completed_invitations_deletes_responses(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    response_ids = []
+    for email, name in (
+        ("cancel-a@example.com", "Cancel A"),
+        ("cancel-b@example.com", "Cancel B"),
+    ):
+        create_response = client.post(
+            "/api/invitations/",
+            headers={"Authorization": f"Bearer {owner_token}"},
+            json={
+                "interview_id": interview["id"],
+                "candidate_email": email,
+                "candidate_name": name,
+            },
+        )
+        assert create_response.status_code == 201, create_response.text
+        candidate_response = complete_invited_response(client, interview, create_response.json())
+        response_ids.append(candidate_response["id"])
+
+    cancel_all_response = client.delete(
+        f"/api/invitations/{interview['id']}/cancel-all",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert cancel_all_response.status_code == 204, cancel_all_response.text
+
+    list_after = client.get(
+        f"/api/invitations/{interview['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert list_after.status_code == 200, list_after.text
+    assert list_after.json() == []
+
+    for response_id in response_ids:
+        response_after = client.get(
+            f"/api/responses/{response_id}",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        assert response_after.status_code == 404, response_after.text
+
+    from app.database import SessionLocal
+    from app.models import AuditLog
+
+    db = SessionLocal()
+    try:
+        audit_log = db.query(AuditLog).filter(AuditLog.action == "invitation.cancelled_all").first()
+        assert audit_log is not None
+        assert audit_log.target_id == interview["id"]
+        assert json.loads(audit_log.details)["cancelled_count"] == 2
+    finally:
+        db.close()
+
+
+def test_cancel_all_rejects_when_no_completed_invitations(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    cancel_all_response = client.delete(
+        f"/api/invitations/{interview['id']}/cancel-all",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert cancel_all_response.status_code == 400, cancel_all_response.text
+    assert cancel_all_response.json()["detail"] == "No completed invitations to cancel"
 
 
 def test_cross_organization_employer_cannot_delete_invitation(client, monkeypatch):
@@ -1453,7 +1575,7 @@ def test_cross_organization_employer_cannot_delete_invitation(client, monkeypatc
     other_token = login_user(client, email="other-employer@example.com")
 
     delete_response = client.delete(
-        f"/api/invitations/{invitation['id']}",
+        f"/api/invitations/{invitation['id']}/cancel",
         headers={"Authorization": f"Bearer {other_token}"},
     )
     assert delete_response.status_code == 403, delete_response.text
