@@ -411,17 +411,17 @@ async def revoke_invitation(
     return invitation
 
 
-@router.delete("/{invitation_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_completed_invitation(
+@router.delete("/{invitation_id}/cancel", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_completed_invitation(
     invitation_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a completed invitation.
+    """Cancel a completed invitation and delete the candidate's response.
 
-    Only invitations with status ``completed`` can be removed. Linked candidate
-    responses are preserved; their invitation reference is detached so
-    evaluation and report data stays intact.
+    Hard-deletes the linked candidate responses (answers, evaluation runs,
+    integrity events and uploaded media) together with the invitation. Only
+    invitations with status ``completed`` can be cancelled.
     """
     invitation = db.query(Invitation).filter(Invitation.id == invitation_id).first()
 
@@ -434,17 +434,20 @@ async def delete_completed_invitation(
     if invitation.status != InvitationStatus.COMPLETED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only completed invitations can be removed",
+            detail="Only completed invitations can be cancelled",
         )
 
-    db.query(CandidateResponse).filter(CandidateResponse.invitation_id == invitation.id).update(
-        {"invitation_id": None}
-    )
+    from app.api.responses import delete_answer_media_files
+
+    responses = db.query(CandidateResponse).filter(CandidateResponse.invitation_id == invitation.id).all()
+    for response in responses:
+        delete_answer_media_files(response)
+        db.delete(response)
 
     create_audit_log(
         db,
         actor=current_user,
-        action="invitation.deleted",
+        action="invitation.cancelled",
         target_type="invitation",
         target_id=invitation.id,
         organization_id=interview.organization_id,
@@ -452,6 +455,54 @@ async def delete_completed_invitation(
     )
 
     db.delete(invitation)
+    db.commit()
+
+
+@router.delete("/{interview_id}/cancel-all", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_all_completed_invitations(
+    interview_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cancel every completed invitation for an interview.
+
+    Deletes each completed invitation together with its candidate response,
+    answers, evaluation runs, integrity events and uploaded media.
+    """
+    interview = get_interview_or_404(interview_id, db)
+    require_invitation_manager(interview, current_user, db)
+
+    invitations = db.query(Invitation).filter(
+        Invitation.interview_id == interview_id,
+        Invitation.status == InvitationStatus.COMPLETED,
+    ).all()
+
+    if not invitations:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No completed invitations to cancel",
+        )
+
+    from app.api.responses import delete_answer_media_files
+
+    for invitation in invitations:
+        responses = db.query(CandidateResponse).filter(CandidateResponse.invitation_id == invitation.id).all()
+        for response in responses:
+            delete_answer_media_files(response)
+            db.delete(response)
+
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="invitation.cancelled_all",
+        target_type="interview",
+        target_id=interview_id,
+        organization_id=interview.organization_id,
+        details={"interview_id": interview_id, "cancelled_count": len(invitations)},
+    )
+
+    for invitation in invitations:
+        db.delete(invitation)
     db.commit()
 
 

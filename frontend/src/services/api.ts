@@ -48,7 +48,8 @@ export const api = {
     getResults: (token: string) => axios.get(`${API_URL}/invitations/${token}/results`),
     resend: (invitationId: number) => axios.post(`${API_URL}/invitations/${invitationId}/resend`),
     revoke: (invitationId: number) => axios.post(`${API_URL}/invitations/${invitationId}/revoke`),
-    remove: (invitationId: number) => axios.delete(`${API_URL}/invitations/${invitationId}`)
+    cancel: (invitationId: number) => axios.delete(`${API_URL}/invitations/${invitationId}/cancel`),
+    cancelAll: (interviewId: number) => axios.delete(`${API_URL}/invitations/${interviewId}/cancel-all`),
   },
 
   // Pre-interview system check
