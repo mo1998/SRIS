@@ -34,7 +34,7 @@ def login_tokens(client, email="employer@example.com"):
     return response.json()
 
 
-def test_ws_connect_with_valid_token_receives_connected(client):
+def test_ws_connect_with_valid_token_receives_connected(client, wait_ws_disconnect):
     register_user(client, email="ws@example.com", role="employer")
     token = login_tokens(client, email="ws@example.com")["access_token"]
 
@@ -44,7 +44,7 @@ def test_ws_connect_with_valid_token_receives_connected(client):
         assert msg["event"] == "connected"
         assert msg["role"] == "employer"
 
-    assert ws_manager.connection_count == 0
+    wait_ws_disconnect(ws_manager, 0)
 
 
 def test_ws_rejects_missing_token(client):

@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from pathlib import Path
 
 # Each xdist worker gets its own SQLite file to avoid cross-process lock contention.
@@ -30,6 +31,21 @@ def reset_database():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+def wait_for_connection_count(ws_manager, expected, timeout=5.0):
+    """Server-side disconnect runs in the TestClient's portal thread; poll until it lands."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if ws_manager.connection_count == expected:
+            return
+        time.sleep(0.05)
+    assert ws_manager.connection_count == expected
+
+
+@pytest.fixture
+def wait_ws_disconnect():
+    return wait_for_connection_count
 
 
 @pytest.fixture

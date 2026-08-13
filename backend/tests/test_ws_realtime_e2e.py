@@ -41,7 +41,7 @@ def login_tokens(client, email="employer@example.com"):
     return response.json()
 
 
-def test_action_pushes_data_changed_to_ws_client(client, monkeypatch):
+def test_action_pushes_data_changed_to_ws_client(client, monkeypatch, wait_ws_disconnect):
     user = register_user(client, email="e2e@example.com", role="employer")
     token = login_tokens(client, email="e2e@example.com")["access_token"]
 
@@ -69,4 +69,4 @@ def test_action_pushes_data_changed_to_ws_client(client, monkeypatch):
         assert msg["event"] == "data_changed"
         assert msg["category"] == "notification"
 
-    assert ws_manager.connection_count == 0
+    wait_ws_disconnect(ws_manager, 0)
