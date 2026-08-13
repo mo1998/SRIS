@@ -327,6 +327,21 @@ const InterviewDetail: React.FC = () => {
     }
   }
 
+  const handleRemoveInvitation = async (invitationId: number) => {
+    if (!confirm(t('interviewDetail.removeConfirm'))) {
+      return
+    }
+
+    setError('')
+    try {
+      await api.invitations.remove(invitationId)
+      setMessage(t('interviewDetail.invitationRemoved'))
+      loadData()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || t('interviewDetail.removeFailed'))
+    }
+  }
+
   const handlePreviewEmail = async () => {
     setPreviewError('')
     setPreviewLoading(true)
@@ -846,6 +861,15 @@ const InterviewDetail: React.FC = () => {
                             >
                               {t('interviewDetail.revoke')}
                             </Button>
+                            {inv.status === 'completed' && (
+                              <Button
+                                size="sm"
+                                variant="outline-secondary"
+                                onClick={() => handleRemoveInvitation(inv.id)}
+                              >
+                                {t('interviewDetail.remove')}
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -974,14 +998,25 @@ const InterviewDetail: React.FC = () => {
                       <td>{inv.candidate_email}</td>
                       <td><Badge bg="secondary">{inv.status}</Badge></td>
                       <td>
-                        <Button
-                          size="sm"
-                          variant="outline-danger"
-                          onClick={() => handleRevokeInvitation(inv.id)}
-                          disabled={inv.status === 'completed' || inv.status === 'revoked'}
-                        >
-                          {t('interviewDetail.revoke')}
-                        </Button>
+                        <div className="d-flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline-danger"
+                            onClick={() => handleRevokeInvitation(inv.id)}
+                            disabled={inv.status === 'completed' || inv.status === 'revoked'}
+                          >
+                            {t('interviewDetail.revoke')}
+                          </Button>
+                          {inv.status === 'completed' && (
+                            <Button
+                              size="sm"
+                              variant="outline-secondary"
+                              onClick={() => handleRemoveInvitation(inv.id)}
+                            >
+                              {t('interviewDetail.remove')}
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

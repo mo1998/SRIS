@@ -1261,6 +1261,175 @@ def test_invitation_can_be_revoked(client, monkeypatch):
     assert resend_response.status_code == 400, resend_response.text
 
 
+def test_completed_invitation_can_be_deleted(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    create_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": "completed@example.com",
+            "candidate_name": "Completed Candidate",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    invitation = create_response.json()
+
+    start_response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": invitation["candidate_email"],
+            "candidate_name": invitation["candidate_name"],
+            "invitation_token": invitation["unique_token"],
+        },
+    )
+    assert start_response.status_code == 201, start_response.text
+    candidate_response = start_response.json()
+
+    answer_response = client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "I listen, empathize, clarify, take ownership, resolve, and follow up with the customer.",
+            "time_taken_seconds": 120,
+        },
+    )
+    assert answer_response.status_code == 200, answer_response.text
+
+    complete_response = client.post(f"/api/responses/{candidate_response['id']}/complete")
+    assert complete_response.status_code == 200, complete_response.text
+
+    list_response = client.get(
+        f"/api/invitations/{interview['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert list_response.status_code == 200, list_response.text
+    assert list_response.json()[0]["status"] == "completed"
+
+    delete_response = client.delete(
+        f"/api/invitations/{invitation['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert delete_response.status_code == 204, delete_response.text
+
+    list_after = client.get(
+        f"/api/invitations/{interview['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert list_after.status_code == 200, list_after.text
+    assert list_after.json() == []
+
+    # Response and evaluation data preserved; invitation link detached.
+    response_after = client.get(
+        f"/api/responses/{candidate_response['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert response_after.status_code == 200, response_after.text
+    assert response_after.json()["status"] == "completed"
+
+    from app.database import SessionLocal
+    from app.models import AuditLog, CandidateResponse
+
+    db = SessionLocal()
+    try:
+        stored_response = db.query(CandidateResponse).filter(CandidateResponse.id == candidate_response["id"]).first()
+        assert stored_response is not None
+        assert stored_response.invitation_id is None
+
+        audit_log = db.query(AuditLog).filter(AuditLog.action == "invitation.deleted").first()
+        assert audit_log is not None
+        assert audit_log.target_id == invitation["id"]
+        assert json.loads(audit_log.details)["candidate_email"] == "completed@example.com"
+    finally:
+        db.close()
+
+
+def test_non_completed_invitation_cannot_be_deleted(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    create_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": "pending@example.com",
+            "candidate_name": "Pending Candidate",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    invitation = create_response.json()
+
+    delete_response = client.delete(
+        f"/api/invitations/{invitation['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert delete_response.status_code == 400, delete_response.text
+    assert delete_response.json()["detail"] == "Only completed invitations can be removed"
+
+
+def test_cross_organization_employer_cannot_delete_invitation(client, monkeypatch):
+    async def noop_send_invitation_email(**kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.invitations.send_invitation_email", noop_send_invitation_email)
+
+    register_user(client)
+    owner_token = login_user(client)
+    interview = create_interview(client, owner_token)
+    activate_response = client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert activate_response.status_code == 200, activate_response.text
+
+    create_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": "candidate@example.com",
+            "candidate_name": "Candidate One",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    invitation = create_response.json()
+
+    register_user(client, email="other-employer@example.com")
+    other_token = login_user(client, email="other-employer@example.com")
+
+    delete_response = client.delete(
+        f"/api/invitations/{invitation['id']}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert delete_response.status_code == 403, delete_response.text
+
+
 def start_candidate_response(client, interview_id, email="candidate@example.com", name="Candidate One"):
     response = client.post(
         "/api/responses/",

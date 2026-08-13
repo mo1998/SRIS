@@ -411,6 +411,50 @@ async def revoke_invitation(
     return invitation
 
 
+@router.delete("/{invitation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_completed_invitation(
+    invitation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a completed invitation.
+
+    Only invitations with status ``completed`` can be removed. Linked candidate
+    responses are preserved; their invitation reference is detached so
+    evaluation and report data stays intact.
+    """
+    invitation = db.query(Invitation).filter(Invitation.id == invitation_id).first()
+
+    if not invitation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+    interview = get_interview_or_404(invitation.interview_id, db)
+    require_invitation_manager(interview, current_user, db)
+
+    if invitation.status != InvitationStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only completed invitations can be removed",
+        )
+
+    db.query(CandidateResponse).filter(CandidateResponse.invitation_id == invitation.id).update(
+        {"invitation_id": None}
+    )
+
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="invitation.deleted",
+        target_type="invitation",
+        target_id=invitation.id,
+        organization_id=interview.organization_id,
+        details={"interview_id": interview.id, "candidate_email": invitation.candidate_email},
+    )
+
+    db.delete(invitation)
+    db.commit()
+
+
 @router.post("/{invitation_id}/resend", status_code=status.HTTP_200_OK)
 async def resend_invitation(
     invitation_id: int,
