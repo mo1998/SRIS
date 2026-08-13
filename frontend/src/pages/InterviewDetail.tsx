@@ -4,6 +4,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { FiMail, FiDownload, FiEye, FiActivity, FiEdit, FiPlus, FiTrash2 } from 'react-icons/fi'
+import { useRealTimeRefresh } from '../hooks/useRealTimeRefresh'
 
 const MAX_BULK_INVITATIONS = 100
 
@@ -71,9 +72,12 @@ const InterviewDetail: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+   }
 
-  const normalizeQuestions = (questions: any[]) => questions.map((question, index) => ({
+   // Live-update when responses, evaluations, decisions, or interview status change.
+   useRealTimeRefresh(loadData, [])
+
+   const normalizeQuestions = (questions: any[]) => questions.map((question, index) => ({
     question_text: question.question_text || '',
     expected_answer: question.expected_answer || '',
     question_type: question.question_type || 'text',

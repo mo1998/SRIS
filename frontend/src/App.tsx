@@ -17,6 +17,7 @@ import AccountSettings from './pages/AccountSettings'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import UpdateBanner from './components/ui/UpdateBanner'
+import { RealTimeProvider } from './components/RealTimeProvider'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; roles?: string[] }> = ({ children, roles }) => {
   const { isAuthenticated, isLoading, user } = useAuth()
@@ -144,7 +145,9 @@ function App() {
   return (
     <AuthProvider>
       <UpdateBanner />
-      <AppRoutes />
+      <RealTimeProvider>
+        <AppRoutes />
+      </RealTimeProvider>
     </AuthProvider>
   )
 }

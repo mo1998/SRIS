@@ -6,6 +6,7 @@ import { api } from '../services/api'
 import { useAuth } from '../store/authStore'
 import { FiArrowLeft, FiDownload } from 'react-icons/fi'
 import InterviewFeedbackCard from '../components/ui/InterviewFeedbackCard'
+import { useRealTimeRefresh } from '../hooks/useRealTimeRefresh'
 
 const CandidateReport: React.FC = () => {
   const { t } = useTranslation()
@@ -39,9 +40,12 @@ const CandidateReport: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
-  
-  const handleDownloadPdf = async () => {
+   }
+
+   // Live-update when an evaluation completes or a decision/scorecard is recorded.
+   useRealTimeRefresh(loadReport, [])
+
+   const handleDownloadPdf = async () => {
     try {
       const response = await api.reports.downloadCandidatePdf(parseInt(responseId!))
       const url = window.URL.createObjectURL(new Blob([response.data]))

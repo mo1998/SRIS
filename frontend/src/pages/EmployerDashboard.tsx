@@ -11,6 +11,7 @@ import EmptyState from '../components/ui/EmptyState'
 import ErrorAlert from '../components/ui/ErrorAlert'
 import ConfirmModal from '../components/ui/ConfirmModal'
 import { useToast } from '../hooks/useToast'
+import { useRealTimeRefresh } from '../hooks/useRealTimeRefresh'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -83,9 +84,13 @@ const EmployerDashboard: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+   }
 
-  const handleAddMember = async (event: React.FormEvent) => {
+   // Keep the dashboard in sync when interviews/responses/evaluations/decisions
+   // change anywhere in the system, without a manual refresh.
+   useRealTimeRefresh(loadInterviews, [])
+
+   const handleAddMember = async (event: React.FormEvent) => {
     event.preventDefault()
     setTeamError('')
     setAddingMember(true)
