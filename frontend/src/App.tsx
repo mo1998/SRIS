@@ -14,6 +14,7 @@ import InterviewRoom from './pages/InterviewRoom'
 import ResultsPortal from './pages/ResultsPortal'
 import MyResults from './pages/MyResults'
 import AccountSettings from './pages/AccountSettings'
+import PracticeArea from './pages/PracticeArea'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import UpdateBanner from './components/ui/UpdateBanner'
@@ -128,6 +129,12 @@ const AppRoutes: React.FC = () => {
         <Route path="/employee/results" element={
           <ProtectedRoute roles={['employee']}>
             <AuthenticatedLayout><MyResults /></AuthenticatedLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/employee/practice" element={
+          <ProtectedRoute roles={['employee']}>
+            <AuthenticatedLayout><PracticeArea /></AuthenticatedLayout>
           </ProtectedRoute>
         } />
 

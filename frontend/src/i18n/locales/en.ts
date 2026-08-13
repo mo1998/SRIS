@@ -42,7 +42,8 @@ export default {
     sectionGeneral: 'General',
     dashboard: 'Dashboard',
     createInterview: 'Create Interview',
-    myResults: 'My Results',
+     myResults: 'My Results',
+    practiceArea: 'Practice Area',
     accountSettings: 'Account Settings',
   },
   topbar: {
@@ -465,6 +466,17 @@ export default {
     backToSetup: 'Back to Setup',
     recordFailed: 'Failed to start recording.',
     noRecordStored: 'Practice recordings are never stored or uploaded.',
+  },
+  practiceArea: {
+    subtitle: 'Run a system check and try a practice question before your real interview.',
+    introTitle: 'Ready to Practice?',
+    introBody: 'Test your camera, microphone, and internet connection, then try a sample question before the real interview.',
+    runSystemCheck: 'Run System Check',
+    allGood: 'All Checks Passed',
+    allGoodBody: 'Your camera, microphone, and internet connection are ready for the interview.',
+    runAgain: 'Run Checks Again',
+    issuesFound: 'Some Checks Failed',
+    issuesBody: 'Your camera, microphone, or internet connection did not pass. Please check your devices and try again.',
   },
   myResults: {
     title: 'My Results',
