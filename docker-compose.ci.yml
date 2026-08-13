@@ -1,0 +1,10 @@
+# CI override: reduce gunicorn workers for faster startup and increase healthcheck timeouts.
+services:
+  backend:
+    command: ["gunicorn", "app.main:app", "--workers", "1", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import http.client; conn = http.client.HTTPConnection('localhost:8000'); conn.request('GET', '/health'); resp = conn.getresponse(); exit(0 if resp.status == 200 else 1)"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s

@@ -18,6 +18,7 @@ from app.models import User, Interview, InterviewQuestion, InterviewStatus, Invi
 from app.schemas import CandidateResponseCreate, CandidateResponseSummary, QuestionAnswerSchema, QualityCheckResult, ResponseTimer
 from app.api.auth import get_current_user, require_role
 from app.services.audit_service import create_audit_log
+from app.services.events import emit_data_change
 
 router = APIRouter()
 
@@ -586,6 +587,11 @@ async def complete_interview_response(
             )
         except Exception as exc:
             logger.warning("Notification creation failed for response %s: %s", response_id, exc)
+
+    emit_data_change("response", {
+        "interview_id": candidate_response.interview_id,
+        "response_id": candidate_response.id,
+    })
 
     return candidate_response
 

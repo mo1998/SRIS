@@ -6,6 +6,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.models import Notification, User
+from app.services.events import emit_data_change
 
 
 def create_notification(
@@ -27,6 +28,9 @@ def create_notification(
     db.add(notification)
     db.commit()
     db.refresh(notification)
+
+    # Push the new notification live so connected clients update without a reload.
+    emit_data_change("notification", {"notification_id": notification.id, "user_id": user_id, "type": notification_type})
     return notification
 
 
@@ -50,6 +54,9 @@ def create_notification_for_members(
         ))
         created += 1
     db.commit()
+
+    # One broadcast covers the whole batch; each client refetches its own data.
+    emit_data_change("notification", {"type": notification_type, "recipient_count": created})
     return created
 
 

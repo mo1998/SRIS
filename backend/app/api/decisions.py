@@ -11,6 +11,7 @@ from app.models import User, CandidateResponse, ReviewerScorecard, TeamMembershi
 from app.schemas import ReviewerDecisionUpdate, ReviewerScorecardCreate, ReviewerScorecardResponse
 from app.api.auth import get_current_user
 from app.services.audit_service import create_audit_log
+from app.services.events import emit_data_change
 
 router = APIRouter()
 
@@ -91,6 +92,13 @@ async def set_reviewer_decision(
     except Exception as exc:
         print(f"Webhook fire failed: {exc}")
 
+    emit_data_change("decision", {
+        "response_id": candidate_response.id,
+        "interview_id": candidate_response.interview_id,
+        "decision": new_decision,
+        "set_by": current_user.id,
+    })
+
     return {
         "response_id": response_id,
         "reviewer_decision": new_decision,
@@ -145,6 +153,13 @@ async def create_or_update_scorecard(
 
     db.commit()
     db.refresh(scorecard)
+
+    emit_data_change("decision", {
+        "response_id": candidate_response.id,
+        "interview_id": candidate_response.interview_id,
+        "reviewer_id": current_user.id,
+        "overall_score": scorecard_data.overall_score,
+    })
     return scorecard
 
 

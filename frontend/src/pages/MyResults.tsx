@@ -7,6 +7,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import PageHeader from '../components/ui/PageHeader'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
+import { useRealTimeRefresh } from '../hooks/useRealTimeRefresh'
 
 const MyResults: React.FC = () => {
   const { t } = useTranslation()
@@ -27,9 +28,12 @@ const MyResults: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
-  
-  if (loading) return <LoadingSpinner text={t('resultsPortal.loading')} />
+   }
+
+   // Live-update when evaluations/decisions for this employee are recorded.
+   useRealTimeRefresh(loadResults, [])
+
+   if (loading) return <LoadingSpinner text={t('resultsPortal.loading')} />
   
   return (
     <div>

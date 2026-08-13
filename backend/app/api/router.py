@@ -3,7 +3,7 @@ API Router configuration
 """
 
 from fastapi import APIRouter
-from app.api import audit, auth, data_requests, decisions, transcripts, users, interviews, invitations, maintenance, notifications, responses, reports, webhooks
+from app.api import audit, auth, data_requests, decisions, transcripts, users, interviews, invitations, maintenance, notifications, responses, reports, webhooks, ws
 
 api_router = APIRouter()
 
@@ -21,3 +21,4 @@ api_router.include_router(data_requests.router, prefix="/data-requests", tags=["
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 api_router.include_router(maintenance.router, prefix="/maintenance", tags=["Maintenance"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
+api_router.include_router(ws.router)

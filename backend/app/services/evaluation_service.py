@@ -634,6 +634,17 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
     except Exception as exc:
         logger.warning("Webhook fire failed: %s", exc)
 
+    # Push the completion live: evaluation runs in the RQ worker process, so this
+    # publishes to Redis; the API process forwards it to WebSocket clients.
+    from app.services.events import emit_data_change
+    emit_data_change("evaluation", {
+        "evaluation_run_id": evaluation_run.id,
+        "response_id": response.id,
+        "interview_id": response.interview_id,
+        "passed": response.passed,
+        "total_score": response.total_score,
+    })
+
 
 def create_evaluation_run(response_id: int, db: Session, status: str = "queued") -> EvaluationRun:
     provider = get_evaluation_provider()

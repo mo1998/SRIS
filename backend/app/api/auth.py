@@ -170,8 +170,12 @@ def get_token_subject(payload: dict) -> int:
     return int(subject)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
-    """Get current authenticated user"""
+def get_user_from_token(token: str, db: Session) -> User:
+    """Validate a raw bearer access token and return the authenticated user.
+
+    Shared by HTTP dependency auth and WebSocket token auth so the same
+    validation rules apply to both transports.
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -180,17 +184,21 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = get_token_subject(payload)
-        token_type: str = payload.get("type")
-        if token_type != "access":
+        if payload.get("type") != "access":
             raise credentials_exception
     except (JWTError, ValueError):
         raise credentials_exception
-    
+
     user = db.query(User).filter(User.id == user_id).first()
     if user is None or not user.is_active:
         raise credentials_exception
     validate_token_version(payload, user)
     return user
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+    """Get current authenticated user"""
+    return get_user_from_token(token, db)
 
 
 def require_role(*roles: UserRole):

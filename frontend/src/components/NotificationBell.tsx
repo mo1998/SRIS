@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FiBell } from 'react-icons/fi'
 import { api } from '../services/api'
+import { useRealTimeRefresh } from '../hooks/useRealTimeRefresh'
 
 interface NotificationItem {
   id: number
@@ -49,9 +50,11 @@ const NotificationBell: React.FC = () => {
 
   useEffect(() => {
     load()
-    const poll = window.setInterval(refreshUnread, 30000)
-    return () => window.clearInterval(poll)
   }, [])
+
+  // Refresh the bell in real time when notifications change anywhere in the
+  // system (new notification, marked read, etc.) instead of polling every 30s.
+  useRealTimeRefresh(load, ['notification'])
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
