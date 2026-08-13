@@ -31,6 +31,10 @@ python-dotenv==1.1.0
 httpx==0.26.0
 pillow==10.2.0
 
+# Observability
+prometheus-client==0.26.0
+prometheus-fastapi-instrumentator==7.1.0
+
 # Emotion Analysis (DeepFace facial emotion detection)
 deepface==0.0.100
 tf-keras==2.21.0

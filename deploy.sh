@@ -31,6 +31,12 @@ setup_compose() {
 		if [ "$(env_get ENABLE_LOCAL_LLM)" = "true" ]; then
 			COMPOSE_ARGS+=(--profile local-llm)
 		fi
+		if [ "$(env_get ENABLE_OBSERVABILITY)" != "false" ]; then
+			COMPOSE_ARGS+=(--profile observability)
+		fi
+		if [ -n "$(env_get SLACK_WEBHOOK_URL)" ]; then
+			COMPOSE_ARGS+=(--profile alerts)
+		fi
 	else
 		COMPOSE_ARGS=(docker compose)
 	fi
@@ -94,6 +100,11 @@ preflight() {
 		echo -e "${YELLOW}⚠️  EVALUATION_PROVIDER=local_vllm but ENABLE_LOCAL_LLM != true. Evaluations will use the fallback provider.${NC}"
 	elif [ "$provider" = "hybrid" ] && [ "$local_enabled" = "true" ] && [ "$cloud_enabled" != "true" ]; then
 		echo -e "${YELLOW}⚠️  EVALUATION_PROVIDER=hybrid with local enabled but cloud disabled. If local is unreachable, evaluations fall back to deterministic.${NC}"
+	fi
+
+	if [ "$(env_get ENABLE_OBSERVABILITY)" != "false" ] && [ -z "$(env_get GRAFANA_ADMIN_PASSWORD)" ]; then
+		echo -e "${RED}❌ GRAFANA_ADMIN_PASSWORD is required when observability is enabled.${NC}"
+		exit 1
 	fi
 }
 

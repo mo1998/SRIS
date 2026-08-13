@@ -246,6 +246,150 @@ services:
     deploy:
       replicas: 1
 
+  # =====================================================================
+  # Observability (Phase 4): Prometheus + Grafana + Loki
+  # Enabled via the 'observability' profile (default on; set
+  # ENABLE_OBSERVABILITY=false in .env to skip on constrained hosts).
+  # Grafana binds to 127.0.0.1 by default — reach it via an SSH tunnel.
+  # =====================================================================
+
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: sris-node-exporter-prod
+    profiles: ["observability"]
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - sris-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: sris-prometheus-prod
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_DAYS:-30}d
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sris-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: sris-alertmanager-prod
+    # Only started when SLACK_WEBHOOK_URL is configured (deploy.sh adds the
+    # 'alerts' profile). Alertmanager refuses to start with an empty api_url,
+    # so it is kept out of the default observability profile.
+    profiles: ["alerts"]
+    environment:
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - sris-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+
+  loki:
+    image: grafana/loki:2.9.6
+    container_name: sris-loki-prod
+    profiles: ["observability"]
+    command:
+      - -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./docker/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - sris-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  promtail:
+    image: grafana/promtail:2.9.6
+    container_name: sris-promtail-prod
+    profiles: ["observability"]
+    command:
+      - -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+      - sris-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: sris-grafana-prod
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+    ports:
+      - "${GRAFANA_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - sris-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
 volumes:
   postgres_data:
     driver: local
@@ -260,6 +404,14 @@ volumes:
   certbot_lib:
     driver: local
   certbot_www:
+    driver: local
+  prometheus_data:
+    driver: local
+  alertmanager_data:
+    driver: local
+  loki_data:
+    driver: local
+  grafana_data:
     driver: local
 
 networks:

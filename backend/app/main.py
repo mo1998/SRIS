@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import engine, Base
 from app.api.router import api_router
+from app.metrics import setup_metrics
 
 logger = logging.getLogger("sris.request")
 
@@ -127,6 +128,9 @@ async def request_observability_middleware(request: Request, call_next):
     }))
 
     return response
+
+# Prometheus metrics (internal scrape endpoint)
+setup_metrics(app)
 
 # Include API routes
 app.include_router(api_router, prefix="/api")
