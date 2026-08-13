@@ -1,8 +1,8 @@
 # Smart Remote Interview System (SRIS)
 
-SRIS is a production-oriented remote interviewing platform for structured hiring workflows. Employers create role-based interviews with weighted questions and rubrics, invite candidates by email, collect answers with optional audio and environment-quality capture, and get transparent AI-assisted evaluation with evidence-linked reports — all self-hosted and local-first.
+SRIS is a production-oriented remote interviewing platform for structured hiring workflows. Employers create role-based interviews with weighted questions and rubrics, invite candidates by email, collect answers with optional audio and video capture, and get transparent AI-assisted evaluation with evidence-linked reports — all self-hosted and local-first.
 
-The system is containerized with Docker Compose (PostgreSQL, Redis, FastAPI, React, Mailpit, optional local LLM and RQ worker) and ships with an automated CI pipeline, deployment and backup tooling, and a documented release checklist.
+The system is containerized with Docker Compose (PostgreSQL, Redis, FastAPI, React, Mailpit, optional local LLM, transcription and emotion-analysis workers) and ships with real-time WebSocket updates, in-app notifications, automatic speech-to-text transcription, facial emotion analysis, scheduled invitation maintenance, an automated CI pipeline, and deployment, backup, and observability tooling.
 
 ## Features
 
@@ -26,24 +26,58 @@ The system is containerized with Docker Compose (PostgreSQL, Redis, FastAPI, Rea
 - Single and bulk invitations with resend cooldown and bulk limits
 - Lifecycle: pending / sent / accepted / completed / expired / revoked
 - Token verification for public invitation access, revoke prevents token use
+- Scheduled expiry sweep and automatic reminder emails (configurable after-hours trigger, cooldown, and max reminder count)
 - Email preview and SMTP health endpoint
+- Manual maintenance trigger for employers (`POST /api/maintenance/run`)
+
+### Authentication and Account Management
+
+- JWT access/refresh tokens with token-version revocation on password change
+- Login rate limiting with retry-after headers and password reset rate limiting
+- Forgot / reset password flow with one-time hashed tokens (expiry, single-use, non-enumerable responses)
+- Password complexity enforcement; deactivated accounts cannot authenticate
 
 ### Candidate Response Experience
 
-- Start flow with max-attempt enforcement
-- Typed answers with optional audio upload (extension, size, and content-signature validation)
-- Environment quality metrics (voice, background, face visibility, lighting) and emotion/confidence capture as operational metadata
-- Completion flow that queues evaluation and updates invitation status
+- Start flow with max-attempt enforcement and token-validated invitation access
+- Server-authoritative interview timer with configurable grace period (client clocks cannot extend the interview)
+- Typed answers with optional audio and video upload (extension, size, and content-signature validation)
+- Answer retake while the response is in progress, with media replacement and score/transcript invalidation
+- Environment quality metrics (voice, background, face visibility, lighting) with configurable scoring weights
+- Anti-cheating integrity tracking: tab switches, window blur/focus, context-menu events, and timer overruns recorded per response
+- Completion flow that queues evaluation and transcription, updates invitation status, and emits webhooks and notifications
+
+### Transcription
+
+- Automatic speech-to-text after completion for answers with audio or video
+- Multilingual Whisper provider (faster-whisper, 99 languages including Arabic and English) with VAD filtering and int8 CPU quantization
+- Transcript storage per answer with confidence and detected language; review/edit via API
+- Background queue (in-process or Redis/RQ) and provider health endpoint
+
+### Emotion and Face Analysis
+
+- Optional facial emotion analysis of recorded video via DeepFace (open-source, MIT)
+- Seven emotion classes (angry, disgust, fear, happy, sad, surprise, neutral) with dominant emotion, confidence, and frame timeline
+- Language-independent so Arabic and English interviews are supported
+- Bounded in-process caching keyed by file mtime; timeout-bounded, non-blocking analysis
+- Analysis is operational metadata only — evaluation scoring is driven by rubric criteria and evidence, not emotion or personality signals
 
 ### Evaluation Engine
 
 - Local-first evaluation with an OpenAI-compatible `local_vllm` provider
+- Optional cloud LLM provider (OpenAI-compatible) as a hybrid alternative or complement
 - Deterministic rubric-aware fallback evaluator so evaluations never block on the LLM
 - Persisted evaluation runs (provider, model, prompt version, config hash, status, errors) and per-answer scores with bilingual feedback and evidence JSON
 - Single and batch re-evaluation; evaluation health endpoint; interview-level analytics
 - Durable background evaluation via Redis/RQ worker
 
 Evaluation drives scoring from rubric criteria and evidence, not from emotion or personality signals.
+
+### Reviewer Workflow
+
+- Reviewer decisions (pass / fail / review) with notes, actor attribution, and audit trail
+- Reviewer scorecards: overall score, strengths, weaknesses, and overall comment per response
+- Real-time decision/scorecard updates via WebSocket
 
 ### Reports and Exports
 
@@ -56,29 +90,40 @@ Evaluation drives scoring from rubric criteria and evidence, not from emotion or
 ### Webhooks
 
 - Per-organization webhook registration with signed deliveries
-- Events: interview.completed, evaluation.completed, invitation.sent, invitation.accepted, invitation.completed
+- Events: interview.completed, evaluation.completed, invitation.sent, invitation.accepted, invitation.completed, response.completed, reviewer.decision_made
 - Exponential-backoff retry (up to 3 attempts) and per-attempt delivery logs
+
+### Real-Time Updates and Notifications
+
+- WebSocket endpoint (`/api/ws`) authenticated with the same bearer token as HTTP
+- Redis pub/sub fan-out across processes (RQ worker events reach browser clients); in-process fallback when Redis is down
+- Live UI updates without page refresh for notifications, response completion, evaluations, decisions, and interview state changes
+- In-app notifications with unread count, per-notification read state, and mark-all-read
 
 ### Compliance and Operations
 
 - GDPR data export/delete request workflow with approval lifecycle
-- Reviewer decisions (pass / fail / review) with notes
-- Transcript storage and retrieval
+- Transcript storage, review, and retrieval
 - Durable audit logs for sensitive actions
 - Login rate limiting, password complexity, token revocation on password change
 - Request IDs, process timing, security headers, configurable request body limits
 - Production configuration guardrails when `DEBUG=False`
-- Backup dry-run and verification; release readiness script
+- Prometheus metrics (`/metrics`), RQ/LLM/email custom metrics, and a production observability stack (Prometheus, Alertmanager, Loki, Grafana, node-exporter)
+- Backup dry-run and verification; release readiness script; load-test CLI
 
 ## Architecture
 
 | Layer | Technology |
 |-------|-----------|
 | Backend | FastAPI, SQLAlchemy, Alembic, Pydantic, PostgreSQL (prod) / SQLite (local, CI) |
-| Background jobs | Redis + RQ worker |
+| Background jobs | Redis + RQ worker (evaluation, transcription) |
 | Frontend | React 18, TypeScript, Vite, React Bootstrap, Zustand, Axios |
+| Real-time | WebSocket + Redis pub/sub |
 | Serving | Gunicorn + Uvicorn (backend), Nginx (frontend) |
 | Local AI | vLLM OpenAI-compatible server (profile-gated, GPU) |
+| Speech-to-text | faster-whisper (multilingual, int8 CPU) |
+| Emotion analysis | DeepFace / OpenCV (optional, video) |
+| Observability (prod) | Prometheus, Alertmanager, Loki, Grafana, node-exporter |
 | Testing | pytest (backend), Vitest + Testing Library (frontend), Playwright (E2E), GitHub Actions (CI) |
 
 ### Docker Compose Services
@@ -92,7 +137,7 @@ Evaluation drives scoring from rubric criteria and evidence, not from emotion or
 - `local-model` (`--profile model`) — vLLM OpenAI-compatible local LLM server
 - `evaluation-worker` (`--profile worker`) — RQ worker for durable evaluations
 
-A production variant ([docker-compose.prod.yml](docker-compose.prod.yml)) adds SSL support, resource limits, and horizontal scaling of backend and evaluation-worker replicas.
+A production variant ([docker-compose.prod.yml](docker-compose.prod.yml)) adds SSL support, resource limits, horizontal scaling of backend and evaluation-worker replicas, and an observability stack (Prometheus + Alertmanager, Loki + Promtail, Grafana, node-exporter).
 
 ## Quick Start (Docker)
 
@@ -162,13 +207,23 @@ Key settings:
 | `EVALUATION_PROVIDER` | `local_vllm` (or fallback) |
 | `EVALUATION_QUEUE_BACKEND` | `rq` in production |
 | `LOCAL_LLM_BASE_URL`, `LOCAL_LLM_MODEL` | OpenAI-compatible local LLM endpoint and model |
-| `MAIL_*` | SMTP server, credentials, TLS/SSL |
+| `CLOUD_LLM_*` | Optional OpenAI-compatible cloud provider (hybrid evaluation) |
+| `TRANSCRIPTION_PROVIDER`, `WHISPER_*` | `whisper`/`fake` transcription provider and model/device settings |
+| `EMOTION_ANALYSIS_PROVIDER` | `deepface`/`disabled`/`fake` facial emotion analysis |
+| `MAIL_*`, `EMAIL_PROVIDER` | SMTP / Mailpit / Resend email delivery |
 | `MAX_REQUEST_BODY_SIZE` | Upload/request limit |
+| `MAX_AUDIO_SIZE`, `MAX_VIDEO_SIZE`, `ALLOWED_*` | Upload type and size limits |
 | `MAX_BULK_INVITATIONS`, `INVITATION_RESEND_COOLDOWN_SECONDS` | Invitation limits |
+| `INVITATION_EXPIRY_DAYS`, `INVITATION_REMINDER_*` | Invitation expiry and reminder scheduling |
+| `MAINTENANCE_ENABLED`, `MAINTENANCE_INTERVAL_SECONDS` | Scheduled expiry/reminder jobs |
+| `INTEGRITY_TRACKING_ENABLED` | Client-side anti-cheating event capture |
+| `METRICS_ENABLED` | Prometheus `/metrics` endpoint |
 
 ## AI Evaluation
 
-Evaluation runs through a provider interface with a deterministic rubric-aware fallback, so scoring continues even when the local LLM is unavailable. Health and fallback status are exposed at `GET /api/reports/evaluation/health` and on the employer dashboard.
+Evaluation runs through a provider interface with a deterministic rubric-aware fallback, so scoring continues even when the local LLM is unavailable. Health and fallback status are exposed at `GET /api/reports/evaluation/health` and on the employer dashboard. An optional cloud LLM provider (OpenAI-compatible) can be enabled as a hybrid alternative.
+
+On completion, media-backed answers are transcribed automatically (multilingual Whisper speech-to-text, configurable provider) and video answers can be analyzed for facial emotion (DeepFace) as operational metadata. Both providers expose health endpoints and queue jobs through the same background mechanism as evaluation.
 
 Model weights are downloaded or run only after explicit approval. Do not download or start model servers without confirming the model source, license, size, hardware requirements, and purpose. Approved-model serving configuration is documented in [DEPLOYMENT.md](DEPLOYMENT.md).
 
@@ -194,15 +249,21 @@ See [PRODUCTION.md](PRODUCTION.md) for the production-hardening implementation p
 
 ## API Overview
 
-- `/api/auth` — register, login, refresh, current user
+- `/api/auth` — register, login, refresh, current user, forgot/reset password
 - `/api/users` — profile, password, team membership
 - `/api/interviews` — interview CRUD, templates, questions, status transitions
 - `/api/invitations` — single/bulk invite, preview, verify, revoke, resend
-- `/api/responses` — response lifecycle, answers, quality, emotion, completion, decisions, transcripts
+- `/api/responses` — response lifecycle, answers (audio/video), quality, emotion, integrity, timer, completion, retake
+- `/api/responses/{id}/decision` and `/scorecard` — reviewer decisions and scorecards
+- `/api/responses/{id}/answers/{qid}/transcript` — transcript review and retrieval
 - `/api/reports` — employer/candidate reports, PDFs, evaluation audit, analytics, health, re-evaluation
 - `/api/audit-logs` — filtered audit log listing for admins and organization owners/admins
 - `/api/data-requests` — GDPR export/delete workflow
 - `/api/webhooks` — webhook CRUD and delivery logs
+- `/api/notifications` — in-app notifications, unread count, read/mark-all-read
+- `/api/maintenance` — manual trigger of invitation expiry/reminder jobs
+- `/api/ws` — authenticated WebSocket for real-time data-change events
+- `/metrics` — Prometheus metrics endpoint (internal scrape)
 - `/health` — operational health
 
 Interactive documentation is available at `/docs` when the backend is running.
@@ -214,9 +275,10 @@ SRIS/
 ├── backend/
 │   ├── alembic/                 # Migration versions
 │   ├── app/
-│   │   ├── api/                 # FastAPI routers
-│   │   ├── services/            # Email, evaluation, audit, report, webhook, transcription
-│   │   ├── main.py              # App entrypoint, middleware, health
+│   │   ├── api/                 # FastAPI routers (auth, interviews, responses, reports, webhooks, notifications, maintenance, ws, ...)
+│   │   ├── services/            # Email, evaluation, audit, report, webhook, transcription, emotion, notification, maintenance, realtime
+│   │   ├── main.py              # App entrypoint, middleware, health, metrics
+│   │   ├── metrics.py           # Prometheus instrumentation and custom metrics
 │   │   ├── models.py            # SQLAlchemy models
 │   │   ├── schemas.py           # Pydantic schemas
 │   │   ├── config.py            # Settings and production guardrails
@@ -228,7 +290,7 @@ SRIS/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/          # Layout and UI components
-│   │   ├── pages/               # Page components
+│   │   ├── pages/               # Page components (Login, Register, InterviewRoom, ResultsPortal, MyResults, ...)
 │   │   ├── services/            # API client
 │   │   ├── store/               # Zustand auth state
 │   │   └── styles/              # Design system CSS
@@ -236,8 +298,10 @@ SRIS/
 │   ├── Dockerfile
 │   └── nginx.conf
 ├── docker/
+│   ├── grafana/                 # Provisioning, dashboards (prod)
 │   ├── nginx/                   # Production Nginx config with SSL
-│   └── postgres/init.sql
+│   ├── postgres/init.sql
+│   └── prometheus/              # Prometheus config and alert rules (prod)
 ├── scripts/
 │   ├── load_test.py
 │   └── release_check.sh
