@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.database import SessionLocal
+from app.metrics import record_llm_fallback
 from app.models import CandidateResponse, EvaluationRun, EvaluationScore, QuestionAnswer, InterviewQuestion, Interview, TeamMembership
 
 
@@ -158,6 +159,7 @@ class LocalVLLMEvaluationProvider:
                 evidence=evidence,
             )
         except Exception as exc:
+            record_llm_fallback(self.name, self.fallback_provider.name)
             fallback = await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
             fallback.evidence.update({
                 "provider_fallback_from": self.name,
@@ -246,6 +248,7 @@ class CloudLLMEvaluationProvider:
         rubric_criteria: Optional[List[Dict[str, object]]],
         reason: str,
     ) -> EvaluationResult:
+        record_llm_fallback(self.name, self.fallback_provider.name)
         fallback = await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
         fallback.evidence.update({
             "provider_fallback_from": self.name,

@@ -1,0 +1,50 @@
+groups:
+  - name: sris-backend
+    rules:
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend is unreachable from Prometheus"
+
+      - alert: High5xxRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated 5xx response rate"
+
+      - alert: EmailFailureRate
+        expr: sum(rate(sris_email_failures_total[15m])) > 0.5
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High email failure rate"
+
+      - alert: EvaluationQueueBacklog
+        expr: sris_rq_queue_depth{queue="evaluation"} > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Evaluation queue is backing up"
+
+      - alert: DeadEvaluationWorker
+        expr: sris_rq_workers == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No RQ workers are registered"
+
+      - alert: LLMFallbackStorm
+        expr: sum(rate(sris_llm_fallbacks_total[15m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated LLM fallback rate"

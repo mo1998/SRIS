@@ -12,6 +12,7 @@ from typing import Dict, Optional, Protocol
 import httpx
 
 from app.config import settings
+from app.metrics import record_email_result
 
 logger = logging.getLogger("sris.email")
 
@@ -237,7 +238,14 @@ def _send_email(
     html_content: str,
 ) -> None:
     provider = get_email_provider()
-    provider.send(to_email, to_name, subject, html_content)
+    try:
+        provider.send(to_email, to_name, subject, html_content)
+        if provider.name != "disabled":
+            record_email_result(provider.name, ok=True)
+    except Exception:
+        if provider.name != "disabled":
+            record_email_result(provider.name, ok=False)
+        raise
 
 
 async def send_invitation_email(

@@ -3,7 +3,8 @@
 Status: **partially implemented.** Phase 0 shipped (deploy/env/compose/SSL).
 Phase 1 shipped (Resend email provider + retry/backoff + health reporting).
 Phase 2 shipped (hybrid LLM: local vLLM → cloud → deterministic, config-driven).
-Phases 3-7 pending. Read before continuing implementation.
+Phase 4 shipped (Prometheus + Grafana + Loki observability).
+Phases 3, 5-7 pending. Read before continuing implementation.
 
 ## Decisions (locked)
 
@@ -89,7 +90,7 @@ Phases 3-7 pending. Read before continuing implementation.
   `EMAIL_PROVIDER=mailpit` when `DEBUG=False`.
 - Optional: refresh-token rotation on reuse detection.
 
-### Phase 4 — Observability (Prometheus + Grafana + Loki)
+### Phase 4 — Observability (Prometheus + Grafana + Loki) — ✅ shipped
 
 - Backend `/metrics` endpoint (prometheus-fastapi-instrumentator; new dependency) exposing
   HTTP latency/errors, RQ queue depth, LLM fallback counter, email failure counter.
@@ -97,6 +98,18 @@ Phases 3-7 pending. Read before continuing implementation.
   (container logs), `grafana` (provisioned datasources + dashboards).
 - Alerts: email failure rate, evaluation queue backlog, 5xx spike, dead worker. Notify via
   Slack/webhook.
+
+**Shipped:** `/metrics` at `backend/app/metrics.py` with HTTP instrumentation plus
+`sris_email_sent_total`, `sris_email_failures_total`, `sris_llm_fallbacks_total`,
+`sris_rq_queue_depth`, `sris_rq_failed_jobs`, `sris_rq_workers`. Compose services
+(`docker-compose.prod.yml`, gated by `ENABLE_OBSERVABILITY` → `observability` profile):
+prometheus, node-exporter, loki, promtail, grafana. Alert rules in
+`docker/prometheus/alerts.yml` (BackendDown, High5xxRate, EmailFailureRate,
+EvaluationQueueBacklog, DeadEvaluationWorker, LLMFallbackStorm) route to Slack via
+`SLACK_WEBHOOK_URL`; the alertmanager service starts only when the webhook is set.
+Grafana binds to `127.0.0.1` by default (SSH tunnel) with provisioned Prometheus +
+Loki datasources and an SRIS Overview dashboard in `docker/grafana/`. Logs ship to
+Loki via promtail's docker service discovery.
 
 ### Phase 5 — Backups & DR
 
