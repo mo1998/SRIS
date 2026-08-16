@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     LOCAL_LLM_BASE_URL: str = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:8100/v1")
     LOCAL_LLM_MODEL: str = os.getenv("LOCAL_LLM_MODEL", "qwen3-8b-awq")
     LOCAL_LLM_TIMEOUT_SECONDS: float = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "5"))
+    EVALUATION_MAX_TOKENS: int = int(os.getenv("EVALUATION_MAX_TOKENS", "512"))
     CLOUD_LLM_ENABLED: bool = os.getenv("CLOUD_LLM_ENABLED", "false").lower() == "true"
     CLOUD_LLM_BASE_URL: str = os.getenv("CLOUD_LLM_BASE_URL", "https://api.openai.com/v1")
     CLOUD_LLM_MODEL: str = os.getenv("CLOUD_LLM_MODEL", "gpt-4o-mini")

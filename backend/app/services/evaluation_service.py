@@ -133,7 +133,7 @@ class LocalVLLMEvaluationProvider:
                     },
                 ],
                 "temperature": 0,
-                "max_tokens": 512,
+                "max_tokens": settings.EVALUATION_MAX_TOKENS,
             }
             async with httpx.AsyncClient(timeout=settings.LOCAL_LLM_TIMEOUT_SECONDS) as client:
                 response = await client.post(f"{settings.LOCAL_LLM_BASE_URL.rstrip('/')}/chat/completions", json=payload)
@@ -208,7 +208,7 @@ class CloudLLMEvaluationProvider:
                     },
                 ],
                 "temperature": 0,
-                "max_tokens": 512,
+                "max_tokens": settings.EVALUATION_MAX_TOKENS,
             }
             headers = {"Authorization": f"Bearer {settings.CLOUD_LLM_API_KEY}"}
             async with httpx.AsyncClient(timeout=settings.CLOUD_LLM_TIMEOUT_SECONDS) as client:
