@@ -15,6 +15,7 @@ export const api = {
     changePassword: (data: { current_password: string; new_password: string }) => axios.post(`${API_URL}/users/me/password`, data),
     getMyOrganization: () => axios.get(`${API_URL}/users/me/organization`),
     getMyMemberships: () => axios.get(`${API_URL}/users/me/memberships`),
+    getOrganizationMembers: () => axios.get(`${API_URL}/users/me/organization/members`),
     addMembership: (data: { email: string; role: string }) => axios.post(`${API_URL}/users/me/memberships`, data)
   },
 

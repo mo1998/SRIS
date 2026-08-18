@@ -640,6 +640,38 @@ def test_duplicate_organization_membership_is_rejected(client):
     assert duplicate_response.status_code == 400, duplicate_response.text
 
 
+def test_organization_member_roster_owner_can_list_and_non_admin_cannot(client):
+    register_user(client)
+    owner_token = login_user(client)
+    register_user(client, email="reviewer@example.com", role="employee")
+    reviewer_token = login_user(client, email="reviewer@example.com")
+
+    add_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "reviewer@example.com", "role": "reviewer"},
+    )
+    assert add_response.status_code == 201, add_response.text
+
+    members_response = client.get(
+        "/api/users/me/organization/members",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert members_response.status_code == 200, members_response.text
+    members = members_response.json()
+    assert len(members) == 2
+    roles = {member["email"]: member["role"] for member in members}
+    assert roles == {"employer@example.com": "owner", "reviewer@example.com": "reviewer"}
+    assert all(member["full_name"] for member in members)
+    assert all(member["user_id"] for member in members)
+
+    reviewer_response = client.get(
+        "/api/users/me/organization/members",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+    assert reviewer_response.status_code == 403, reviewer_response.text
+
+
 def test_organization_owner_can_view_audit_logs_and_reviewer_cannot(client):
     register_user(client)
     owner_token = login_user(client)

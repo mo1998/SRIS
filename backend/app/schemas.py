@@ -45,6 +45,14 @@ class TeamMembershipResponse(BaseModel):
         from_attributes = True
 
 
+class TeamMemberResponse(BaseModel):
+    user_id: int
+    email: str
+    full_name: Optional[str] = None
+    role: TeamRoleEnum
+    created_at: Optional[datetime] = None
+
+
 class TeamMembershipCreate(BaseModel):
     email: EmailStr
     role: TeamRoleEnum = TeamRoleEnum.reviewer

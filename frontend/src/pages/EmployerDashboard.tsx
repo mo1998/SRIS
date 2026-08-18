@@ -36,7 +36,7 @@ const STATUS_BG: Record<string, string> = {
 const EmployerDashboard: React.FC = () => {
   const [interviews, setInterviews] = useState<any[]>([])
   const [organization, setOrganization] = useState<any>(null)
-  const [memberships, setMemberships] = useState<any[]>([])
+  const [members, setMembers] = useState<any[]>([])
   const [evaluationHealth, setEvaluationHealth] = useState<any>(null)
   const [emailHealth, setEmailHealth] = useState<any>(null)
   const [memberEmail, setMemberEmail] = useState('')
@@ -67,16 +67,16 @@ const EmployerDashboard: React.FC = () => {
 
   const loadInterviews = async () => {
     try {
-      const [interviewsResponse, organizationResponse, membershipsResponse, evaluationHealthResponse, emailHealthResponse] = await Promise.all([
+      const [interviewsResponse, organizationResponse, membersResponse, evaluationHealthResponse, emailHealthResponse] = await Promise.all([
         api.interviews.list(),
         api.users.getMyOrganization(),
-        api.users.getMyMemberships(),
+        api.users.getOrganizationMembers(),
         api.reports.getEvaluationHealth(),
         api.reports.getEmailHealth()
       ])
       setInterviews(interviewsResponse.data)
       setOrganization(organizationResponse.data)
-      setMemberships(membershipsResponse.data)
+      setMembers(membersResponse.data)
       setEvaluationHealth(evaluationHealthResponse.data)
       setEmailHealth(emailHealthResponse.data)
     } catch (error) {
@@ -96,9 +96,10 @@ const EmployerDashboard: React.FC = () => {
     setAddingMember(true)
     try {
       const response = await api.users.addMembership({ email: memberEmail, role: memberRole })
-      setMemberships((current) => [...current, response.data])
       setMemberEmail('')
       setMemberRole('reviewer')
+      const membersResponse = await api.users.getOrganizationMembers()
+      setMembers(membersResponse.data)
       toast.success(t('dashboard.memberAdded'))
     } catch (err: any) {
       setTeamError(err.response?.data?.detail || t('dashboard.memberAddFailed'))
@@ -186,7 +187,7 @@ const EmployerDashboard: React.FC = () => {
           <StatCard icon={<FiUsers />} label={t('dashboard.completed')} value={completedCount} variant="info" />
         </Col>
         <Col xs={12} sm={6} xxl={3}>
-          <StatCard icon={<FiXCircle />} label={t('dashboard.teamMembers')} value={memberships.length} variant="warning" />
+          <StatCard icon={<FiXCircle />} label={t('dashboard.teamMembers')} value={members.length} variant="warning" />
         </Col>
       </Row>
 
@@ -279,7 +280,7 @@ const EmployerDashboard: React.FC = () => {
               {organization ? (
                 <>
                   <h4 className="fw-bold">{organization.name}</h4>
-                  <p className="text-muted mb-0">{t('dashboard.teamMembersCount', { count: memberships.length })}</p>
+                  <p className="text-muted mb-0">{t('dashboard.teamMembersCount', { count: members.length })}</p>
                 </>
               ) : (
                 <p className="text-muted mb-0">{t('dashboard.noOrganization')}</p>
@@ -319,21 +320,23 @@ const EmployerDashboard: React.FC = () => {
                 </Row>
               </Form>
 
-              {memberships.length === 0 ? (
+              {members.length === 0 ? (
                 <p className="text-muted mb-0 small">{t('dashboard.noTeamMemberships')}</p>
               ) : (
                 <Table size="sm" responsive className="mb-0">
                   <thead>
                     <tr>
-                      <th>{t('dashboard.userId')}</th>
+                      <th>{t('common.name')}</th>
+                      <th>{t('common.email')}</th>
                       <th>{t('common.role')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {memberships.map((membership) => (
-                      <tr key={membership.id}>
-                        <td>{membership.user_id}</td>
-                        <td><Badge bg="secondary">{membership.role}</Badge></td>
+                    {members.map((member) => (
+                      <tr key={member.user_id}>
+                        <td className="fw-medium">{member.full_name || member.email}</td>
+                        <td>{member.email}</td>
+                        <td><Badge bg="secondary">{member.role}</Badge></td>
                       </tr>
                     ))}
                   </tbody>
