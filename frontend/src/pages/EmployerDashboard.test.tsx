@@ -11,6 +11,7 @@ const apiMock = vi.hoisted(() => ({
   users: {
     getMyOrganization: vi.fn(),
     getMyMemberships: vi.fn(),
+    getOrganizationMembers: vi.fn(),
     addMembership: vi.fn(),
   },
   reports: {
@@ -34,6 +35,7 @@ describe('EmployerDashboard', () => {
     apiMock.interviews.list.mockReset()
     apiMock.users.getMyOrganization.mockReset()
     apiMock.users.getMyMemberships.mockReset()
+    apiMock.users.getOrganizationMembers.mockReset()
     apiMock.users.addMembership.mockReset()
     apiMock.reports.getEvaluationHealth.mockReset()
     apiMock.reports.getEmailHealth.mockReset()
@@ -44,12 +46,23 @@ describe('EmployerDashboard', () => {
     apiMock.users.getMyOrganization.mockResolvedValue({
       data: { id: 1, name: 'SRIS Test Co' },
     })
-    apiMock.users.getMyMemberships.mockResolvedValue({
-      data: [{ id: 1, user_id: 10, role: 'owner' }],
-    })
     apiMock.users.addMembership.mockResolvedValue({
-      data: { id: 2, user_id: 11, role: 'reviewer' },
+      data: { user_id: 12, email: 'newmember@example.com', role: 'reviewer' },
     })
+    apiMock.users.getOrganizationMembers
+      .mockResolvedValueOnce({
+        data: [
+          { user_id: 10, email: 'owner@example.com', full_name: 'Omar Owner', role: 'owner' },
+          { user_id: 11, email: 'reviewer@example.com', full_name: 'Rita Reviewer', role: 'reviewer' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        data: [
+          { user_id: 10, email: 'owner@example.com', full_name: 'Omar Owner', role: 'owner' },
+          { user_id: 11, email: 'reviewer@example.com', full_name: 'Rita Reviewer', role: 'reviewer' },
+          { user_id: 12, email: 'newmember@example.com', full_name: 'Nina New', role: 'reviewer' },
+        ],
+      })
     apiMock.reports.getEvaluationHealth.mockResolvedValue({
       data: {
         provider: 'local_vllm',
@@ -85,18 +98,23 @@ describe('EmployerDashboard', () => {
     expect(screen.getByText(/email delivery/i)).toBeInTheDocument()
     expect(screen.getByText(/configuration_incomplete/i)).toBeInTheDocument()
     expect(screen.getByText(/MAIL_FROM, MAIL_PASSWORD/i)).toBeInTheDocument()
-    expect(screen.getByText('Team members: 1')).toBeInTheDocument()
+    expect(screen.getByText('Team members: 2')).toBeInTheDocument()
+    expect(screen.getByText('Omar Owner')).toBeInTheDocument()
+    expect(screen.getByText('Rita Reviewer')).toBeInTheDocument()
     expect(screen.getByText('owner')).toBeInTheDocument()
+    expect(screen.getByText('reviewer@example.com')).toBeInTheDocument()
 
-    await userEvent.type(screen.getByPlaceholderText('teammate@example.com'), 'reviewer@example.com')
+    await userEvent.type(screen.getByPlaceholderText('teammate@example.com'), 'newmember@example.com')
     await userEvent.click(screen.getByRole('button', { name: /add/i }))
 
     await waitFor(() => {
       expect(apiMock.users.addMembership).toHaveBeenCalledWith({
-        email: 'reviewer@example.com',
+        email: 'newmember@example.com',
         role: 'reviewer',
       })
     })
-    expect(screen.getByText('reviewer')).toBeInTheDocument()
+    expect(await screen.findByText('newmember@example.com')).toBeInTheDocument()
+    expect(screen.getByText('Nina New')).toBeInTheDocument()
+    expect(screen.getByText('Team members: 3')).toBeInTheDocument()
   })
 })

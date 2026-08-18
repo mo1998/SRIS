@@ -8,7 +8,7 @@ from typing import List
 
 from app.database import get_db
 from app.models import TeamMembership, TeamRole, User
-from app.schemas import OrganizationResponse, PasswordChange, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
+from app.schemas import OrganizationResponse, PasswordChange, TeamMemberResponse, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
 from app.api.auth import get_current_user, get_password_hash, require_role, UserRole, verify_password
 from app.services.audit_service import create_audit_log
 
@@ -56,6 +56,33 @@ async def get_my_organization(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
     return membership.organization
+
+
+@router.get("/me/organization/members", response_model=List[TeamMemberResponse])
+async def list_organization_members(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List members of the current user's primary organization (owner/admin only)"""
+    current_membership = get_primary_membership(current_user, db)
+    require_membership_admin(current_membership)
+
+    memberships = (
+        db.query(TeamMembership)
+        .filter(TeamMembership.organization_id == current_membership.organization_id)
+        .order_by(TeamMembership.created_at.asc())
+        .all()
+    )
+    return [
+        {
+            "user_id": membership.user_id,
+            "email": membership.user.email,
+            "full_name": membership.user.full_name,
+            "role": membership.role.value,
+            "created_at": membership.created_at,
+        }
+        for membership in memberships
+    ]
 
 
 @router.get("/me/memberships", response_model=List[TeamMembershipResponse])
