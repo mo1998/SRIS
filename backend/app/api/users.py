@@ -244,6 +244,23 @@ async def delete_organization_provider_preset(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider preset not found")
 
     db.delete(preset)
+
+    # If the deleted preset is exactly what the organization currently has
+    # active, clear the active settings too so a provider (and its API key)
+    # no longer lingers after its preset is removed.
+    org = membership.organization
+    active_matches = (
+        org.evaluation_provider == preset.provider
+        and org.evaluation_model == preset.model
+        and org.evaluation_base_url == preset.base_url
+        and org.evaluation_api_key == preset.api_key
+    )
+    if active_matches:
+        org.evaluation_provider = None
+        org.evaluation_model = None
+        org.evaluation_base_url = None
+        org.evaluation_api_key = None
+
     create_audit_log(
         db,
         actor=current_user,
@@ -251,7 +268,7 @@ async def delete_organization_provider_preset(
         target_type="organization",
         target_id=membership.organization_id,
         organization_id=membership.organization_id,
-        details={"preset_name": preset.name},
+        details={"preset_name": preset.name, "cleared_active_provider": active_matches},
     )
     db.commit()
     return None

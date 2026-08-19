@@ -906,6 +906,61 @@ def test_owner_apply_preset_redispatches_pending_evaluations(client):
     assert apply_response.json()["evaluation_provider"] == "local_vllm"
 
 
+def test_deleting_preset_clears_active_provider_and_key(client):
+    register_user(client)
+    owner_token = login_user(client)
+
+    create_response = client.post(
+        "/api/users/me/organization/presets",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "name": "Gemini Secret",
+            "provider": "cloud_llm",
+            "model": "gemini-2.5-flash",
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "AIza-secret-key",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    preset_id = create_response.json()["id"]
+
+    apply_response = client.post(
+        f"/api/users/me/organization/presets/{preset_id}/apply",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert apply_response.status_code == 200, apply_response.text
+
+    org_after_apply = client.get(
+        "/api/users/me/organization",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    ).json()
+    assert org_after_apply["evaluation_provider"] == "cloud_llm"
+    assert org_after_apply["evaluation_model"] == "gemini-2.5-flash"
+
+    delete_response = client.delete(
+        f"/api/users/me/organization/presets/{preset_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert delete_response.status_code == 204, delete_response.text
+
+    org_after_delete = client.get(
+        "/api/users/me/organization",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    ).json()
+    assert org_after_delete["evaluation_provider"] is None
+    assert org_after_delete["evaluation_model"] is None
+    assert org_after_delete["evaluation_base_url"] is None
+
+    from app.database import SessionLocal
+    from app.models import Organization
+    db = SessionLocal()
+    try:
+        stored = db.query(Organization).filter(Organization.name == org_after_delete["name"]).first()
+        assert stored.evaluation_api_key is None
+    finally:
+        db.close()
+
+
 def test_non_admin_member_cannot_manage_provider_presets(client):
     register_user(client)
     owner_token = login_user(client)
