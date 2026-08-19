@@ -131,6 +131,9 @@ async function mockApi(page: Page, user = employerUser) {
   await page.route('**/api/users/me/organization/members', async (route) => {
     await route.fulfill({ json: [{ user_id: 1, email: 'employer@example.com', full_name: 'Test Employer', role: 'owner' }] })
   })
+  await page.route('**/api/users/me/organization/presets', async (route) => {
+    await route.fulfill({ json: [] })
+  })
   await page.route('**/api/users/me/organization/providers', async (route) => {
     await route.fulfill({
       json: {
