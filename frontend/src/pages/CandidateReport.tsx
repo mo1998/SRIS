@@ -4,9 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAuth } from '../store/authStore'
-import { FiArrowLeft, FiDownload } from 'react-icons/fi'
+import { FiArrowLeft, FiDownload, FiShield, FiAlertTriangle, FiCheckCircle, FiMic, FiVolume2, FiCamera, FiSun, FiActivity } from 'react-icons/fi'
 import InterviewFeedbackCard from '../components/ui/InterviewFeedbackCard'
 import { useRealTimeRefresh } from '../hooks/useRealTimeRefresh'
+import '../styles/candidate-report.css'
 
 const CandidateReport: React.FC = () => {
   const { t } = useTranslation()
@@ -112,6 +113,13 @@ const CandidateReport: React.FC = () => {
     )
   }
 
+  const qualityRows = [
+    { label: t('candidateReport.voiceQuality'), icon: FiMic, value: report.voice_quality },
+    { label: t('candidateReport.backgroundQuality'), icon: FiVolume2, value: report.background_quality },
+    { label: t('candidateReport.faceVisibility'), icon: FiCamera, value: report.face_visibility },
+    { label: t('candidateReport.lighting'), icon: FiSun, value: report.lighting },
+  ]
+
   const emotionDistribution = (): { emotion: string; count: number }[] => {
     if (!report?.answers) return []
     const counts = new Map<string, number>()
@@ -147,22 +155,26 @@ const CandidateReport: React.FC = () => {
   }
 
   return (
-    <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <Button variant="outline-secondary" onClick={() => navigate(-1)}>
+    <div className="candidate-report">
+      <div className="report-toolbar d-flex justify-content-between align-items-center mb-4">
+        <Button variant="light" className="report-back-button" onClick={() => navigate(-1)}>
           <FiArrowLeft className="me-2" />
           {t('candidateReport.back')}
         </Button>
-        <Button variant="outline-primary" onClick={handleDownloadPdf}>
+        <Button variant="primary" className="report-download-button" onClick={handleDownloadPdf}>
           <FiDownload className="me-2" />
           {t('candidateReport.downloadPdf')}
         </Button>
       </div>
       {reevaluationError && <p className="text-danger">{reevaluationError}</p>}
       
-      <Card className="mb-4">
-        <Card.Header>
-          <h4 className="mb-0">{t('candidateReport.title')}</h4>
+      <Card className="mb-4 report-summary-card">
+        <Card.Header className="report-card-header">
+          <div>
+            <span className="report-eyebrow">{t('candidateReport.evaluationSummary')}</span>
+            <h4 className="mb-0">{t('candidateReport.title')}</h4>
+          </div>
+          <FiActivity className="report-header-icon" aria-hidden="true" />
         </Card.Header>
         <Card.Body>
           <Row>
@@ -203,13 +215,23 @@ const CandidateReport: React.FC = () => {
       </Card>
       
       {isEmployerView && report.integrity && report.integrity.total_events > 0 && (
-        <Card className="mb-4">
-          <Card.Header>
-            <h6 className="mb-0">{t('candidateReport.integrityTitle')}</h6>
+        <Card className="mb-4 report-integrity-card">
+          <Card.Header className="report-card-header">
+            <div className="d-flex align-items-center gap-3">
+              <span className="report-section-icon report-section-icon-warning"><FiShield /></span>
+              <div>
+                <span className="report-eyebrow">{t('candidateReport.integrityReview')}</span>
+                <h6 className="mb-0">{t('candidateReport.integrityTitle')}</h6>
+              </div>
+            </div>
+            <span className="integrity-total"><strong>{report.integrity.total_events}</strong> {t('candidateReport.events')}</span>
           </Card.Header>
           <Card.Body>
-            <p className="text-muted small mb-3">{t('candidateReport.integrityDescription')}</p>
-            <Table bordered responsive>
+            <div className="integrity-notice mb-3">
+              <FiAlertTriangle aria-hidden="true" />
+              <p className="mb-0">{t('candidateReport.integrityDescription')}</p>
+            </div>
+            <Table responsive className="report-table integrity-table">
               <thead>
                 <tr>
                   <th>{t('candidateReport.integrityEventType')}</th>
@@ -219,8 +241,8 @@ const CandidateReport: React.FC = () => {
               <tbody>
                 {Object.entries(report.integrity.breakdown).map(([type, count]) => (
                   <tr key={type}>
-                    <td>{type}</td>
-                    <td>{count as number}</td>
+                    <td><span className="event-dot" aria-hidden="true" />{type}</td>
+                    <td><span className="event-count">{count as number}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -231,39 +253,36 @@ const CandidateReport: React.FC = () => {
 
       <Row>
         <Col md={6}>
-          <Card className="mb-4">
-            <Card.Header>
-              <h6 className="mb-0">{t('candidateReport.environmentQuality')}</h6>
+          <Card className="mb-4 report-metric-card">
+            <Card.Header className="report-card-header">
+              <div className="d-flex align-items-center gap-3">
+                <span className="report-section-icon report-section-icon-success"><FiCheckCircle /></span>
+                <h6 className="mb-0">{t('candidateReport.environmentQuality')}</h6>
+              </div>
             </Card.Header>
             <Card.Body>
-              <Table bordered>
-                <tbody>
-                  <tr>
-                    <td>{t('candidateReport.voiceQuality')}</td>
-                    <td>{qualityBadge(report.voice_quality)}</td>
-                  </tr>
-                  <tr>
-                    <td>{t('candidateReport.backgroundQuality')}</td>
-                    <td>{qualityBadge(report.background_quality)}</td>
-                  </tr>
-                  <tr>
-                    <td>{t('candidateReport.faceVisibility')}</td>
-                    <td>{qualityBadge(report.face_visibility)}</td>
-                  </tr>
-                  <tr>
-                    <td>{t('candidateReport.lighting')}</td>
-                    <td>{qualityBadge(report.lighting)}</td>
-                  </tr>
-                </tbody>
-              </Table>
+              <div className="quality-list">
+                {qualityRows.map(({ label, icon: Icon, value }) => (
+                  <div className="quality-row" key={label}>
+                    <span className="quality-label"><Icon aria-hidden="true" />{label}</span>
+                    <div className="quality-result">
+                      {value !== null && value !== undefined && <span className="quality-track"><span style={{ width: `${Math.min(Math.max(value, 0), 100)}%` }} /></span>}
+                      {qualityBadge(value)}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card.Body>
           </Card>
         </Col>
         
         <Col md={6}>
-          <Card className="mb-4">
-            <Card.Header>
-              <h6 className="mb-0">{t('candidateReport.emotionConfidence')}</h6>
+          <Card className="mb-4 report-metric-card">
+            <Card.Header className="report-card-header">
+              <div className="d-flex align-items-center gap-3">
+                <span className="report-section-icon report-section-icon-primary"><FiActivity /></span>
+                <h6 className="mb-0">{t('candidateReport.emotionConfidence')}</h6>
+              </div>
             </Card.Header>
             <Card.Body className="text-center">
               {report.dominant_emotion || (report.confidence_score ?? null) !== null ? (
