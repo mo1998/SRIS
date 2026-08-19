@@ -147,7 +147,7 @@ async function mockApi(page: Page, user = employerUser) {
       },
     })
   })
-  await page.route('**/api/reports/evaluation/health', async (route) => {
+  await page.route('**/api/reports/evaluation/health**', async (route) => {
     await route.fulfill({
       json: {
         provider: 'local_vllm',
