@@ -69,6 +69,28 @@ class Organization(Base):
     memberships = relationship("TeamMembership", back_populates="organization", cascade="all, delete-orphan")
 
 
+class EvaluationProviderPreset(Base):
+    """A saved, reusable evaluation provider configuration for an organization.
+
+    Organizations can store named presets (provider + base URL + model + API
+    key) from the dashboard so swapping between models/endpoints is one click
+    instead of re-entering the fields each time."""
+    __tablename__ = "evaluation_provider_presets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    provider = Column(String(50), nullable=False)
+    model = Column(String(255), nullable=True)
+    base_url = Column(String(500), nullable=True)
+    api_key = Column(String(500), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    organization = relationship("Organization")
+
+
 class User(Base):
     __tablename__ = "users"
 

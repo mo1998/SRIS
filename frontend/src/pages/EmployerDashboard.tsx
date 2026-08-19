@@ -3,7 +3,7 @@ import { Alert, Card, Row, Col, Button, Table, Badge, Form, Collapse } from 'rea
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { useNavigate } from 'react-router-dom'
-import { FiPlus, FiUsers, FiCheckCircle, FiXCircle, FiEye, FiUserPlus, FiBarChart2, FiMail, FiActivity, FiCpu, FiSave } from 'react-icons/fi'
+import { FiPlus, FiUsers, FiCheckCircle, FiXCircle, FiEye, FiUserPlus, FiBarChart2, FiMail, FiActivity, FiCpu, FiSave, FiDownload } from 'react-icons/fi'
 import StatCard from '../components/ui/StatCard'
 import PageHeader from '../components/ui/PageHeader'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
@@ -44,6 +44,9 @@ const EmployerDashboard: React.FC = () => {
   const [providerModel, setProviderModel] = useState('')
   const [providerBaseUrl, setProviderBaseUrl] = useState('')
   const [providerApiKey, setProviderApiKey] = useState('')
+  const [presets, setPresets] = useState<any[]>([])
+  const [selectedPreset, setSelectedPreset] = useState('')
+  const [presetName, setPresetName] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [savingProvider, setSavingProvider] = useState(false)
   const [memberEmail, setMemberEmail] = useState('')
@@ -97,6 +100,64 @@ const EmployerDashboard: React.FC = () => {
     }
   }
 
+  const refreshPresets = async () => {
+    const res = await api.users.listProviderPresets()
+    setPresets(res.data || [])
+  }
+
+  const handleApplyPreset = async () => {
+    if (!selectedPreset) return
+    try {
+      const response = await api.users.applyProviderPreset(Number(selectedPreset))
+      setOrganization(response.data)
+      setProviderSelection(response.data.evaluation_provider || '')
+      setProviderModel(response.data.evaluation_model || '')
+      setProviderBaseUrl(response.data.evaluation_base_url || '')
+      setProviderApiKey('')
+      if (providersInfo) {
+        setProvidersInfo({ ...providersInfo, selected: response.data.evaluation_provider })
+      }
+      setSelectedPreset('')
+      toast.success(t('dashboard.presetLoaded'))
+    } catch {
+      toast.error(t('dashboard.presetLoadFailed'))
+    }
+  }
+
+  const handleSavePreset = async () => {
+    const name = presetName.trim()
+    if (!name) {
+      toast.error(t('dashboard.presetNameRequired'))
+      return
+    }
+    try {
+      await api.users.createProviderPreset({
+        name,
+        provider: providerSelection || '',
+        model: providerModel || null,
+        base_url: providerBaseUrl || null,
+        api_key: providerApiKey || null,
+      })
+      setPresetName('')
+      setProviderApiKey('')
+      await refreshPresets()
+      toast.success(t('dashboard.presetSaved'))
+    } catch {
+      toast.error(t('dashboard.presetSaveFailed'))
+    }
+  }
+
+  const handleDeletePreset = async (id: number) => {
+    if (!window.confirm(t('dashboard.presetConfirmDelete'))) return
+    try {
+      await api.users.deleteProviderPreset(id)
+      await refreshPresets()
+      toast.success(t('dashboard.presetDeleted'))
+    } catch {
+      toast.error(t('dashboard.presetDeleteFailed'))
+    }
+  }
+
   const getStatusBadge = (status: string) => (
     <Badge bg={STATUS_BG[status] || 'secondary'}>{statusLabelMap[status] || status.charAt(0).toUpperCase() + status.slice(1)}</Badge>
   )
@@ -112,18 +173,20 @@ const EmployerDashboard: React.FC = () => {
       setOrganization(org)
       setProviderModel(org.evaluation_model || '')
       setProviderBaseUrl(org.evaluation_base_url || '')
-      const [interviewsResponse, membersResponse, evaluationHealthResponse, emailHealthResponse, providersResponse] = await Promise.all([
+      const [interviewsResponse, membersResponse, evaluationHealthResponse, emailHealthResponse, providersResponse, presetsResponse] = await Promise.all([
         api.interviews.list(),
         api.users.getOrganizationMembers(),
         api.reports.getEvaluationHealth(org?.id),
         api.reports.getEmailHealth(),
         api.users.getOrganizationProviders(),
+        api.users.listProviderPresets(),
       ])
       setInterviews(interviewsResponse.data)
       setMembers(membersResponse.data)
       setEvaluationHealth(evaluationHealthResponse.data)
       setEmailHealth(emailHealthResponse.data)
       setProvidersInfo(providersResponse.data)
+      setPresets(presetsResponse.data || [])
       setProviderSelection(providersResponse.data.selected || '')
     } catch (error) {
       toast.error(t('dashboard.loadFailed'), t('dashboard.loadError'))
@@ -329,6 +392,62 @@ const EmployerDashboard: React.FC = () => {
               {providersInfo ? (
                 providersInfo.role === 'owner' || providersInfo.role === 'admin' ? (
                   <Form onSubmit={handleSaveProvider}>
+                    <Row className="g-3 align-items-end mb-3">
+                      <Col md={6} xl={5}>
+                        <Form.Label className="small text-muted">{t('dashboard.presetLabel')}</Form.Label>
+                        <Form.Select
+                          size="sm"
+                          value={selectedPreset}
+                          onChange={(e) => setSelectedPreset(e.target.value)}
+                          aria-label={t('dashboard.presetLabel')}
+                        >
+                          <option value="">{t('dashboard.presetPlaceholder')}</option>
+                          {presets.map((p: any) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} — {providerLabelMap[p.provider] || p.provider}
+                              {p.api_key_set ? ' 🔑' : ''}
+                            </option>
+                          ))}
+                        </Form.Select>
+                      </Col>
+                      <Col md={3} xl={2}>
+                        <Button variant="outline-secondary" size="sm" className="w-100" onClick={handleApplyPreset} disabled={!selectedPreset}>
+                          <FiDownload className="me-1" /> {t('dashboard.presetLoad')}
+                        </Button>
+                      </Col>
+                      {presets.length > 0 && (
+                        <Col md={3} xl={2}>
+                          <Form.Label className="small text-muted">{t('dashboard.presetName')}</Form.Label>
+                          <Form.Control size="sm" type="text" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder={t('dashboard.presetName')} />
+                        </Col>
+                      )}
+                      {presets.length > 0 && (
+                        <Col md={3} xl={1}>
+                          <Button variant="outline-primary" size="sm" className="w-100" onClick={handleSavePreset}>
+                            <FiSave className="me-1" /> {t('dashboard.presetSaveAs')}
+                          </Button>
+                        </Col>
+                      )}
+                    </Row>
+                    {presets.length > 0 && (
+                      <Row className="mb-3">
+                        <Col>
+                          <div className="d-flex flex-wrap gap-2">
+                            {presets.map((p: any) => (
+                              <span key={p.id} className="badge text-bg-light border d-inline-flex align-items-center gap-2">
+                                {p.name}
+                                <button
+                                  type="button"
+                                  className="btn-close btn-close-sm"
+                                  aria-label={t('dashboard.presetDeleteFailed')}
+                                  onClick={() => handleDeletePreset(p.id)}
+                                />
+                              </span>
+                            ))}
+                          </div>
+                        </Col>
+                      </Row>
+                    )}
                     <Row className="g-3 align-items-end">
                       <Col md={6} xl={4}>
                         <Form.Label className="small text-muted">{t('dashboard.provider')}</Form.Label>
