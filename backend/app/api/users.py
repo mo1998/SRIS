@@ -34,6 +34,15 @@ def require_membership_admin(membership: TeamMembership) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient organization permissions")
 
 
+def _raise_if_unsafe_llm_url(base_url: str) -> None:
+    """Reject LLM base URLs that could be used for SSRF / API-key exfiltration."""
+    from app.services.url_safety import validate_outbound_url
+
+    error = validate_outbound_url(base_url, allow_http_local=True)
+    if error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid base URL: {error}")
+
+
 def validate_assignable_role(actor_role: TeamRole, requested_role: TeamRole) -> None:
     if actor_role != TeamRole.OWNER and requested_role in {TeamRole.OWNER, TeamRole.ADMIN}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only organization owners can assign owner or admin roles")
@@ -95,6 +104,9 @@ async def update_organization_evaluation_settings(
     membership = get_primary_membership(current_user, db)
     require_membership_admin(membership)
 
+    if settings_update.evaluation_base_url:
+        _raise_if_unsafe_llm_url(settings_update.evaluation_base_url)
+
     org = membership.organization
     changed = {
         "evaluation_provider": settings_update.evaluation_provider,
@@ -150,6 +162,9 @@ async def create_organization_provider_preset(
     """Create a saved evaluation provider preset (owner/admin only)."""
     membership = get_primary_membership(current_user, db)
     require_membership_admin(membership)
+
+    if preset.base_url:
+        _raise_if_unsafe_llm_url(preset.base_url)
 
     row = EvaluationProviderPreset(
         organization_id=membership.organization_id,

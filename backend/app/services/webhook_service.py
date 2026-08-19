@@ -54,6 +54,12 @@ async def deliver_webhook(
         db.commit()
         db.refresh(delivery)
 
+        from app.services.url_safety import validate_outbound_url
+
+        unsafe = validate_outbound_url(webhook.url, allow_http_local=False)
+        if unsafe:
+            raise ValueError(f"Unsafe webhook URL: {unsafe}")
+
         async with httpx.AsyncClient(timeout=webhook.timeout_seconds) as client:
             response = await client.post(
                 webhook.url,
