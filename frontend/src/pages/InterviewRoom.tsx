@@ -43,6 +43,7 @@ const InterviewRoom: React.FC = () => {
   const [answerError, setAnswerError] = useState('')
   const [isMicOn, setIsMicOn] = useState(true)
   const [isCameraOn, setIsCameraOn] = useState(true)
+  const [isStarting, setIsStarting] = useState(false)
   const [integrityWarning, setIntegrityWarning] = useState('')
   const [integrityPolicy, setIntegrityPolicy] = useState({
     tracking_enabled: true,
@@ -72,6 +73,8 @@ const InterviewRoom: React.FC = () => {
   }
   
   const startInterview = async () => {
+    if (isStarting) return
+
     if (!privacyAcknowledged || !participationConsented) {
       setError(t('interviewRoom.consentFirst'))
       return
@@ -82,6 +85,7 @@ const InterviewRoom: React.FC = () => {
       return
     }
 
+    setIsStarting(true)
     try {
       const response = await api.responses.start({
         interview_id: invitation.interview_id,
@@ -96,6 +100,8 @@ const InterviewRoom: React.FC = () => {
       syncServerTimer(response.data.id)
     } catch (err: any) {
       setError(err.response?.data?.detail || t('interviewRoom.startFailed'))
+    } finally {
+      setIsStarting(false)
     }
   }
 
@@ -606,7 +612,7 @@ const InterviewRoom: React.FC = () => {
               </Col>
             </Row>
             
-            <Button variant="primary" size="lg" onClick={startInterview} disabled={!privacyAcknowledged || !participationConsented || deviceCheckStatus !== 'passed'}>
+            <Button variant="primary" size="lg" onClick={startInterview} disabled={isStarting || !privacyAcknowledged || !participationConsented || deviceCheckStatus !== 'passed'}>
               {t('interviewRoom.start')}
             </Button>
           </Card.Body>
