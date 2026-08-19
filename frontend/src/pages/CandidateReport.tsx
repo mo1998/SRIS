@@ -202,6 +202,33 @@ const CandidateReport: React.FC = () => {
         </Card.Body>
       </Card>
       
+      {isEmployerView && report.integrity && report.integrity.total_events > 0 && (
+        <Card className="mb-4">
+          <Card.Header>
+            <h6 className="mb-0">{t('candidateReport.integrityTitle')}</h6>
+          </Card.Header>
+          <Card.Body>
+            <p className="text-muted small mb-3">{t('candidateReport.integrityDescription')}</p>
+            <Table bordered responsive>
+              <thead>
+                <tr>
+                  <th>{t('candidateReport.integrityEventType')}</th>
+                  <th>{t('candidateReport.integrityCount')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(report.integrity.breakdown).map(([type, count]) => (
+                  <tr key={type}>
+                    <td>{type}</td>
+                    <td>{count as number}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card.Body>
+        </Card>
+      )}
+
       <Row>
         <Col md={6}>
           <Card className="mb-4">

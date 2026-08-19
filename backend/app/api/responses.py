@@ -401,7 +401,10 @@ async def submit_integrity_events(
 
     from app.models import IntegrityEvent
 
-    allowed = {"tab_hidden", "tab_visible", "window_blur", "window_focus", "context_menu"}
+    allowed = {
+        "tab_hidden", "tab_visible", "window_blur", "window_focus", "context_menu",
+        "copy", "cut", "paste", "fullscreen_enter", "fullscreen_exit", "page_exit",
+    }
     recorded = 0
     for event in events:
         event_type = str(event.get("event_type", ""))

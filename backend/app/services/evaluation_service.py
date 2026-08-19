@@ -758,6 +758,8 @@ def generate_candidate_report(response_id: int, db: Session, include_internal: b
             "video_file_path": answer.video_file_path,
             "audio_file_path": answer.audio_file_path
         })
+
+    integrity_summary = build_integrity_summary(response, db)
     
     public_report = {
         "response_id": response.id,
@@ -791,6 +793,7 @@ def generate_candidate_report(response_id: int, db: Session, include_internal: b
         "reviewer_decision": response.reviewer_decision.value if response.reviewer_decision else "pending",
         "ai_disclosure": disclosure_text,
         "answers": answer_details,
+        "integrity": integrity_summary,
         "feedback": build_report_feedback(response),
         "started_at": response.started_at,
         "completed_at": response.completed_at,
@@ -808,6 +811,42 @@ def parse_evidence_json(evidence_json: str) -> Dict[str, object]:
         return json.loads(evidence_json)
     except json.JSONDecodeError:
         return {"raw": evidence_json}
+
+
+def build_integrity_summary(response: CandidateResponse, db: Session) -> Dict[str, object]:
+    """Aggregate integrity events for a response into a reviewer-facing summary."""
+    from app.models import IntegrityEvent
+
+    events = (
+        db.query(IntegrityEvent)
+        .filter(IntegrityEvent.response_id == response.id)
+        .order_by(IntegrityEvent.created_at.asc(), IntegrityEvent.id.asc())
+        .all()
+    )
+    counts: Dict[str, int] = {}
+    for event in events:
+        counts[event.event_type] = counts.get(event.event_type, 0) + 1
+
+    severity_types = {"copy", "cut", "paste", "context_menu", "timer_expired"}
+    violation_types = {
+        "tab_hidden", "window_blur", "fullscreen_exit", "page_exit",
+        "copy", "cut", "paste", "context_menu", "timer_expired",
+    }
+    return {
+        "total_events": len(events),
+        "severity_count": sum(count for t, count in counts.items() if t in severity_types),
+        "violation_count": sum(count for t, count in counts.items() if t in violation_types),
+        "breakdown": counts,
+        "events": [
+            {
+                "id": event.id,
+                "event_type": event.event_type,
+                "details": event.details,
+                "created_at": event.created_at.isoformat() if event.created_at else None,
+            }
+            for event in events
+        ],
+    }
 
 
 def build_report_feedback(response: CandidateResponse) -> str:

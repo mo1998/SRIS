@@ -758,6 +758,9 @@ def test_same_organization_recruiter_can_manage_invitations(client, monkeypatch)
     assert verified["interview"]["duration_minutes"] == 30
     assert verified["interview"]["questions"][0]["question_text"] == "How do you handle an upset customer?"
     assert "expected_answer" not in verified["interview"]["questions"][0]
+    assert verified["integrity_policy"]["tracking_enabled"] is True
+    assert verified["integrity_policy"]["block_clipboard"] is True
+    assert "enforce_fullscreen" in verified["integrity_policy"]
 
     list_response = client.get(
         f"/api/invitations/{interview['id']}",
@@ -1094,6 +1097,9 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert candidate_report["answers"][0]["feedback_ar"]
     assert "How do you handle an upset customer?" == candidate_report["answers"][0]["question"]
     assert "listen" in candidate_report["answers"][0]["evidence"]["matched_keywords"]
+    assert candidate_report["integrity"]["total_events"] == 0
+    assert candidate_report["integrity"]["violation_count"] == 0
+    assert candidate_report["integrity"]["breakdown"] == {}
 
     evaluation_audit_response = client.get(
         f"/api/reports/candidate/{candidate_response['id']}/evaluations",
@@ -2544,6 +2550,121 @@ def test_integrity_events_recorded_and_timer_flagged(client):
         assert events[0].event_type == "tab_hidden"
     finally:
         db.close()
+
+
+def test_integrity_events_accept_anti_cheat_event_types(client):
+    """Copy/paste, context menu, and fullscreen events are recorded."""
+    from app.models import IntegrityEvent
+    from app.database import SessionLocal
+
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    candidate_response = start_candidate_response(client, interview_id, email="antichat@test.com")
+    response_id = candidate_response["id"]
+
+    events_response = client.post(
+        f"/api/responses/{response_id}/integrity-events",
+        json=[
+            {"event_type": "copy", "details": "copied question"},
+            {"event_type": "paste", "details": "pasted answer"},
+            {"event_type": "context_menu", "details": "right click"},
+            {"event_type": "fullscreen_exit", "details": "left fullscreen"},
+        ],
+    )
+    assert events_response.status_code == 200, events_response.text
+    assert events_response.json()["recorded"] == 4
+
+    db = SessionLocal()
+    try:
+        events = db.query(IntegrityEvent).filter(IntegrityEvent.response_id == response_id).all()
+        event_types = {event.event_type for event in events}
+        assert event_types == {"copy", "paste", "context_menu", "fullscreen_exit"}
+        assert {event.details for event in events} == {
+            "copied question", "pasted answer", "right click", "left fullscreen",
+        }
+    finally:
+        db.close()
+
+
+def test_integrity_events_reject_unknown_event_types(client):
+    """Unknown event types are silently ignored."""
+    from app.models import IntegrityEvent
+    from app.database import SessionLocal
+
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    candidate_response = start_candidate_response(client, interview_id, email="antichat2@test.com")
+    response_id = candidate_response["id"]
+
+    events_response = client.post(
+        f"/api/responses/{response_id}/integrity-events",
+        json=[
+            {"event_type": "copy", "details": "ok"},
+            {"event_type": "delete_database", "details": "nope"},
+        ],
+    )
+    assert events_response.status_code == 200, events_response.text
+    assert events_response.json()["recorded"] == 1
+
+    db = SessionLocal()
+    try:
+        events = db.query(IntegrityEvent).filter(IntegrityEvent.response_id == response_id).all()
+        assert len(events) == 1
+        assert events[0].event_type == "copy"
+    finally:
+        db.close()
+
+
+def test_candidate_report_includes_integrity_summary(client):
+    """Employer candidate report surfaces recorded integrity events."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    candidate_response = start_candidate_response(client, interview_id, email="antichat3@test.com")
+    response_id = candidate_response["id"]
+
+    client.post(
+        f"/api/responses/{response_id}/integrity-events",
+        json=[
+            {"event_type": "copy", "details": "copied question"},
+            {"event_type": "paste", "details": "pasted answer"},
+            {"event_type": "tab_hidden", "details": "switched away"},
+        ],
+    )
+    client.post(
+        f"/api/responses/{candidate_response['id']}/answer",
+        params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen and empathize."},
+    )
+    client.post(f"/api/responses/{candidate_response['id']}/complete")
+
+    report_response = client.get(
+        f"/api/reports/candidate/{response_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert report_response.status_code == 200, report_response.text
+    integrity = report_response.json()["integrity"]
+    assert integrity["total_events"] == 3
+    assert integrity["violation_count"] == 3
+    assert integrity["severity_count"] == 2
+    assert integrity["breakdown"] == {"copy": 1, "paste": 1, "tab_hidden": 1}
+    assert len(integrity["events"]) == 3
 
 
 def test_candidate_comparison_api(client):

@@ -43,6 +43,12 @@ const InterviewRoom: React.FC = () => {
   const [answerError, setAnswerError] = useState('')
   const [isMicOn, setIsMicOn] = useState(true)
   const [isCameraOn, setIsCameraOn] = useState(true)
+  const [integrityWarning, setIntegrityWarning] = useState('')
+  const [integrityPolicy, setIntegrityPolicy] = useState({
+    tracking_enabled: true,
+    block_clipboard: true,
+    enforce_fullscreen: false,
+  })
   
   useEffect(() => {
     verifyInvitation()
@@ -55,6 +61,9 @@ const InterviewRoom: React.FC = () => {
       setInvitation(verifiedInvitation)
       setInterview(verifiedInvitation.interview)
       setQuestions(verifiedInvitation.interview?.questions || [])
+      if (verifiedInvitation.integrity_policy) {
+        setIntegrityPolicy(verifiedInvitation.integrity_policy)
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || t('interviewRoom.invalidInvitation'))
     } finally {
@@ -101,6 +110,13 @@ const InterviewRoom: React.FC = () => {
       setRemainingSeconds(Math.max(0, Math.round((deadlineMs - Date.now()) / 1000)))
     } catch (err) {
       console.error('Failed to sync server timer:', err)
+    }
+  }
+
+  const requestFullscreen = () => {
+    const el = document.documentElement
+    if (el.requestFullscreen && !document.fullscreenElement) {
+      el.requestFullscreen().catch(() => {})
     }
   }
 
@@ -371,25 +387,83 @@ const InterviewRoom: React.FC = () => {
     }
 
     const onVisibility = () => {
-      if (document.hidden) record('tab_hidden')
-      else record('tab_visible')
+      if (document.hidden) {
+        record('tab_hidden')
+        setIntegrityWarning(t('interviewRoom.warningTabSwitch'))
+      } else {
+        record('tab_visible')
+      }
     }
-    const onBlur = () => record('window_blur')
+    const onBlur = () => {
+      record('window_blur')
+      setIntegrityWarning(t('interviewRoom.warningBlur'))
+    }
     const onFocus = () => record('window_focus')
+    const onContextMenu = (event: MouseEvent) => {
+      if (integrityPolicy.block_clipboard) {
+        event.preventDefault()
+        record('context_menu')
+        setIntegrityWarning(t('interviewRoom.warningContextMenu'))
+      }
+    }
+    const onClipboardEvent = (event: ClipboardEvent, eventType: string) => {
+      if (integrityPolicy.block_clipboard) {
+        event.preventDefault()
+        record(eventType)
+        setIntegrityWarning(
+          eventType === 'paste'
+            ? t('interviewRoom.warningPaste')
+            : t('interviewRoom.warningCopy')
+        )
+      }
+    }
+    const onCopy = (event: ClipboardEvent) => onClipboardEvent(event, 'copy')
+    const onCut = (event: ClipboardEvent) => onClipboardEvent(event, 'cut')
+    const onPaste = (event: ClipboardEvent) => onClipboardEvent(event, 'paste')
+    const onPageHide = () => record('page_exit')
+    const onFullscreenChange = () => {
+      if (!integrityPolicy.enforce_fullscreen) return
+      if (!document.fullscreenElement) {
+        record('fullscreen_exit')
+        setIntegrityWarning(t('interviewRoom.warningFullscreenExit'))
+        requestFullscreen()
+      } else {
+        record('fullscreen_enter')
+      }
+    }
 
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('blur', onBlur)
     window.addEventListener('focus', onFocus)
+    document.addEventListener('contextmenu', onContextMenu)
+    document.addEventListener('copy', onCopy)
+    document.addEventListener('cut', onCut)
+    document.addEventListener('paste', onPaste)
+    window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('fullscreenchange', onFullscreenChange)
     flushTimer = window.setInterval(flush, 10000)
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('blur', onBlur)
       window.removeEventListener('focus', onFocus)
+      document.removeEventListener('contextmenu', onContextMenu)
+      document.removeEventListener('copy', onCopy)
+      document.removeEventListener('cut', onCut)
+      document.removeEventListener('paste', onPaste)
+      window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('fullscreenchange', onFullscreenChange)
       if (flushTimer) window.clearInterval(flushTimer)
       flush()
     }
-  }, [step, responseId])
+  }, [step, responseId, integrityPolicy, t])
+
+  // Enter fullscreen when the interview starts so the candidate cannot browse
+  // other tabs or apps for answers.
+  useEffect(() => {
+    if (step !== 'interview' || !integrityPolicy.enforce_fullscreen) return
+    requestFullscreen()
+  }, [step, integrityPolicy.enforce_fullscreen])
 
   if (loading) {
     return <Container className="mt-5"><p>{t('interviewRoom.loading')}</p></Container>
@@ -464,6 +538,9 @@ const InterviewRoom: React.FC = () => {
                   <li>{t('interviewRoom.instructionSpeak')}</li>
                   <li>{t('interviewRoom.instructionRecord')}</li>
                   <li>{t('interviewRoom.instructionAI')}</li>
+                  {(integrityPolicy.tracking_enabled || integrityPolicy.block_clipboard) && (
+                    <li>{t('interviewRoom.instructionIntegrity')}</li>
+                  )}
                 </ul>
               </Card.Body>
             </Card>
@@ -596,6 +673,11 @@ const InterviewRoom: React.FC = () => {
             <Card.Body>
               {error && <Alert variant="danger">{error}</Alert>}
               {answerError && <Alert variant="danger">{answerError}</Alert>}
+              {integrityWarning && (
+                <Alert variant="warning" dismissible onClose={() => setIntegrityWarning('')}>
+                  {integrityWarning}
+                </Alert>
+              )}
               {remainingSeconds === 0 && (
                 <Alert variant="warning">{t('interviewRoom.timeUp')}</Alert>
               )}

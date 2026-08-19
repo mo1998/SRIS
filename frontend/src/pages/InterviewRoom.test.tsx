@@ -17,6 +17,7 @@ const apiMock = vi.hoisted(() => ({
     submitAnswer: vi.fn(),
     submitQuality: vi.fn(),
     submitEmotion: vi.fn(),
+    submitIntegrityEvents: vi.fn(),
     complete: vi.fn(),
   },
 }))
@@ -62,6 +63,7 @@ describe('InterviewRoom token verification', () => {
     apiMock.responses.submitAnswer.mockReset()
     apiMock.responses.submitQuality.mockReset()
     apiMock.responses.submitEmotion.mockReset()
+    apiMock.responses.submitIntegrityEvents.mockReset()
     apiMock.responses.complete.mockReset()
     getUserMediaMock.mockReset()
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -388,5 +390,77 @@ describe('InterviewRoom token verification', () => {
     expect(screen.getByRole('button', { name: /go to login/i })).toBeInTheDocument()
     expect(apiMock.interviews.get).not.toHaveBeenCalled()
     expect(apiMock.interviews.getQuestions).not.toHaveBeenCalled()
+  })
+
+  const startInterviewFlow = async () => {
+    apiMock.responses.start.mockResolvedValue({ data: { id: 99 } })
+    const view = renderPage()
+    expect(await screen.findByText(/invitation verified/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /continue to setup/i }))
+    await userEvent.click(screen.getByLabelText(/i understand how my interview data will be used/i))
+    await userEvent.click(screen.getByLabelText(/i consent to participate/i))
+    getUserMediaMock.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    await userEvent.click(screen.getByRole('button', { name: /run system check/i }))
+    await userEvent.click(screen.getByRole('button', { name: /system check pass/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /start interview/i }))
+    expect(await screen.findByText(/question 1 of 1/i)).toBeInTheDocument()
+    return view
+  }
+
+  it('blocks copy, paste, and right-click and records anti-cheating integrity events', async () => {
+    apiMock.invitations.verify.mockResolvedValue({
+      data: {
+        id: 12,
+        interview_id: 4,
+        candidate_email: 'candidate@example.com',
+        candidate_name: 'Candidate One',
+        status: 'sent',
+        expires_at: '2026-07-25T00:00:00Z',
+        interview: {
+          id: 4,
+          title: 'Support Screen',
+          description: 'Structured support interview',
+          duration_minutes: 30,
+          max_attempts: 1,
+          questions: [
+            { id: 20, question_text: 'How do you handle an upset customer?', question_type: 'text', weight: 1, order_index: 0 },
+          ],
+        },
+        integrity_policy: {
+          tracking_enabled: true,
+          block_clipboard: true,
+          enforce_fullscreen: false,
+        },
+      },
+    })
+
+    const view = await startInterviewFlow()
+    apiMock.responses.submitIntegrityEvents.mockResolvedValue({ data: { recorded: 3 } })
+
+    const answerInput = screen.getByLabelText(/your answer/i)
+    const pasteEvent = new Event('paste', { bubbles: true, cancelable: true })
+    const copyEvent = new Event('copy', { bubbles: true, cancelable: true })
+    const contextMenuEvent = new Event('contextmenu', { bubbles: true, cancelable: true })
+    answerInput.dispatchEvent(pasteEvent)
+    answerInput.dispatchEvent(copyEvent)
+    answerInput.dispatchEvent(contextMenuEvent)
+
+    expect(pasteEvent.defaultPrevented).toBe(true)
+    expect(copyEvent.defaultPrevented).toBe(true)
+    expect(contextMenuEvent.defaultPrevented).toBe(true)
+    expect(await screen.findByText(/right-clicking is disabled during the interview/i)).toBeInTheDocument()
+
+    view.unmount()
+
+    await waitFor(() => {
+      expect(apiMock.responses.submitIntegrityEvents).toHaveBeenCalledWith(
+        99,
+        expect.arrayContaining([
+          expect.objectContaining({ event_type: 'paste' }),
+          expect.objectContaining({ event_type: 'copy' }),
+          expect.objectContaining({ event_type: 'context_menu' }),
+        ])
+      )
+    })
   })
 })
