@@ -1,6 +1,6 @@
 """Organization evaluation settings
 
-Revision ID: 021_add_organization_evaluation_settings
+Revision ID: 021_organization_eval_settings
 Revises: 020_add_password_reset_tokens
 Create Date: 2026-08-19 00:00:00.000000
 
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
 
-revision = '021_add_organization_evaluation_settings'
+revision = '021_organization_eval_settings'
 down_revision = '020_add_password_reset_tokens'
 branch_labels = None
 depends_on = None
