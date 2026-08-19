@@ -8,9 +8,10 @@ from typing import List
 
 from app.database import get_db
 from app.models import TeamMembership, TeamRole, User
-from app.schemas import OrganizationResponse, PasswordChange, TeamMemberResponse, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
+from app.schemas import OrganizationProvidersResponse, OrganizationResponse, OrganizationSettingsUpdate, PasswordChange, TeamMemberResponse, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
 from app.api.auth import get_current_user, get_password_hash, require_role, UserRole, verify_password
 from app.services.audit_service import create_audit_log
+from app.services.evaluation_service import get_available_providers
 
 router = APIRouter()
 
@@ -56,6 +57,68 @@ async def get_my_organization(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
     return membership.organization
+
+
+@router.get("/me/organization/providers", response_model=OrganizationProvidersResponse)
+async def get_organization_evaluation_providers(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List evaluation providers the organization can select and its current
+    selection. Any organization member can read; changes require owner/admin."""
+    membership = get_primary_membership(current_user, db)
+
+    from app.config import settings
+
+    return {
+        "organization_id": membership.organization_id,
+        "selected": membership.organization.evaluation_provider,
+        "system_default": settings.EVALUATION_PROVIDER,
+        "role": membership.role.value,
+        "providers": get_available_providers(),
+    }
+
+
+@router.patch("/me/organization/settings", response_model=OrganizationResponse)
+async def update_organization_evaluation_settings(
+    settings_update: OrganizationSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Replace the organization's evaluation provider settings (owner/admin only).
+
+    The payload is a full replacement: omitted or empty fields clear the
+    override so the organization falls back to the system default. The
+    provider choice takes effect on the next evaluation run without touching
+    .env or the deployment configuration.
+    """
+    membership = get_primary_membership(current_user, db)
+    require_membership_admin(membership)
+
+    org = membership.organization
+    changed = {
+        "evaluation_provider": settings_update.evaluation_provider,
+        "evaluation_model": settings_update.evaluation_model,
+        "evaluation_base_url": settings_update.evaluation_base_url,
+        "evaluation_api_key_set": bool(settings_update.evaluation_api_key),
+    }
+    org.evaluation_provider = settings_update.evaluation_provider
+    org.evaluation_model = settings_update.evaluation_model
+    org.evaluation_base_url = settings_update.evaluation_base_url
+    org.evaluation_api_key = settings_update.evaluation_api_key
+
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="organization.evaluation_settings_updated",
+        target_type="organization",
+        target_id=org.id,
+        organization_id=org.id,
+        details={k: ("***" if (isinstance(v, str) and "api_key" in k) else v) for k, v in changed.items()},
+    )
+    db.commit()
+    db.refresh(org)
+    return org
 
 
 @router.get("/me/organization/members", response_model=List[TeamMemberResponse])

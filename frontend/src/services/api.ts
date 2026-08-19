@@ -16,7 +16,14 @@ export const api = {
     getMyOrganization: () => axios.get(`${API_URL}/users/me/organization`),
     getMyMemberships: () => axios.get(`${API_URL}/users/me/memberships`),
     getOrganizationMembers: () => axios.get(`${API_URL}/users/me/organization/members`),
-    addMembership: (data: { email: string; role: string }) => axios.post(`${API_URL}/users/me/memberships`, data)
+    addMembership: (data: { email: string; role: string }) => axios.post(`${API_URL}/users/me/memberships`, data),
+    getOrganizationProviders: () => axios.get(`${API_URL}/users/me/organization/providers`),
+    updateOrganizationSettings: (data: {
+      evaluation_provider?: string | null
+      evaluation_model?: string | null
+      evaluation_base_url?: string | null
+      evaluation_api_key?: string | null
+    }) => axios.patch(`${API_URL}/users/me/organization/settings`, data),
   },
 
   // Interviews
@@ -107,7 +114,7 @@ export const api = {
     getCandidateReport: (responseId: number) => axios.get(`${API_URL}/reports/candidate/${responseId}`),
     getCandidateEvaluations: (responseId: number) => axios.get(`${API_URL}/reports/candidate/${responseId}/evaluations`),
     reevaluateCandidate: (responseId: number) => axios.post(`${API_URL}/reports/candidate/${responseId}/evaluations`),
-    getEvaluationHealth: () => axios.get(`${API_URL}/reports/evaluation/health`),
+    getEvaluationHealth: (organizationId?: number) => axios.get(`${API_URL}/reports/evaluation/health`, { params: { organization_id: organizationId } }),
     getEmailHealth: () => axios.get(`${API_URL}/reports/email/health`),
     downloadInterviewPdf: (interviewId: number) => 
       axios.get(`${API_URL}/reports/interview/${interviewId}/pdf`, { responseType: 'blob' }),

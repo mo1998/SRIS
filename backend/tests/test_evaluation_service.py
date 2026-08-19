@@ -2,7 +2,20 @@ import pytest
 
 from app.services import evaluation_service
 from app.config import settings
-from app.services.evaluation_service import baseline_provider, evaluate_answer_similarity, get_active_llm_model, get_evaluation_health, get_evaluation_provider, local_vllm_provider, normalize_llm_score, parse_llm_json
+from app.database import SessionLocal
+from app.models import Organization
+from app.services.evaluation_service import (
+    baseline_provider,
+    evaluate_answer_similarity,
+    get_active_llm_model,
+    get_available_providers,
+    get_evaluation_health,
+    get_evaluation_provider,
+    get_organization_provider_config,
+    local_vllm_provider,
+    normalize_llm_score,
+    parse_llm_json,
+)
 
 
 @pytest.mark.asyncio
@@ -354,6 +367,119 @@ def test_get_evaluation_provider_cloud_mode_respects_toggle(monkeypatch):
 
     provider = get_evaluation_provider()
     assert provider.name == "deterministic_baseline"
+
+
+def _create_org(db, provider, model=None, base_url=None, api_key=None) -> int:
+    org = Organization(name="Provider Test Org")
+    db.add(org)
+    db.flush()
+    org.evaluation_provider = provider
+    org.evaluation_model = model
+    org.evaluation_base_url = base_url
+    org.evaluation_api_key = api_key
+    db.commit()
+    return org.id
+
+
+def test_org_override_selects_cloud_provider(monkeypatch):
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+    db = SessionLocal()
+    try:
+        org_id = _create_org(
+            db, "cloud_llm",
+            model="org-cloud-model", base_url="https://org.example.com/v1", api_key="sk-org",
+        )
+        provider = get_evaluation_provider(db, org_id)
+        assert provider.name == "cloud_llm"
+        assert provider.model == "org-cloud-model"
+        assert provider.base_url == "https://org.example.com/v1"
+        assert provider.api_key == "sk-org"
+        assert get_active_llm_model(db, org_id) == "org-cloud-model"
+        assert get_organization_provider_config(db, org_id)["evaluation_provider"] == "cloud_llm"
+    finally:
+        db.close()
+
+
+def test_org_override_selects_local_provider(monkeypatch):
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+    db = SessionLocal()
+    try:
+        org_id = _create_org(db, "local_vllm", model="org-local-model")
+        provider = get_evaluation_provider(db, org_id)
+        assert provider.name == "local_vllm"
+        assert provider.model == "org-local-model"
+    finally:
+        db.close()
+
+
+def test_org_override_falls_back_when_provider_disabled(monkeypatch):
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", False)
+    db = SessionLocal()
+    try:
+        org_id = _create_org(db, "cloud_llm")
+        provider = get_evaluation_provider(db, org_id)
+        assert provider.name == "deterministic_baseline"
+    finally:
+        db.close()
+
+
+def test_no_org_override_uses_system_default(monkeypatch):
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "local_vllm")
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
+    db = SessionLocal()
+    try:
+        org_id = _create_org(db, None)
+        provider = get_evaluation_provider(db, org_id)
+        assert provider.name == "local_vllm"
+        assert provider.model == settings.LOCAL_LLM_MODEL
+        assert get_organization_provider_config(db, org_id) == {}
+    finally:
+        db.close()
+
+
+def test_available_providers_reflect_toggles(monkeypatch):
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
+    providers = {p["value"]: p["available"] for p in get_available_providers()}
+    assert providers["local_vllm"] is True
+    assert providers["cloud_llm"] is False
+    assert providers["hybrid"] is True
+    assert providers["deterministic_baseline"] is True
+
+
+@pytest.mark.asyncio
+async def test_evaluation_health_reflects_org_provider(monkeypatch):
+    class HealthyClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, url, headers=None):
+            return _OkResponse()
+
+    class _OkResponse:
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "local_vllm")
+    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", lambda timeout: HealthyClient())
+
+    db = SessionLocal()
+    try:
+        org_id = _create_org(db, "cloud_llm", model="org-cloud-model")
+        health = await get_evaluation_health(db=db, organization_id=org_id)
+        assert health["provider"] == "cloud_llm"
+        assert health["model_name"] == "org-cloud-model"
+        assert health["organization_provider"] == "cloud_llm"
+        assert health["config_hash"]
+    finally:
+        db.close()
 
 
 @pytest.mark.asyncio

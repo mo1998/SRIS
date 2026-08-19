@@ -709,6 +709,120 @@ def test_organization_owner_can_view_audit_logs_and_reviewer_cannot(client):
     assert reviewer_response.status_code == 403, reviewer_response.text
 
 
+def test_organization_owner_can_select_evaluation_provider(client, monkeypatch):
+    monkeypatch.setattr("app.config.settings.LOCAL_LLM_ENABLED", True)
+    monkeypatch.setattr("app.config.settings.CLOUD_LLM_ENABLED", True)
+    register_user(client)
+    owner_token = login_user(client)
+
+    org_response = client.get(
+        "/api/users/me/organization",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert org_response.status_code == 200, org_response.text
+    org = org_response.json()
+    assert org["evaluation_provider"] is None
+
+    providers_response = client.get(
+        "/api/users/me/organization/providers",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert providers_response.status_code == 200, providers_response.text
+    providers = providers_response.json()
+    assert providers["role"] == "owner"
+    values = {p["value"]: p["available"] for p in providers["providers"]}
+    assert values == {
+        "local_vllm": True,
+        "cloud_llm": True,
+        "hybrid": True,
+        "deterministic_baseline": True,
+    }
+
+    update_response = client.patch(
+        "/api/users/me/organization/settings",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "evaluation_provider": "cloud_llm",
+            "evaluation_model": "gpt-4o-mini",
+            "evaluation_base_url": "https://api.openai.com/v1",
+            "evaluation_api_key": "sk-org-secret",
+        },
+    )
+    assert update_response.status_code == 200, update_response.text
+    updated = update_response.json()
+    assert updated["evaluation_provider"] == "cloud_llm"
+    assert updated["evaluation_model"] == "gpt-4o-mini"
+    assert "evaluation_api_key" not in updated
+
+    org_response = client.get(
+        "/api/users/me/organization",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert org_response.json()["evaluation_provider"] == "cloud_llm"
+
+    providers_response = client.get(
+        "/api/users/me/organization/providers",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert providers_response.json()["selected"] == "cloud_llm"
+
+    audit_response = client.get(
+        "/api/audit-logs/",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    settings_log = next(log for log in audit_response.json() if log["action"] == "organization.evaluation_settings_updated")
+    assert settings_log["details"]["evaluation_api_key_set"] is True
+    assert "sk-org-secret" not in str(settings_log["details"])
+
+    clear_response = client.patch(
+        "/api/users/me/organization/settings",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"evaluation_provider": "", "evaluation_model": "", "evaluation_base_url": "", "evaluation_api_key": ""},
+    )
+    assert clear_response.status_code == 200, clear_response.text
+    assert clear_response.json()["evaluation_provider"] is None
+
+
+def test_non_admin_member_cannot_change_evaluation_provider(client):
+    register_user(client)
+    owner_token = login_user(client)
+    register_user(client, email="reviewer2@example.com", role="employee")
+    reviewer_token = login_user(client, email="reviewer2@example.com")
+
+    add_member_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "reviewer2@example.com", "role": "reviewer"},
+    )
+    assert add_member_response.status_code == 201, add_member_response.text
+
+    providers_response = client.get(
+        "/api/users/me/organization/providers",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+    )
+    assert providers_response.status_code == 200, providers_response.text
+    assert providers_response.json()["role"] == "reviewer"
+
+    update_response = client.patch(
+        "/api/users/me/organization/settings",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+        json={"evaluation_provider": "local_vllm"},
+    )
+    assert update_response.status_code == 403, update_response.text
+
+
+def test_organization_settings_reject_unknown_provider(client):
+    register_user(client)
+    owner_token = login_user(client)
+
+    response = client.patch(
+        "/api/users/me/organization/settings",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"evaluation_provider": "not-a-provider"},
+    )
+    assert response.status_code == 422, response.text
+
+
 def test_same_organization_recruiter_can_manage_invitations(client, monkeypatch):
     async def noop_send_invitation_email(**kwargs):
         return None
@@ -1091,8 +1205,8 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert interview_report_response.status_code == 200, interview_report_response.text
     interview_report = interview_report_response.json()
     assert interview_report["candidates"][0]["response_id"] == candidate_response["id"]
-    assert interview_report["candidates"][0]["evaluation_provider"]
-    assert interview_report["candidates"][0]["evaluation_model"]
+    assert interview_report["candidates"][0]["evaluation_provider"] == "deterministic_baseline"
+    assert interview_report["candidates"][0]["evaluation_model"] is None
     assert interview_report["candidates"][0]["evaluation_status"] == "completed"
 
     candidate_report_response = client.get(
@@ -1102,8 +1216,8 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert candidate_report_response.status_code == 200, candidate_report_response.text
     candidate_report = candidate_report_response.json()
     assert candidate_report["response_id"] == candidate_response["id"]
-    assert candidate_report["evaluation_provider"]
-    assert candidate_report["evaluation_model"]
+    assert candidate_report["evaluation_provider"] == "deterministic_baseline"
+    assert candidate_report["evaluation_model"] is None
     assert candidate_report["evaluation_status"] == "completed"
     assert candidate_report["answers"][0]["feedback_en"]
     assert candidate_report["answers"][0]["feedback_ar"]

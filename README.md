@@ -67,6 +67,7 @@ The system is containerized with Docker Compose (PostgreSQL, Redis, FastAPI, Rea
 
 - Local-first evaluation with an OpenAI-compatible `local_vllm` provider
 - Optional cloud LLM provider (OpenAI-compatible) as a hybrid alternative or complement
+- Per-organization provider selection: employers pick local, cloud, hybrid, or deterministic evaluation from the dashboard — no `.env` or deployment changes required (overrides stored on the organization; clear them to fall back to the system default)
 - Deterministic rubric-aware fallback evaluator so evaluations never block on the LLM
 - Persisted evaluation runs (provider, model, prompt version, config hash, status, errors) and per-answer scores with bilingual feedback and evidence JSON
 - Single and batch re-evaluation; evaluation health endpoint; interview-level analytics
@@ -226,6 +227,10 @@ Key settings:
 
 Evaluation runs through a provider interface with a deterministic rubric-aware fallback, so scoring continues even when the local LLM is unavailable. Health and fallback status are exposed at `GET /api/reports/evaluation/health` and on the employer dashboard. An optional cloud LLM provider (OpenAI-compatible) can be enabled as a hybrid alternative.
 
+Organizations can select which provider to use — local, cloud, hybrid, or deterministic — from the employer dashboard (`GET /api/users/me/organization/providers`, `PATCH /api/users/me/organization/settings`). The selection is stored on the organization, so switching providers does not require changing `.env` or redeploying. Each evaluation run records the effective provider and model for auditability.
+
+See [AI_PRODUCTION_ROADMAP.md](AI_PRODUCTION_ROADMAP.md) for the planned best-practice hardening of the AI stack (gateway, structured output, golden evals, guardrails, cost control, tracing).
+
 On completion, media-backed answers are transcribed automatically (multilingual Whisper speech-to-text, configurable provider) and video answers can be analyzed for facial emotion (DeepFace) as operational metadata. Both providers expose health endpoints and queue jobs through the same background mechanism as evaluation.
 
 Model weights are downloaded or run only after explicit approval. Do not download or start model servers without confirming the model source, license, size, hardware requirements, and purpose. Approved-model serving configuration is documented in [DEPLOYMENT.md](DEPLOYMENT.md).
@@ -253,7 +258,7 @@ See [PRODUCTION.md](PRODUCTION.md) for the production-hardening implementation p
 ## API Overview
 
 - `/api/auth` — register, login, refresh, current user, forgot/reset password
-- `/api/users` — profile, password, team membership
+- `/api/users` — profile, password, team membership, organization evaluation-provider settings
 - `/api/interviews` — interview CRUD, templates, questions, status transitions
 - `/api/invitations` — single/bulk invite, preview, verify, revoke, resend
 - `/api/responses` — response lifecycle, answers (audio/video), quality, emotion, integrity, timer, completion, retake
@@ -314,6 +319,7 @@ SRIS/
 ├── docker-compose.prod.yml
 ├── deploy.sh
 ├── backup.sh
+├── AI_PRODUCTION_ROADMAP.md
 ├── DEPLOYMENT.md
 └── README.md
 ```
