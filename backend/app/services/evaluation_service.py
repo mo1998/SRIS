@@ -324,27 +324,30 @@ def _build_provider(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> EvaluationProvider:
-    """Build a provider chain for an explicit preference + optional overrides."""
+    """Build a provider chain for an explicit preference + optional overrides.
+
+    A fully-specified custom endpoint (base_url + api_key for cloud, base_url
+    for local) is honored regardless of the system env toggles; the toggles
+    only gate the system's preconfigured defaults."""
     # Provider .name is "cloud_llm"; the historical env value is "cloud".
     if preference == "cloud_llm":
         preference = "cloud"
     if preference == "deterministic_baseline":
         return baseline_provider
     if preference == "cloud":
-        return (
-            CloudLLMEvaluationProvider(baseline_provider, model=model, base_url=base_url, api_key=api_key)
-            if settings.CLOUD_LLM_ENABLED
-            else baseline_provider
-        )
+        custom_endpoint = bool(base_url and api_key)
+        if settings.CLOUD_LLM_ENABLED or custom_endpoint:
+            return CloudLLMEvaluationProvider(baseline_provider, model=model, base_url=base_url, api_key=api_key)
+        return baseline_provider
     if preference == "hybrid":
         chain: EvaluationProvider = baseline_provider
-        if settings.CLOUD_LLM_ENABLED:
+        if settings.CLOUD_LLM_ENABLED or (base_url and api_key):
             chain = CloudLLMEvaluationProvider(chain, model=model, base_url=base_url, api_key=api_key)
-        if settings.LOCAL_LLM_ENABLED:
+        if settings.LOCAL_LLM_ENABLED or base_url:
             chain = LocalVLLMEvaluationProvider(chain, model=model, base_url=base_url)
         return chain
     # local_vllm (default)
-    if settings.LOCAL_LLM_ENABLED:
+    if settings.LOCAL_LLM_ENABLED or base_url:
         return LocalVLLMEvaluationProvider(baseline_provider, model=model, base_url=base_url)
     return baseline_provider
 
@@ -381,12 +384,20 @@ def get_evaluation_provider(db: Session = None, organization_id: Optional[int] =
     return _build_provider(settings.EVALUATION_PROVIDER)
 
 
-def get_available_providers() -> List[Dict[str, object]]:
-    """Providers an organization can select, flagged by system-level availability."""
+def get_available_providers(db: Session = None, organization_id: Optional[int] = None) -> List[Dict[str, object]]:
+    """Providers an organization can select.
+
+    A provider is available if the system has it enabled OR the organization
+    supplied a complete custom endpoint (base_url + api_key for cloud)."""
+    org_config = get_organization_provider_config(db, organization_id)
+    org_cloud_endpoint = bool(org_config.get("evaluation_base_url") and org_config.get("evaluation_api_key"))
+    org_local_endpoint = bool(org_config.get("evaluation_base_url"))
+    cloud = bool(settings.CLOUD_LLM_ENABLED) or org_cloud_endpoint
+    local = bool(settings.LOCAL_LLM_ENABLED) or org_local_endpoint
     return [
-        {"value": "local_vllm", "available": bool(settings.LOCAL_LLM_ENABLED)},
-        {"value": "cloud_llm", "available": bool(settings.CLOUD_LLM_ENABLED)},
-        {"value": "hybrid", "available": bool(settings.LOCAL_LLM_ENABLED or settings.CLOUD_LLM_ENABLED)},
+        {"value": "local_vllm", "available": local},
+        {"value": "cloud_llm", "available": cloud},
+        {"value": "hybrid", "available": cloud or local},
         {"value": "deterministic_baseline", "available": True},
     ]
 
@@ -1322,17 +1333,23 @@ async def get_evaluation_health(db: Session = None, organization_id: Optional[in
         return health
 
     errors = []
-    if settings.LOCAL_LLM_ENABLED:
+    org_base_url = org_config.get("evaluation_base_url")
+    org_api_key = org_config.get("evaluation_api_key")
+    if settings.LOCAL_LLM_ENABLED or (provider.name == "local_vllm" and org_base_url):
+        local_url = org_base_url or settings.LOCAL_LLM_BASE_URL
+        headers = {"Authorization": f"Bearer {org_api_key}"} if org_api_key else None
         reachable, error = await _probe_endpoint(
-            settings.LOCAL_LLM_BASE_URL, min(settings.LOCAL_LLM_TIMEOUT_SECONDS, 2.0)
+            local_url, min(settings.LOCAL_LLM_TIMEOUT_SECONDS, 2.0), headers=headers
         )
         health["local_healthy"] = reachable
         if error:
             errors.append(f"local_vllm: {error}")
-    if settings.CLOUD_LLM_ENABLED:
-        headers = {"Authorization": f"Bearer {settings.CLOUD_LLM_API_KEY}"} if settings.CLOUD_LLM_API_KEY else {}
+    if settings.CLOUD_LLM_ENABLED or (provider.name == "cloud_llm" and org_base_url):
+        cloud_url = org_base_url or settings.CLOUD_LLM_BASE_URL
+        cloud_key = org_api_key or settings.CLOUD_LLM_API_KEY
+        headers = {"Authorization": f"Bearer {cloud_key}"} if cloud_key else None
         reachable, error = await _probe_endpoint(
-            settings.CLOUD_LLM_BASE_URL, min(settings.CLOUD_LLM_TIMEOUT_SECONDS, 2.0), headers=headers
+            cloud_url, min(settings.CLOUD_LLM_TIMEOUT_SECONDS, 2.0), headers=headers
         )
         health["cloud_healthy"] = reachable
         if error:

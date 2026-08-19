@@ -75,7 +75,7 @@ async def get_organization_evaluation_providers(
         "selected": membership.organization.evaluation_provider,
         "system_default": settings.EVALUATION_PROVIDER,
         "role": membership.role.value,
-        "providers": get_available_providers(),
+        "providers": get_available_providers(db, membership.organization_id),
     }
 
 
