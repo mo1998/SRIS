@@ -15,6 +15,10 @@ const apiMock = vi.hoisted(() => ({
     addMembership: vi.fn(),
     getOrganizationProviders: vi.fn(),
     updateOrganizationSettings: vi.fn(),
+    listProviderPresets: vi.fn(),
+    createProviderPreset: vi.fn(),
+    applyProviderPreset: vi.fn(),
+    deleteProviderPreset: vi.fn(),
   },
   reports: {
     getEvaluationHealth: vi.fn(),
@@ -41,6 +45,10 @@ describe('EmployerDashboard', () => {
     apiMock.users.addMembership.mockReset()
     apiMock.users.getOrganizationProviders.mockReset()
     apiMock.users.updateOrganizationSettings.mockReset()
+    apiMock.users.listProviderPresets.mockReset()
+    apiMock.users.createProviderPreset.mockReset()
+    apiMock.users.applyProviderPreset.mockReset()
+    apiMock.users.deleteProviderPreset.mockReset()
     apiMock.reports.getEvaluationHealth.mockReset()
     apiMock.reports.getEmailHealth.mockReset()
   })
@@ -66,6 +74,7 @@ describe('EmployerDashboard', () => {
     apiMock.users.addMembership.mockResolvedValue({
       data: { user_id: 12, email: 'newmember@example.com', role: 'reviewer' },
     })
+    apiMock.users.listProviderPresets.mockResolvedValue({ data: [] })
     apiMock.users.getOrganizationMembers
       .mockResolvedValueOnce({
         data: [
@@ -139,5 +148,55 @@ describe('EmployerDashboard', () => {
     expect(await screen.findByText('newmember@example.com')).toBeInTheDocument()
     expect(screen.getByText('Nina New')).toBeInTheDocument()
     expect(screen.getByText('Team members: 3')).toBeInTheDocument()
+  })
+
+  it('loads a saved provider preset from the dropdown', async () => {
+    apiMock.interviews.list.mockResolvedValue({ data: [] })
+    apiMock.users.getMyOrganization.mockResolvedValue({ data: { id: 1, name: 'SRIS Test Co' } })
+    apiMock.users.getOrganizationProviders.mockResolvedValue({
+      data: {
+        organization_id: 1,
+        selected: null,
+        configured: false,
+        role: 'owner',
+        providers: [
+          { value: 'local_vllm', available: true },
+          { value: 'cloud_llm', available: true },
+          { value: 'hybrid', available: true },
+        ],
+      },
+    })
+    apiMock.users.listProviderPresets.mockResolvedValue({
+      data: [
+        { id: 7, name: 'Gemini Flash', provider: 'cloud_llm', model: 'gemini-2.5-flash', base_url: 'https://api.test', api_key_set: true },
+      ],
+    })
+    apiMock.users.applyProviderPreset.mockResolvedValue({
+      data: {
+        id: 1,
+        name: 'SRIS Test Co',
+        evaluation_provider: 'cloud_llm',
+        evaluation_model: 'gemini-2.5-flash',
+        evaluation_base_url: 'https://api.test',
+      },
+    })
+    apiMock.reports.getEvaluationHealth.mockResolvedValue({ data: { provider: 'cloud_llm', configured: true, healthy: false, status: 'llm_unavailable_using_fallback', prompt_version: 'rubric-v1' } })
+    apiMock.reports.getEmailHealth.mockResolvedValue({ data: { configured: false, status: 'configuration_incomplete' } })
+    apiMock.users.getOrganizationMembers.mockResolvedValue({ data: [] })
+
+    renderDashboard()
+
+    expect((await screen.findAllByText(/Gemini Flash/i)).length).toBeGreaterThan(0)
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(/saved configurations/i),
+      '7',
+    )
+    await userEvent.click(screen.getByRole('button', { name: /load/i }))
+
+    await waitFor(() => {
+      expect(apiMock.users.applyProviderPreset).toHaveBeenCalledWith(7)
+    })
+    expect(screen.getByDisplayValue('gemini-2.5-flash')).toBeInTheDocument()
   })
 })

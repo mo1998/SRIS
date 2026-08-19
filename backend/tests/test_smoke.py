@@ -821,6 +821,112 @@ def test_organization_owner_can_select_evaluation_provider(client):
     assert clear_response.json()["evaluation_provider"] is None
 
 
+def test_organization_owner_can_manage_provider_presets(client):
+    register_user(client)
+    owner_token = login_user(client)
+
+    list_response = client.get(
+        "/api/users/me/organization/presets",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert list_response.status_code == 200, list_response.text
+    assert list_response.json() == []
+
+    create_response = client.post(
+        "/api/users/me/organization/presets",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "name": "Gemini Flash",
+            "provider": "cloud_llm",
+            "model": "gemini-2.5-flash",
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "sk-preset-secret",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    created = create_response.json()
+    assert created["name"] == "Gemini Flash"
+    assert created["provider"] == "cloud_llm"
+    assert created["model"] == "gemini-2.5-flash"
+    assert created["api_key_set"] is True
+    assert "sk-preset-secret" not in str(created)
+
+    apply_response = client.post(
+        f"/api/users/me/organization/presets/{created['id']}/apply",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert apply_response.status_code == 200, apply_response.text
+    assert apply_response.json()["evaluation_provider"] == "cloud_llm"
+    assert apply_response.json()["evaluation_model"] == "gemini-2.5-flash"
+    assert apply_response.json()["evaluation_base_url"] == "https://generativelanguage.googleapis.com/v1beta/openai"
+
+    list_response = client.get(
+        "/api/users/me/organization/presets",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert list_response.status_code == 200, list_response.text
+    assert len(list_response.json()) == 1
+    assert list_response.json()[0]["api_key_set"] is True
+
+    delete_response = client.delete(
+        f"/api/users/me/organization/presets/{created['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert delete_response.status_code == 204, delete_response.text
+
+    list_response = client.get(
+        "/api/users/me/organization/presets",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert list_response.json() == []
+
+
+def test_owner_apply_preset_redispatches_pending_evaluations(client):
+    register_user(client)
+    owner_token = login_user(client)
+
+    create_response = client.post(
+        "/api/users/me/organization/presets",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "name": "Local Model",
+            "provider": "local_vllm",
+            "model": "qwen3-8b-awq",
+            "base_url": "http://llm.invalid/v1",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    preset_id = create_response.json()["id"]
+
+    apply_response = client.post(
+        f"/api/users/me/organization/presets/{preset_id}/apply",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert apply_response.status_code == 200, apply_response.text
+    assert apply_response.json()["evaluation_provider"] == "local_vllm"
+
+
+def test_non_admin_member_cannot_manage_provider_presets(client):
+    register_user(client)
+    owner_token = login_user(client)
+    register_user(client, email="reviewer-preset@example.com", role="employee")
+    reviewer_token = login_user(client, email="reviewer-preset@example.com")
+
+    add_member_response = client.post(
+        "/api/users/me/memberships",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"email": "reviewer-preset@example.com", "role": "reviewer"},
+    )
+    assert add_member_response.status_code == 201, add_member_response.text
+
+    create_response = client.post(
+        "/api/users/me/organization/presets",
+        headers={"Authorization": f"Bearer {reviewer_token}"},
+        json={"name": "X", "provider": "cloud_llm"},
+    )
+    assert create_response.status_code == 403, create_response.text
+
+
 def test_non_admin_member_cannot_change_evaluation_provider(client):
     register_user(client)
     owner_token = login_user(client)

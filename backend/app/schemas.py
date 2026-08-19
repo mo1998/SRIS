@@ -76,6 +76,54 @@ class OrganizationProvidersResponse(BaseModel):
     providers: List[EvaluationProviderInfo]
 
 
+class ProviderPresetCreate(BaseModel):
+    """Create a saved evaluation provider preset. API key is stored with the
+    preset so swapping is one click; the key is never echoed back."""
+
+    name: str
+    provider: str
+    model: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if value not in EVALUATION_PROVIDER_VALUES:
+            raise ValueError(f"provider must be one of {sorted(EVALUATION_PROVIDER_VALUES)}")
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("name is required")
+        if len(value) > 120:
+            raise ValueError("name must be 120 characters or fewer")
+        return value
+
+    @field_validator("model", "base_url", "api_key")
+    @classmethod
+    def blank_to_none(cls, value: Optional[str]) -> Optional[str]:
+        return value if value else None
+
+
+class ProviderPresetResponse(BaseModel):
+    id: int
+    organization_id: int
+    name: str
+    provider: str
+    model: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key_set: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class TeamMembershipResponse(BaseModel):
     id: int
     organization_id: int

@@ -24,6 +24,16 @@ export const api = {
       evaluation_base_url?: string | null
       evaluation_api_key?: string | null
     }) => axios.patch(`${API_URL}/users/me/organization/settings`, data),
+    listProviderPresets: () => axios.get(`${API_URL}/users/me/organization/presets`),
+    createProviderPreset: (data: {
+      name: string
+      provider: string
+      model?: string | null
+      base_url?: string | null
+      api_key?: string | null
+    }) => axios.post(`${API_URL}/users/me/organization/presets`, data),
+    applyProviderPreset: (id: number) => axios.post(`${API_URL}/users/me/organization/presets/${id}/apply`),
+    deleteProviderPreset: (id: number) => axios.delete(`${API_URL}/users/me/organization/presets/${id}`),
   },
 
   // Interviews

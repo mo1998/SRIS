@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.database import get_db
-from app.models import TeamMembership, TeamRole, User
-from app.schemas import OrganizationProvidersResponse, OrganizationResponse, OrganizationSettingsUpdate, PasswordChange, TeamMemberResponse, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
+from app.models import EvaluationProviderPreset, TeamMembership, TeamRole, User
+from app.schemas import OrganizationProvidersResponse, OrganizationResponse, OrganizationSettingsUpdate, PasswordChange, ProviderPresetCreate, ProviderPresetResponse, TeamMemberResponse, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
 from app.api.auth import get_current_user, get_password_hash, require_role, UserRole, verify_password
 from app.services.audit_service import create_audit_log
 
@@ -123,6 +123,152 @@ async def update_organization_evaluation_settings(
 
     await redispatch_pending_evaluations(db, org.id, background_tasks)
     return org
+
+
+@router.get("/me/organization/presets", response_model=List[ProviderPresetResponse])
+async def list_organization_provider_presets(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List the organization's saved evaluation provider presets. Any member can read."""
+    membership = get_primary_membership(current_user, db)
+    presets = (
+        db.query(EvaluationProviderPreset)
+        .filter(EvaluationProviderPreset.organization_id == membership.organization_id)
+        .order_by(EvaluationProviderPreset.name.asc())
+        .all()
+    )
+    return [_preset_response(p) for p in presets]
+
+
+@router.post("/me/organization/presets", response_model=ProviderPresetResponse, status_code=status.HTTP_201_CREATED)
+async def create_organization_provider_preset(
+    preset: ProviderPresetCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create a saved evaluation provider preset (owner/admin only)."""
+    membership = get_primary_membership(current_user, db)
+    require_membership_admin(membership)
+
+    row = EvaluationProviderPreset(
+        organization_id=membership.organization_id,
+        name=preset.name,
+        provider=preset.provider,
+        model=preset.model,
+        base_url=preset.base_url,
+        api_key=preset.api_key,
+        created_by=current_user.id,
+    )
+    db.add(row)
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="organization.provider_preset_created",
+        target_type="organization",
+        target_id=membership.organization_id,
+        organization_id=membership.organization_id,
+        details={"preset_name": preset.name, "provider": preset.provider},
+    )
+    db.commit()
+    db.refresh(row)
+    return _preset_response(row)
+
+
+@router.post("/me/organization/presets/{preset_id}/apply", response_model=OrganizationResponse)
+async def apply_organization_provider_preset(
+    preset_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Apply a saved preset as the organization's active evaluation provider
+    (owner/admin only). Held evaluation runs are re-dispatched in the background."""
+    membership = get_primary_membership(current_user, db)
+    require_membership_admin(membership)
+
+    preset = (
+        db.query(EvaluationProviderPreset)
+        .filter(
+            EvaluationProviderPreset.id == preset_id,
+            EvaluationProviderPreset.organization_id == membership.organization_id,
+        )
+        .first()
+    )
+    if not preset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider preset not found")
+
+    org = membership.organization
+    org.evaluation_provider = preset.provider
+    org.evaluation_model = preset.model
+    org.evaluation_base_url = preset.base_url
+    org.evaluation_api_key = preset.api_key
+
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="organization.provider_preset_applied",
+        target_type="organization",
+        target_id=org.id,
+        organization_id=org.id,
+        details={"preset_name": preset.name, "provider": preset.provider, "evaluation_api_key_set": bool(preset.api_key)},
+    )
+    db.commit()
+    db.refresh(org)
+
+    from app.services.evaluation_service import redispatch_pending_evaluations
+
+    await redispatch_pending_evaluations(db, org.id, background_tasks)
+    return org
+
+
+@router.delete("/me/organization/presets/{preset_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_organization_provider_preset(
+    preset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a saved evaluation provider preset (owner/admin only)."""
+    membership = get_primary_membership(current_user, db)
+    require_membership_admin(membership)
+
+    preset = (
+        db.query(EvaluationProviderPreset)
+        .filter(
+            EvaluationProviderPreset.id == preset_id,
+            EvaluationProviderPreset.organization_id == membership.organization_id,
+        )
+        .first()
+    )
+    if not preset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider preset not found")
+
+    db.delete(preset)
+    create_audit_log(
+        db,
+        actor=current_user,
+        action="organization.provider_preset_deleted",
+        target_type="organization",
+        target_id=membership.organization_id,
+        organization_id=membership.organization_id,
+        details={"preset_name": preset.name},
+    )
+    db.commit()
+    return None
+
+
+def _preset_response(preset: EvaluationProviderPreset) -> ProviderPresetResponse:
+    return ProviderPresetResponse(
+        id=preset.id,
+        organization_id=preset.organization_id,
+        name=preset.name,
+        provider=preset.provider,
+        model=preset.model,
+        base_url=preset.base_url,
+        api_key_set=bool(preset.api_key),
+        created_at=preset.created_at,
+        updated_at=preset.updated_at,
+    )
 
 
 @router.get("/me/organization/members", response_model=List[TeamMemberResponse])
