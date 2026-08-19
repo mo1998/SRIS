@@ -250,4 +250,76 @@ describe('CandidateReport', () => {
     expect(screen.getAllByText('No data collected')).toHaveLength(4)
     expect(screen.getByText('No emotion analysis available')).toBeInTheDocument()
   })
+
+  it('shows anti-cheating integrity events for the employer', async () => {
+    apiMock.reports.getCandidateReport.mockResolvedValue({
+      data: {
+        response_id: 99,
+        candidate_name: 'Candidate One',
+        candidate_email: 'candidate@example.com',
+        interview_title: 'Support Screen',
+        total_score: 90,
+        passed: true,
+        voice_quality: null,
+        background_quality: null,
+        face_visibility: null,
+        lighting: null,
+        dominant_emotion: null,
+        confidence_score: null,
+        evaluation_provider: 'local_vllm',
+        evaluation_model: 'qwen3-8b-awq',
+        evaluation_status: 'completed',
+        answers: [{ question: 'Q', score: 90, emotion: null }],
+        feedback: 'Overall feedback',
+        generated_at: '2026-07-20T00:00:00Z',
+        integrity: {
+          total_events: 3,
+          severity_count: 2,
+          violation_count: 3,
+          breakdown: { copy: 1, paste: 1, tab_hidden: 1 },
+          events: [],
+        },
+      },
+    })
+    apiMock.reports.getCandidateEvaluations.mockResolvedValue({ data: [] })
+
+    renderPage()
+
+    expect(await screen.findByText(/anti-cheating integrity events/i)).toBeInTheDocument()
+    expect(screen.getByText('copy')).toBeInTheDocument()
+    expect(screen.getByText('paste')).toBeInTheDocument()
+    expect(screen.getByText('tab_hidden')).toBeInTheDocument()
+  })
+
+  it('hides the integrity section when no events were recorded', async () => {
+    apiMock.reports.getCandidateReport.mockResolvedValue({
+      data: {
+        response_id: 99,
+        candidate_name: 'Candidate One',
+        candidate_email: 'candidate@example.com',
+        interview_title: 'Support Screen',
+        total_score: 90,
+        passed: true,
+        voice_quality: null,
+        background_quality: null,
+        face_visibility: null,
+        lighting: null,
+        dominant_emotion: null,
+        confidence_score: null,
+        evaluation_provider: 'local_vllm',
+        evaluation_model: 'qwen3-8b-awq',
+        evaluation_status: 'completed',
+        answers: [{ question: 'Q', score: 90, emotion: null }],
+        feedback: 'Overall feedback',
+        generated_at: '2026-07-20T00:00:00Z',
+        integrity: { total_events: 0, severity_count: 0, violation_count: 0, breakdown: {}, events: [] },
+      },
+    })
+    apiMock.reports.getCandidateEvaluations.mockResolvedValue({ data: [] })
+
+    renderPage()
+
+    await screen.findByText(/candidate performance report/i)
+    expect(screen.queryByText(/anti-cheating integrity events/i)).not.toBeInTheDocument()
+  })
 })

@@ -45,6 +45,7 @@ The system is containerized with Docker Compose (PostgreSQL, Redis, FastAPI, Rea
 - Answer retake while the response is in progress, with media replacement and score/transcript invalidation
 - Environment quality metrics (voice, background, face visibility, lighting) with configurable scoring weights
 - Anti-cheating integrity tracking: tab switches, window blur/focus, context-menu events, and timer overruns recorded per response
+- Anti-cheating enforcement: clipboard blocking (copy/paste disabled during the interview), right-click blocking, optional fullscreen enforcement, and candidate-facing warnings recorded as integrity events
 - Completion flow that queues evaluation and transcription, updates invitation status, and emits webhooks and notifications
 
 ### Transcription
@@ -217,6 +218,8 @@ Key settings:
 | `INVITATION_EXPIRY_DAYS`, `INVITATION_REMINDER_*` | Invitation expiry and reminder scheduling |
 | `MAINTENANCE_ENABLED`, `MAINTENANCE_INTERVAL_SECONDS` | Scheduled expiry/reminder jobs |
 | `INTEGRITY_TRACKING_ENABLED` | Client-side anti-cheating event capture |
+| `INTEGRITY_BLOCK_CLIPBOARD` | Block copy/paste/right-click during the interview and record attempts |
+| `INTEGRITY_ENFORCE_FULLSCREEN` | Require fullscreen during the interview and record exits |
 | `METRICS_ENABLED` | Prometheus `/metrics` endpoint |
 
 ## AI Evaluation

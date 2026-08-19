@@ -101,6 +101,8 @@ class Settings(BaseSettings):
 
     # Integrity / anti-cheating
     INTEGRITY_TRACKING_ENABLED: bool = os.getenv("INTEGRITY_TRACKING_ENABLED", "true").lower() == "true"
+    INTEGRITY_BLOCK_CLIPBOARD: bool = os.getenv("INTEGRITY_BLOCK_CLIPBOARD", "true").lower() == "true"
+    INTEGRITY_ENFORCE_FULLSCREEN: bool = os.getenv("INTEGRITY_ENFORCE_FULLSCREEN", "false").lower() == "true"
     INTERVIEW_DURATION_GRACE_SECONDS: int = int(os.getenv("INTERVIEW_DURATION_GRACE_SECONDS", "60"))
 
     # Scoring weights (applied when a quality/emotion value is present)

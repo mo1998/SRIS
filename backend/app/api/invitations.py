@@ -319,6 +319,11 @@ async def verify_invitation_token(
         "expires_at": invitation.expires_at,
         "created_at": invitation.created_at,
         "interview": interview,
+        "integrity_policy": {
+            "tracking_enabled": settings.INTEGRITY_TRACKING_ENABLED,
+            "block_clipboard": settings.INTEGRITY_BLOCK_CLIPBOARD,
+            "enforce_fullscreen": settings.INTEGRITY_ENFORCE_FULLSCREEN,
+        },
     }
 
 

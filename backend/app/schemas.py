@@ -355,8 +355,15 @@ class PublicInterviewResponse(BaseModel):
         from_attributes = True
 
 
+class IntegrityPolicy(BaseModel):
+    tracking_enabled: bool = True
+    block_clipboard: bool = True
+    enforce_fullscreen: bool = False
+
+
 class InvitationVerificationResponse(InvitationResponse):
     interview: PublicInterviewResponse
+    integrity_policy: IntegrityPolicy = IntegrityPolicy()
 
 
 # Candidate response schemas
@@ -489,6 +496,21 @@ class InterviewReport(BaseModel):
     generated_at: datetime
 
 
+class IntegrityEventResponse(BaseModel):
+    id: int
+    event_type: str
+    details: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class IntegritySummary(BaseModel):
+    total_events: int = 0
+    severity_count: int = 0
+    violation_count: int = 0
+    breakdown: Dict[str, int] = {}
+    events: List[IntegrityEventResponse] = []
+
+
 class CandidateReport(BaseModel):
     response_id: int
     candidate_name: str
@@ -505,6 +527,7 @@ class CandidateReport(BaseModel):
     reviewer_decision: Optional[ReviewerDecisionEnum] = None
     ai_disclosure: Optional[str] = None
     answers: List[ReportQuestionAnswerSchema] = []
+    integrity: Optional[IntegritySummary] = None
     feedback: str = ""
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
