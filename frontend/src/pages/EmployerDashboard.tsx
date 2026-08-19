@@ -415,19 +415,15 @@ const EmployerDashboard: React.FC = () => {
                           <FiDownload className="me-1" /> {t('dashboard.presetLoad')}
                         </Button>
                       </Col>
-                      {presets.length > 0 && (
-                        <Col md={3} xl={2}>
-                          <Form.Label className="small text-muted">{t('dashboard.presetName')}</Form.Label>
-                          <Form.Control size="sm" type="text" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder={t('dashboard.presetName')} />
-                        </Col>
-                      )}
-                      {presets.length > 0 && (
-                        <Col md={3} xl={1}>
-                          <Button variant="outline-primary" size="sm" className="w-100" onClick={handleSavePreset}>
-                            <FiSave className="me-1" /> {t('dashboard.presetSaveAs')}
-                          </Button>
-                        </Col>
-                      )}
+                      <Col md={3} xl={2}>
+                        <Form.Label className="small text-muted">{t('dashboard.presetName')}</Form.Label>
+                        <Form.Control size="sm" type="text" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder={t('dashboard.presetName')} />
+                      </Col>
+                      <Col md={3} xl={2}>
+                        <Button variant="outline-primary" size="sm" className="w-100" onClick={handleSavePreset}>
+                          <FiSave className="me-1" /> {t('dashboard.presetSaveAs')}
+                        </Button>
+                      </Col>
                     </Row>
                     {presets.length > 0 && (
                       <Row className="mb-3">
