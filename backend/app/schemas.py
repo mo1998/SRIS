@@ -36,12 +36,12 @@ class OrganizationResponse(BaseModel):
         from_attributes = True
 
 
-EVALUATION_PROVIDER_VALUES = {"local_vllm", "cloud_llm", "hybrid", "deterministic_baseline"}
+EVALUATION_PROVIDER_VALUES = {"local_vllm", "cloud_llm", "hybrid"}
 
 
 class OrganizationSettingsUpdate(BaseModel):
     """Organization evaluation provider selection. Empty strings clear the
-    override so the organization follows the system default."""
+    setting; the provider is configured entirely from the UI, not env."""
 
     evaluation_provider: Optional[str] = None
     evaluation_model: Optional[str] = None
@@ -71,7 +71,7 @@ class EvaluationProviderInfo(BaseModel):
 class OrganizationProvidersResponse(BaseModel):
     organization_id: int
     selected: Optional[str] = None
-    system_default: str
+    configured: bool = False
     role: str
     providers: List[EvaluationProviderInfo]
 
@@ -616,18 +616,11 @@ class EvaluationHealth(BaseModel):
     model_name: Optional[str] = None
     base_url: Optional[str] = None
     organization_provider: Optional[str] = None
+    configured: bool = False
     healthy: bool
     status: str
     fallback_provider: Optional[str] = None
     last_error: Optional[str] = None
-    local_enabled: bool = False
-    cloud_enabled: bool = False
-    local_model: Optional[str] = None
-    local_base_url: Optional[str] = None
-    local_healthy: Optional[bool] = None
-    cloud_model: Optional[str] = None
-    cloud_base_url: Optional[str] = None
-    cloud_healthy: Optional[bool] = None
     checked_at: datetime
 
 

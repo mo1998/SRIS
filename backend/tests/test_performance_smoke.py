@@ -1,6 +1,5 @@
 import time
 
-from app.config import settings
 from test_smoke import create_interview, login_user, register_user
 
 
@@ -8,7 +7,6 @@ def test_completed_interview_flow_performance_smoke(client, monkeypatch):
     async def noop_send_completion_email(**kwargs):
         return None
 
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "deterministic_baseline")
     monkeypatch.setattr("app.services.email_service.send_completion_email", noop_send_completion_email)
 
     started_at = time.perf_counter()

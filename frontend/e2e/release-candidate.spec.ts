@@ -136,13 +136,12 @@ async function mockApi(page: Page, user = employerUser) {
       json: {
         organization_id: 1,
         selected: 'local_vllm',
-        system_default: 'local_vllm',
+        configured: true,
         role: 'owner',
         providers: [
           { value: 'local_vllm', available: true },
           { value: 'cloud_llm', available: true },
           { value: 'hybrid', available: true },
-          { value: 'deterministic_baseline', available: true },
         ],
       },
     })
@@ -155,8 +154,9 @@ async function mockApi(page: Page, user = employerUser) {
         prompt_version: 'rubric-v1',
         config_hash: 'cfg-new',
         model_name: 'qwen3-8b-awq',
+        configured: true,
         healthy: true,
-        status: 'local_vllm_available',
+        status: 'available',
         fallback_provider: 'deterministic_baseline',
         checked_at: '2026-07-20T00:00:00Z',
       },
@@ -232,7 +232,7 @@ test('release candidate employer flow shows dashboard, interview detail, and aud
   await page.goto('/employer/dashboard')
   await expect(page.getByText('Employer Dashboard')).toBeVisible()
   await expect(page.getByText('Evaluation Agent')).toBeVisible()
-  await expect(page.getByText('local_vllm_available')).toBeVisible()
+  await expect(page.getByText('available')).toBeVisible()
 
   await page.goto('/employer/interviews/10')
   await expect(page.getByText('Support Screen')).toBeVisible()

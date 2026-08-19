@@ -107,11 +107,14 @@ async def test_llm_fallback_increments_metric(monkeypatch):
         async def post(self, *args, **kwargs):
             raise httpx.ConnectError("llm unreachable", request=httpx.Request("POST", "http://llm"))
 
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "sk-test")
     monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", lambda **kwargs: BrokenAsyncClient())
 
-    provider = CloudLLMEvaluationProvider(BaselineEvaluationProvider())
+    provider = CloudLLMEvaluationProvider(
+        BaselineEvaluationProvider(),
+        model="gpt-test",
+        base_url="https://api.cloud.test/v1",
+        api_key="sk-test",
+    )
     labels = {"from_provider": "cloud_llm", "to_provider": "deterministic_baseline"}
     before = _counter("sris_llm_fallbacks_total", labels)
 

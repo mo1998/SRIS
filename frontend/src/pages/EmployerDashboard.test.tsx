@@ -54,13 +54,12 @@ describe('EmployerDashboard', () => {
       data: {
         organization_id: 1,
         selected: null,
-        system_default: 'local_vllm',
+        configured: false,
         role: 'owner',
         providers: [
           { value: 'local_vllm', available: true },
-          { value: 'cloud_llm', available: false },
+          { value: 'cloud_llm', available: true },
           { value: 'hybrid', available: true },
-          { value: 'deterministic_baseline', available: true },
         ],
       },
     })
@@ -87,8 +86,9 @@ describe('EmployerDashboard', () => {
         prompt_version: 'rubric-v1',
         config_hash: 'cfg123',
         model_name: 'qwen3-8b-awq',
+        configured: true,
         healthy: false,
-        status: 'local_vllm_unavailable_using_fallback',
+        status: 'llm_unavailable_using_fallback',
         fallback_provider: 'deterministic_baseline',
         last_error: 'connection refused',
       },
@@ -110,10 +110,10 @@ describe('EmployerDashboard', () => {
     expect(screen.getByText(/evaluation agent/i)).toBeInTheDocument()
     expect(screen.getByText(/ai provider/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
-    expect(screen.getByText(/follow system default/i)).toBeInTheDocument()
+    expect(screen.getByText(/not configured/i)).toBeInTheDocument()
     expect(screen.getByText(/cloud llm/i)).toBeInTheDocument()
     expect(apiMock.reports.getEvaluationHealth).toHaveBeenCalledWith(1)
-    expect(screen.getByText(/local_vllm_unavailable_using_fallback/i)).toBeInTheDocument()
+    expect(screen.getByText(/llm_unavailable_using_fallback/i)).toBeInTheDocument()
     expect(screen.getByText(/qwen3-8b-awq/i)).toBeInTheDocument()
     expect(screen.getByText(/deterministic_baseline/i)).toBeInTheDocument()
     expect(screen.getByText(/rubric-v1/i)).toBeInTheDocument()

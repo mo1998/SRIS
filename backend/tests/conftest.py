@@ -10,8 +10,6 @@ _db_file = f"test_sris_{_worker}.db" if _worker else "test_sris.db"
 os.environ["DATABASE_URL"] = f"sqlite:///./{_db_file}"
 os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["DEBUG"] = "True"
-os.environ["EVALUATION_PROVIDER"] = "deterministic_baseline"
-os.environ["LOCAL_LLM_MODEL"] = "test-model"
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))

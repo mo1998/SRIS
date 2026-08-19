@@ -69,7 +69,6 @@ const EmployerDashboard: React.FC = () => {
     local_vllm: t('dashboard.providerLocal'),
     cloud_llm: t('dashboard.providerCloud'),
     hybrid: t('dashboard.providerHybrid'),
-    deterministic_baseline: t('dashboard.providerDeterministic'),
   }
 
   const selectedProviderLabel = (selected: string | null | undefined) =>

@@ -1,8 +1,33 @@
 import os
 import json
 
+import pytest
+
 
 WAV_BYTES = b"RIFF\x24\x00\x00\x00WAVEfmt "
+
+
+@pytest.fixture(autouse=True)
+def _offline_evaluation_llm(monkeypatch):
+    """Make LLM endpoint calls fail instantly so evaluations fall back to the
+    deterministic baseline without any real network traffic."""
+    class OfflineClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, *args, **kwargs):
+            raise RuntimeError("LLM endpoint unreachable in tests")
+
+        async def get(self, *args, **kwargs):
+            raise RuntimeError("LLM endpoint unreachable in tests")
+
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", OfflineClient)
 
 
 def test_system_check_ping(client):
@@ -93,6 +118,22 @@ def login_tokens(client, email="employer@example.com"):
 
 def login_user(client, email="employer@example.com"):
     return login_tokens(client, email)["access_token"]
+
+
+def configure_evaluation_llm(client, token):
+    """Give the caller's organization a local_vllm provider so evaluation runs
+    are queued (not held). Endpoint calls fail instantly in tests, so scoring
+    falls back to the deterministic baseline."""
+    response = client.patch(
+        "/api/users/me/organization/settings",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "evaluation_provider": "local_vllm",
+            "evaluation_model": "test-model",
+            "evaluation_base_url": "http://llm.invalid/v1",
+        },
+    )
+    assert response.status_code == 200, response.text
 
 
 def current_user(client, token):
@@ -709,9 +750,7 @@ def test_organization_owner_can_view_audit_logs_and_reviewer_cannot(client):
     assert reviewer_response.status_code == 403, reviewer_response.text
 
 
-def test_organization_owner_can_select_evaluation_provider(client, monkeypatch):
-    monkeypatch.setattr("app.config.settings.LOCAL_LLM_ENABLED", True)
-    monkeypatch.setattr("app.config.settings.CLOUD_LLM_ENABLED", True)
+def test_organization_owner_can_select_evaluation_provider(client):
     register_user(client)
     owner_token = login_user(client)
 
@@ -735,7 +774,6 @@ def test_organization_owner_can_select_evaluation_provider(client, monkeypatch):
         "local_vllm": True,
         "cloud_llm": True,
         "hybrid": True,
-        "deterministic_baseline": True,
     }
 
     update_response = client.patch(
@@ -1089,6 +1127,7 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
 
     register_user(client)
     owner_token = login_user(client)
+    configure_evaluation_llm(client, owner_token)
     interview = create_interview(client, owner_token, title="Pipeline Screen")
     activate_response = client.post(
         f"/api/interviews/{interview['id']}/activate",
@@ -1205,8 +1244,8 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert interview_report_response.status_code == 200, interview_report_response.text
     interview_report = interview_report_response.json()
     assert interview_report["candidates"][0]["response_id"] == candidate_response["id"]
-    assert interview_report["candidates"][0]["evaluation_provider"] == "deterministic_baseline"
-    assert interview_report["candidates"][0]["evaluation_model"] is None
+    assert interview_report["candidates"][0]["evaluation_provider"] == "local_vllm"
+    assert interview_report["candidates"][0]["evaluation_model"] == "test-model"
     assert interview_report["candidates"][0]["evaluation_status"] == "completed"
 
     candidate_report_response = client.get(
@@ -1216,8 +1255,8 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert candidate_report_response.status_code == 200, candidate_report_response.text
     candidate_report = candidate_report_response.json()
     assert candidate_report["response_id"] == candidate_response["id"]
-    assert candidate_report["evaluation_provider"] == "deterministic_baseline"
-    assert candidate_report["evaluation_model"] is None
+    assert candidate_report["evaluation_provider"] == "local_vllm"
+    assert candidate_report["evaluation_model"] == "test-model"
     assert candidate_report["evaluation_status"] == "completed"
     assert candidate_report["answers"][0]["feedback_en"]
     assert candidate_report["answers"][0]["feedback_ar"]
@@ -1353,7 +1392,7 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     assert analytics["total_evaluation_runs"] == 3
     assert analytics["completed_runs"] == 3
     assert analytics["average_latest_score"] > 0
-    assert analytics["provider_counts"]["deterministic_baseline"] == 3
+    assert analytics["provider_counts"]["local_vllm"] == 3
 
     candidate_pdf_response = client.get(
         f"/api/reports/candidate/{candidate_response['id']}/pdf",
@@ -2385,6 +2424,7 @@ def test_audio_only_answer_scored_from_transcript(client, monkeypatch):
 
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
 
@@ -2472,6 +2512,7 @@ def test_video_only_answer_scored_from_transcript(client, monkeypatch):
 
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
 
@@ -2559,6 +2600,7 @@ def test_candidate_results_portal_by_token(client, monkeypatch):
 
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
 
@@ -2619,6 +2661,7 @@ def test_answer_retake_replaces_answer_and_clears_score(client):
     """Candidates can retake an answer while the response is in progress."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -2653,6 +2696,7 @@ def test_integrity_events_recorded_and_timer_flagged(client):
 
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -2685,6 +2729,7 @@ def test_integrity_events_accept_anti_cheat_event_types(client):
 
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -2725,6 +2770,7 @@ def test_integrity_events_reject_unknown_event_types(client):
 
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -2757,6 +2803,7 @@ def test_candidate_report_includes_integrity_summary(client):
     """Employer candidate report surfaces recorded integrity events."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -2797,6 +2844,7 @@ def test_candidate_comparison_api(client):
     """Employers get side-by-side candidate comparison ranked by score."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -2831,6 +2879,7 @@ def test_candidate_profile_and_question_analytics(client):
     """Employers can view candidate CRM profile and per-question analytics."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -2872,6 +2921,7 @@ def test_export_interview_csv(client):
     """Employers can export candidate responses as CSV."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -2902,6 +2952,7 @@ def test_plagiarism_detection(client):
     """Near-duplicate answers between candidates are flagged."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -3048,6 +3099,7 @@ def test_webhook_create_and_list(client):
     """Test webhook CRUD operations."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
 
@@ -3103,6 +3155,7 @@ def test_webhook_deliveries_endpoint(client):
     """Test deliveries list endpoint returns successfully."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
 
@@ -3154,6 +3207,7 @@ def test_maintenance_expiry_sweep(client):
     """The maintenance job marks expired sent/pending invitations as expired."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -3197,6 +3251,7 @@ def test_maintenance_reminders(client, monkeypatch):
     """The maintenance job sends reminders to stale invitations and tracks counts."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -3332,6 +3387,7 @@ def test_response_timer_endpoint(client):
 
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -3448,6 +3504,7 @@ def test_emotion_parallel_evaluation_uses_cached_results(client, monkeypatch):
     """Evaluation runs parallel emotion analysis and applies results to answers."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(
@@ -3569,6 +3626,7 @@ def test_response_completion_creates_notification(client):
     """Completing a response notifies the interview owner."""
     register_user(client)
     token = login_user(client)
+    configure_evaluation_llm(client, token)
     interview = create_interview(client, token)
     interview_id = interview["id"]
     client.post(

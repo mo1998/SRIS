@@ -1,19 +1,21 @@
 import pytest
 
-from app.services import evaluation_service
-from app.config import settings
 from app.database import SessionLocal
-from app.models import Organization
+from app.models import EvaluationRun, Organization
 from app.services.evaluation_service import (
+    CloudLLMEvaluationProvider,
+    LocalVLLMEvaluationProvider,
+    _build_provider,
     baseline_provider,
+    enqueue_evaluation_run,
     evaluate_answer_similarity,
     get_active_llm_model,
     get_available_providers,
     get_evaluation_health,
     get_evaluation_provider,
     get_organization_provider_config,
-    local_vllm_provider,
     normalize_llm_score,
+    organization_llm_configured,
     parse_llm_json,
 )
 
@@ -65,9 +67,7 @@ async def test_baseline_scores_empty_answer_zero_with_evidence():
 
 
 @pytest.mark.asyncio
-async def test_legacy_similarity_function_uses_baseline_provider(monkeypatch):
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "deterministic_baseline")
-
+async def test_legacy_similarity_function_uses_baseline_provider():
     score, feedback = await evaluate_answer_similarity(
         "I listen and follow up.",
         "Listen and follow up.",
@@ -78,7 +78,7 @@ async def test_legacy_similarity_function_uses_baseline_provider(monkeypatch):
 
 
 def test_parse_llm_json_strips_qwen_thinking_block():
-    parsed = parse_llm_json('<think>hidden reasoning</think>{"score": 8, "feedback_en": "Good", "feedback_ar": "جيد"}')
+    parsed = parse_llm_json(' thinkinghidden reasoning response{"score": 8, "feedback_en": "Good", "feedback_ar": "جيد"}')
 
     assert parsed["score"] == 8
     assert parsed["feedback_ar"] == "جيد"
@@ -122,11 +122,10 @@ async def test_local_vllm_provider_uses_openai_compatible_json(monkeypatch):
             assert "Ownership" in json["messages"][1]["content"]
             return FakeResponse()
 
-    monkeypatch.setattr(settings, "LOCAL_LLM_BASE_URL", "http://local-vllm.test/v1")
-    monkeypatch.setattr(settings, "LOCAL_LLM_MODEL", "qwen3-test")
-    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", FakeClient)
 
-    result = await local_vllm_provider.evaluate_answer(
+    provider = LocalVLLMEvaluationProvider(baseline_provider, model="qwen3-test", base_url="http://local-vllm.test/v1")
+    result = await provider.evaluate_answer(
         "I listen and follow up.",
         "Listen and follow up.",
         [{"name": "Ownership", "description": "Takes ownership", "weight": 1.0}],
@@ -135,7 +134,7 @@ async def test_local_vllm_provider_uses_openai_compatible_json(monkeypatch):
     assert result.score == 90.0
     assert result.evidence["provider"] == "local_vllm"
     assert result.evidence["model"] == "qwen3-test"
-    assert result.evidence["prompt_version"] == settings.EVALUATION_PROMPT_VERSION
+    assert result.evidence["prompt_version"] == "rubric-v1"
     assert result.evidence["rubric_criteria"][0]["name"] == "Ownership"
     assert "Strong answer" in result.feedback
     assert "إجابة قوية" in result.feedback
@@ -156,57 +155,56 @@ async def test_local_vllm_provider_falls_back_when_endpoint_fails(monkeypatch):
         async def post(self, url, json):
             raise RuntimeError("vllm offline")
 
-    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", FailingClient)
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", FailingClient)
 
-    result = await local_vllm_provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
+    provider = LocalVLLMEvaluationProvider(baseline_provider, base_url="http://local-vllm.test/v1")
+    result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
 
     assert result.score == 85.0
+    assert result.evidence["provider"] == "deterministic_baseline"
     assert result.evidence["provider_fallback_from"] == "local_vllm"
     assert "vllm offline" in result.evidence["provider_fallback_reason"]
     assert "deterministic fallback" in result.feedback
 
 
 @pytest.mark.asyncio
-async def test_evaluation_health_reports_local_vllm_unavailable(monkeypatch):
-    class FailingClient:
-        def __init__(self, timeout):
-            self.timeout = timeout
+async def test_local_vllm_provider_falls_back_when_not_configured():
+    provider = LocalVLLMEvaluationProvider(baseline_provider)
+    result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
 
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return None
-
-        async def get(self, url):
-            raise RuntimeError("offline")
-
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "local_vllm")
-    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", FailingClient)
-
-    health = await get_evaluation_health()
-
-    assert health["provider"] == "local_vllm"
-    assert health["prompt_version"] == settings.EVALUATION_PROMPT_VERSION
-    assert health["config_hash"]
-    assert health["healthy"] is False
-    assert health["fallback_provider"] == "deterministic_baseline"
-    assert "offline" in health["last_error"]
+    assert result.score == 85.0
+    assert result.evidence["provider_fallback_from"] == "local_vllm"
+    assert "not configured" in result.evidence["provider_fallback_reason"]
 
 
-def test_enqueue_evaluation_run_uses_background_tasks_by_default(monkeypatch):
+def test_organization_llm_configured_rules():
+    assert organization_llm_configured({}) is False
+    assert organization_llm_configured({"evaluation_provider": "local_vllm", "evaluation_base_url": "http://vllm:8100", "evaluation_model": "qwen3"}) is True
+    assert organization_llm_configured({"evaluation_provider": "cloud_llm", "evaluation_base_url": "https://api.test", "evaluation_model": "gpt"}) is False
+    assert organization_llm_configured({"evaluation_provider": "cloud_llm", "evaluation_base_url": "https://api.test", "evaluation_model": "gpt", "evaluation_api_key": "sk"}) is True
+    assert organization_llm_configured({"evaluation_provider": "hybrid", "evaluation_base_url": "http://vllm:8100", "evaluation_model": "qwen3"}) is True
+
+
+def test_enqueue_evaluation_run_uses_background_tasks_by_default():
     calls = []
 
     class FakeBackgroundTasks:
         def add_task(self, func, *args):
             calls.append((func, args))
 
-    monkeypatch.setattr(settings, "EVALUATION_QUEUE_BACKEND", "background")
+    db = SessionLocal()
+    try:
+        run = EvaluationRun(response_id=1, provider="deterministic_baseline", status="queued")
+        db.add(run)
+        db.commit()
+        run_id = run.id
+    finally:
+        db.close()
 
-    backend = evaluation_service.enqueue_evaluation_run(1, 2, FakeBackgroundTasks())
+    backend = enqueue_evaluation_run(1, run_id, FakeBackgroundTasks())
 
     assert backend == "background"
-    assert calls[0][1] == (1, 2)
+    assert calls[0][1] == (1, run_id)
 
 
 def test_enqueue_evaluation_run_uses_rq_when_configured(monkeypatch):
@@ -220,16 +218,39 @@ def test_enqueue_evaluation_run_uses_rq_when_configured(monkeypatch):
         def enqueue(self, func, *args, job_timeout):
             enqueued.append((self.name, func, args, job_timeout))
 
-    monkeypatch.setattr(settings, "EVALUATION_QUEUE_BACKEND", "rq")
-    monkeypatch.setattr(evaluation_service.redis, "from_url", lambda url: object())
-    monkeypatch.setattr(evaluation_service, "Queue", FakeQueue)
+    db = SessionLocal()
+    try:
+        run = EvaluationRun(response_id=3, provider="deterministic_baseline", status="queued")
+        db.add(run)
+        db.commit()
+        run_id = run.id
+    finally:
+        db.close()
 
-    backend = evaluation_service.enqueue_evaluation_run(3, 4, object())
+    monkeypatch.setattr("app.services.evaluation_service.settings.EVALUATION_QUEUE_BACKEND", "rq")
+    monkeypatch.setattr("app.services.evaluation_service.redis.from_url", lambda url: object())
+    monkeypatch.setattr("app.services.evaluation_service.Queue", FakeQueue)
+
+    backend = enqueue_evaluation_run(3, run_id, object())
 
     assert backend == "rq"
-    assert enqueued[0][0] == settings.EVALUATION_QUEUE_NAME
-    assert enqueued[0][2] == (3, 4)
+    assert enqueued[0][0] == "evaluation"
+    assert enqueued[0][2] == (3, run_id)
     assert enqueued[0][3] == 600
+
+
+def test_enqueue_evaluation_run_holds_non_queued_runs():
+    db = SessionLocal()
+    try:
+        run = EvaluationRun(response_id=9, provider="deterministic_baseline", status="pending")
+        db.add(run)
+        db.commit()
+        run_id = run.id
+    finally:
+        db.close()
+
+    assert enqueue_evaluation_run(9, run_id, object()) == "held"
+
 
 @pytest.mark.asyncio
 async def test_cloud_provider_sends_openai_compatible_payload(monkeypatch):
@@ -264,14 +285,11 @@ async def test_cloud_provider_sends_openai_compatible_payload(monkeypatch):
             captured["headers"] = headers
             return FakeResponse()
 
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "cloud")
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "sk-cloud-test")
-    monkeypatch.setattr(settings, "CLOUD_LLM_MODEL", "gpt-test-mini")
-    monkeypatch.setattr(settings, "CLOUD_LLM_BASE_URL", "https://api.cloud.test/v1")
-    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", FakeClient)
 
-    provider = get_evaluation_provider()
+    provider = CloudLLMEvaluationProvider(
+        baseline_provider, model="gpt-test-mini", base_url="https://api.cloud.test/v1", api_key="sk-cloud-test"
+    )
     result = await provider.evaluate_answer(
         "I structure my answer.",
         "Structure the answer.",
@@ -288,17 +306,15 @@ async def test_cloud_provider_sends_openai_compatible_payload(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_cloud_provider_falls_back_without_api_key(monkeypatch):
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "cloud")
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "")
-
-    provider = get_evaluation_provider()
+async def test_cloud_provider_falls_back_without_api_key():
+    provider = CloudLLMEvaluationProvider(
+        baseline_provider, model="gpt-test-mini", base_url="https://api.cloud.test/v1"
+    )
     result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
 
     assert result.evidence["provider_fallback_from"] == "cloud_llm"
     assert result.evidence["provider"] == "deterministic_baseline"
-    assert "CLOUD_LLM_API_KEY" in result.evidence["provider_fallback_reason"]
+    assert "not configured" in result.evidence["provider_fallback_reason"]
 
 
 @pytest.mark.asyncio
@@ -316,57 +332,39 @@ async def test_cloud_provider_falls_back_on_endpoint_error(monkeypatch):
         async def post(self, url, json, headers):
             raise RuntimeError("cloud outage")
 
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "cloud")
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "sk-cloud-test")
-    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", FailingClient)
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", FailingClient)
 
-    provider = get_evaluation_provider()
+    provider = CloudLLMEvaluationProvider(
+        baseline_provider, model="gpt-test-mini", base_url="https://api.cloud.test/v1", api_key="sk-cloud-test"
+    )
     result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
 
     assert result.evidence["provider_fallback_from"] == "cloud_llm"
     assert "cloud outage" in result.evidence["provider_fallback_reason"]
 
 
-def test_get_evaluation_provider_hybrid_chain(monkeypatch):
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "hybrid")
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+def test_build_provider_hybrid_chain():
+    provider = _build_provider("hybrid", model="shared-model", base_url="http://vllm:8100", api_key="sk")
 
-    provider = get_evaluation_provider()
     assert provider.name == "local_vllm"
     assert provider.fallback_provider.name == "cloud_llm"
     assert provider.fallback_provider.fallback_provider.name == "deterministic_baseline"
-    assert get_active_llm_model() == settings.LOCAL_LLM_MODEL
+    assert provider.fallback_provider.api_key == "sk"
 
 
-def test_get_evaluation_provider_hybrid_cloud_only(monkeypatch):
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "hybrid")
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", False)
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+def test_build_provider_cloud_normalizes_name():
+    provider = _build_provider("cloud_llm", model="gpt", base_url="https://api.test", api_key="sk")
 
-    provider = get_evaluation_provider()
     assert provider.name == "cloud_llm"
+    assert provider.model == "gpt"
+    assert provider.api_key == "sk"
+
+
+def test_build_provider_local_default():
+    provider = _build_provider("local_vllm", model="qwen3", base_url="http://vllm:8100")
+
+    assert provider.name == "local_vllm"
     assert provider.fallback_provider.name == "deterministic_baseline"
-    assert get_active_llm_model() == settings.CLOUD_LLM_MODEL
-
-
-def test_get_evaluation_provider_hybrid_both_disabled_falls_back(monkeypatch):
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "hybrid")
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", False)
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
-
-    provider = get_evaluation_provider()
-    assert provider.name == "deterministic_baseline"
-    assert get_active_llm_model() is None
-
-
-def test_get_evaluation_provider_cloud_mode_respects_toggle(monkeypatch):
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "cloud")
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
-
-    provider = get_evaluation_provider()
-    assert provider.name == "deterministic_baseline"
 
 
 def _create_org(db, provider, model=None, base_url=None, api_key=None) -> int:
@@ -381,8 +379,7 @@ def _create_org(db, provider, model=None, base_url=None, api_key=None) -> int:
     return org.id
 
 
-def test_org_override_selects_cloud_provider(monkeypatch):
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+def test_org_override_selects_cloud_provider():
     db = SessionLocal()
     try:
         org_id = _create_org(
@@ -400,12 +397,10 @@ def test_org_override_selects_cloud_provider(monkeypatch):
         db.close()
 
 
-def test_org_override_selects_local_provider(monkeypatch):
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
+def test_org_override_selects_local_provider():
     db = SessionLocal()
     try:
-        org_id = _create_org(db, "local_vllm", model="org-local-model")
+        org_id = _create_org(db, "local_vllm", model="org-local-model", base_url="http://vllm:8100")
         provider = get_evaluation_provider(db, org_id)
         assert provider.name == "local_vllm"
         assert provider.model == "org-local-model"
@@ -413,21 +408,21 @@ def test_org_override_selects_local_provider(monkeypatch):
         db.close()
 
 
-def test_org_override_falls_back_when_provider_disabled(monkeypatch):
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", False)
+@pytest.mark.asyncio
+async def test_org_cloud_unconfigured_falls_back_at_evaluate_time():
     db = SessionLocal()
     try:
         org_id = _create_org(db, "cloud_llm")
         provider = get_evaluation_provider(db, org_id)
-        assert provider.name == "deterministic_baseline"
+        assert provider.name == "cloud_llm"
+        result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
+        assert result.evidence["provider_fallback_from"] == "cloud_llm"
+        assert result.evidence["provider"] == "deterministic_baseline"
     finally:
         db.close()
 
 
-def test_custom_cloud_endpoint_used_even_when_cloud_toggle_off(monkeypatch):
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", False)
+def test_custom_cloud_endpoint_used_from_org_settings():
     db = SessionLocal()
     try:
         org_id = _create_org(
@@ -443,51 +438,39 @@ def test_custom_cloud_endpoint_used_even_when_cloud_toggle_off(monkeypatch):
         db.close()
 
 
-def test_available_providers_org_custom_endpoint_overrides_toggle(monkeypatch):
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", False)
-    db = SessionLocal()
-    try:
-        org_id = _create_org(
-            db, "cloud_llm",
-            model="gemini-test", base_url="https://generativelanguage.googleapis.com", api_key="sk-custom",
-        )
-        providers = {p["value"]: p["available"] for p in get_available_providers(db, org_id)}
-        assert providers["cloud_llm"] is True
-        assert providers["hybrid"] is True
-        providers_without_org = {p["value"]: p["available"] for p in get_available_providers()}
-        assert providers_without_org["cloud_llm"] is False
-    finally:
-        db.close()
+def test_available_providers_all_selectable_no_deterministic_option():
+    providers = {p["value"]: p["available"] for p in get_available_providers()}
+    assert providers == {"local_vllm": True, "cloud_llm": True, "hybrid": True}
 
 
-def test_no_org_override_uses_system_default(monkeypatch):
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "local_vllm")
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
+def test_no_org_override_uses_baseline_provider():
     db = SessionLocal()
     try:
         org_id = _create_org(db, None)
         provider = get_evaluation_provider(db, org_id)
-        assert provider.name == "local_vllm"
-        assert provider.model == settings.LOCAL_LLM_MODEL
+        assert provider.name == "deterministic_baseline"
         assert get_organization_provider_config(db, org_id) == {}
     finally:
         db.close()
 
 
-def test_available_providers_reflect_toggles(monkeypatch):
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
-    providers = {p["value"]: p["available"] for p in get_available_providers()}
-    assert providers["local_vllm"] is True
-    assert providers["cloud_llm"] is False
-    assert providers["hybrid"] is True
-    assert providers["deterministic_baseline"] is True
+@pytest.mark.asyncio
+async def test_evaluation_health_not_configured_without_org_provider():
+    health = await get_evaluation_health()
+
+    assert health["provider"] == "deterministic_baseline"
+    assert health["configured"] is False
+    assert health["healthy"] is False
+    assert health["status"] == "not_configured"
+    assert health["config_hash"] is None
 
 
 @pytest.mark.asyncio
 async def test_evaluation_health_reflects_org_provider(monkeypatch):
     class HealthyClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
         async def __aenter__(self):
             return self
 
@@ -495,32 +478,28 @@ async def test_evaluation_health_reflects_org_provider(monkeypatch):
             return None
 
         async def get(self, url, headers=None):
-            return _OkResponse()
+            return type("Resp", (), {"raise_for_status": lambda self: None, "status_code": 200})()
 
-    class _OkResponse:
-        def raise_for_status(self):
-            return None
-
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "local_vllm")
-    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", lambda timeout: HealthyClient())
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", HealthyClient)
 
     db = SessionLocal()
     try:
-        org_id = _create_org(db, "cloud_llm", model="org-cloud-model")
+        org_id = _create_org(db, "cloud_llm", model="org-cloud-model", base_url="https://org.example.com/v1", api_key="sk-org")
         health = await get_evaluation_health(db=db, organization_id=org_id)
         assert health["provider"] == "cloud_llm"
         assert health["model_name"] == "org-cloud-model"
         assert health["organization_provider"] == "cloud_llm"
+        assert health["configured"] is True
+        assert health["healthy"] is True
+        assert health["status"] == "available"
         assert health["config_hash"]
     finally:
         db.close()
 
 
 @pytest.mark.asyncio
-async def test_evaluation_health_reports_cloud_reachable(monkeypatch):
-    class HealthyClient:
+async def test_evaluation_health_reports_llm_unavailable(monkeypatch):
+    class FailingClient:
         def __init__(self, timeout):
             self.timeout = timeout
 
@@ -531,49 +510,19 @@ async def test_evaluation_health_reports_cloud_reachable(monkeypatch):
             return None
 
         async def get(self, url, headers=None):
-            return type("Resp", (), {"raise_for_status": lambda self: None, "status_code": 200})()
+            raise RuntimeError("offline")
 
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "hybrid")
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "sk-cloud-test")
-    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", HealthyClient)
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", FailingClient)
 
-    health = await get_evaluation_health()
-
-    assert health["provider"] == "local_vllm"
-    assert health["local_healthy"] is True
-    assert health["cloud_healthy"] is True
-    assert health["healthy"] is True
-    assert health["status"] == "available"
-
-
-@pytest.mark.asyncio
-async def test_evaluation_health_hybrid_uses_cloud_when_local_down(monkeypatch):
-    class CloudOnlyClient:
-        def __init__(self, timeout):
-            self.timeout = timeout
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return None
-
-        async def get(self, url, headers=None):
-            if url.startswith("http://local"):
-                raise RuntimeError("vllm offline")
-            return type("Resp", (), {"raise_for_status": lambda self: None, "status_code": 200})()
-
-    monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "hybrid")
-    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "CLOUD_LLM_API_KEY", "sk-cloud-test")
-    monkeypatch.setattr(evaluation_service.httpx, "AsyncClient", CloudOnlyClient)
-
-    health = await get_evaluation_health()
-
-    assert health["local_healthy"] is False
-    assert health["cloud_healthy"] is True
-    assert health["healthy"] is True
-    assert health["status"] == "available"
+    db = SessionLocal()
+    try:
+        org_id = _create_org(db, "local_vllm", model="qwen3", base_url="http://local-vllm.test/v1")
+        health = await get_evaluation_health(db=db, organization_id=org_id)
+        assert health["provider"] == "local_vllm"
+        assert health["configured"] is True
+        assert health["healthy"] is False
+        assert health["status"] == "llm_unavailable_using_fallback"
+        assert health["fallback_provider"] == "deterministic_baseline"
+        assert "offline" in health["last_error"]
+    finally:
+        db.close()

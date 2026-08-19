@@ -2,7 +2,7 @@
 User management routes
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -11,7 +11,6 @@ from app.models import TeamMembership, TeamRole, User
 from app.schemas import OrganizationProvidersResponse, OrganizationResponse, OrganizationSettingsUpdate, PasswordChange, TeamMemberResponse, TeamMembershipCreate, TeamMembershipResponse, UserResponse, UserUpdate
 from app.api.auth import get_current_user, get_password_hash, require_role, UserRole, verify_password
 from app.services.audit_service import create_audit_log
-from app.services.evaluation_service import get_available_providers
 
 router = APIRouter()
 
@@ -68,29 +67,30 @@ async def get_organization_evaluation_providers(
     selection. Any organization member can read; changes require owner/admin."""
     membership = get_primary_membership(current_user, db)
 
-    from app.config import settings
+    from app.services.evaluation_service import get_available_providers, get_organization_provider_config, organization_llm_configured
 
     return {
         "organization_id": membership.organization_id,
         "selected": membership.organization.evaluation_provider,
-        "system_default": settings.EVALUATION_PROVIDER,
+        "configured": organization_llm_configured(get_organization_provider_config(db, membership.organization_id)),
         "role": membership.role.value,
-        "providers": get_available_providers(db, membership.organization_id),
+        "providers": get_available_providers(),
     }
 
 
 @router.patch("/me/organization/settings", response_model=OrganizationResponse)
 async def update_organization_evaluation_settings(
     settings_update: OrganizationSettingsUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Replace the organization's evaluation provider settings (owner/admin only).
 
     The payload is a full replacement: omitted or empty fields clear the
-    override so the organization falls back to the system default. The
-    provider choice takes effect on the next evaluation run without touching
-    .env or the deployment configuration.
+    setting. The provider is configured entirely from the UI — no .env or
+    deployment changes required. When a working provider is configured, any
+    held (pending) evaluation runs are dispatched in the background.
     """
     membership = get_primary_membership(current_user, db)
     require_membership_admin(membership)
@@ -118,6 +118,10 @@ async def update_organization_evaluation_settings(
     )
     db.commit()
     db.refresh(org)
+
+    from app.services.evaluation_service import redispatch_pending_evaluations
+
+    await redispatch_pending_evaluations(db, org.id, background_tasks)
     return org
 
 
