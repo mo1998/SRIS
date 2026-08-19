@@ -425,6 +425,42 @@ def test_org_override_falls_back_when_provider_disabled(monkeypatch):
         db.close()
 
 
+def test_custom_cloud_endpoint_used_even_when_cloud_toggle_off(monkeypatch):
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", False)
+    db = SessionLocal()
+    try:
+        org_id = _create_org(
+            db, "cloud_llm",
+            model="gemini-test", base_url="https://generativelanguage.googleapis.com", api_key="sk-custom",
+        )
+        provider = get_evaluation_provider(db, org_id)
+        assert provider.name == "cloud_llm"
+        assert provider.model == "gemini-test"
+        assert provider.base_url == "https://generativelanguage.googleapis.com"
+        assert provider.api_key == "sk-custom"
+    finally:
+        db.close()
+
+
+def test_available_providers_org_custom_endpoint_overrides_toggle(monkeypatch):
+    monkeypatch.setattr(settings, "CLOUD_LLM_ENABLED", False)
+    monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", False)
+    db = SessionLocal()
+    try:
+        org_id = _create_org(
+            db, "cloud_llm",
+            model="gemini-test", base_url="https://generativelanguage.googleapis.com", api_key="sk-custom",
+        )
+        providers = {p["value"]: p["available"] for p in get_available_providers(db, org_id)}
+        assert providers["cloud_llm"] is True
+        assert providers["hybrid"] is True
+        providers_without_org = {p["value"]: p["available"] for p in get_available_providers()}
+        assert providers_without_org["cloud_llm"] is False
+    finally:
+        db.close()
+
+
 def test_no_org_override_uses_system_default(monkeypatch):
     monkeypatch.setattr(settings, "EVALUATION_PROVIDER", "local_vllm")
     monkeypatch.setattr(settings, "LOCAL_LLM_ENABLED", True)
