@@ -13,6 +13,8 @@ const apiMock = vi.hoisted(() => ({
     getMyMemberships: vi.fn(),
     getOrganizationMembers: vi.fn(),
     addMembership: vi.fn(),
+    getOrganizationProviders: vi.fn(),
+    updateOrganizationSettings: vi.fn(),
   },
   reports: {
     getEvaluationHealth: vi.fn(),
@@ -37,6 +39,8 @@ describe('EmployerDashboard', () => {
     apiMock.users.getMyMemberships.mockReset()
     apiMock.users.getOrganizationMembers.mockReset()
     apiMock.users.addMembership.mockReset()
+    apiMock.users.getOrganizationProviders.mockReset()
+    apiMock.users.updateOrganizationSettings.mockReset()
     apiMock.reports.getEvaluationHealth.mockReset()
     apiMock.reports.getEmailHealth.mockReset()
   })
@@ -45,6 +49,20 @@ describe('EmployerDashboard', () => {
     apiMock.interviews.list.mockResolvedValue({ data: [] })
     apiMock.users.getMyOrganization.mockResolvedValue({
       data: { id: 1, name: 'SRIS Test Co' },
+    })
+    apiMock.users.getOrganizationProviders.mockResolvedValue({
+      data: {
+        organization_id: 1,
+        selected: null,
+        system_default: 'local_vllm',
+        role: 'owner',
+        providers: [
+          { value: 'local_vllm', available: true },
+          { value: 'cloud_llm', available: false },
+          { value: 'hybrid', available: true },
+          { value: 'deterministic_baseline', available: true },
+        ],
+      },
     })
     apiMock.users.addMembership.mockResolvedValue({
       data: { user_id: 12, email: 'newmember@example.com', role: 'reviewer' },
@@ -90,6 +108,11 @@ describe('EmployerDashboard', () => {
 
     expect(await screen.findByText('SRIS Test Co')).toBeInTheDocument()
     expect(screen.getByText(/evaluation agent/i)).toBeInTheDocument()
+    expect(screen.getByText(/ai provider/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+    expect(screen.getByText(/follow system default/i)).toBeInTheDocument()
+    expect(screen.getByText(/cloud llm/i)).toBeInTheDocument()
+    expect(apiMock.reports.getEvaluationHealth).toHaveBeenCalledWith(1)
     expect(screen.getByText(/local_vllm_unavailable_using_fallback/i)).toBeInTheDocument()
     expect(screen.getByText(/qwen3-8b-awq/i)).toBeInTheDocument()
     expect(screen.getByText(/deterministic_baseline/i)).toBeInTheDocument()

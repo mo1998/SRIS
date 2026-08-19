@@ -131,6 +131,22 @@ async function mockApi(page: Page, user = employerUser) {
   await page.route('**/api/users/me/organization/members', async (route) => {
     await route.fulfill({ json: [{ user_id: 1, email: 'employer@example.com', full_name: 'Test Employer', role: 'owner' }] })
   })
+  await page.route('**/api/users/me/organization/providers', async (route) => {
+    await route.fulfill({
+      json: {
+        organization_id: 1,
+        selected: 'local_vllm',
+        system_default: 'local_vllm',
+        role: 'owner',
+        providers: [
+          { value: 'local_vllm', available: true },
+          { value: 'cloud_llm', available: true },
+          { value: 'hybrid', available: true },
+          { value: 'deterministic_baseline', available: true },
+        ],
+      },
+    })
+  })
   await page.route('**/api/reports/evaluation/health', async (route) => {
     await route.fulfill({
       json: {

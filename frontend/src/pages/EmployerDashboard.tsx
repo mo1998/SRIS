@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { Alert, Card, Row, Col, Button, Table, Badge, Form } from 'react-bootstrap'
+import { Alert, Card, Row, Col, Button, Table, Badge, Form, Collapse } from 'react-bootstrap'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { useNavigate } from 'react-router-dom'
-import { FiPlus, FiUsers, FiCheckCircle, FiXCircle, FiEye, FiUserPlus, FiBarChart2, FiMail, FiActivity } from 'react-icons/fi'
+import { FiPlus, FiUsers, FiCheckCircle, FiXCircle, FiEye, FiUserPlus, FiBarChart2, FiMail, FiActivity, FiCpu, FiSave } from 'react-icons/fi'
 import StatCard from '../components/ui/StatCard'
 import PageHeader from '../components/ui/PageHeader'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
@@ -39,6 +39,13 @@ const EmployerDashboard: React.FC = () => {
   const [members, setMembers] = useState<any[]>([])
   const [evaluationHealth, setEvaluationHealth] = useState<any>(null)
   const [emailHealth, setEmailHealth] = useState<any>(null)
+  const [providersInfo, setProvidersInfo] = useState<any>(null)
+  const [providerSelection, setProviderSelection] = useState('')
+  const [providerModel, setProviderModel] = useState('')
+  const [providerBaseUrl, setProviderBaseUrl] = useState('')
+  const [providerApiKey, setProviderApiKey] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [savingProvider, setSavingProvider] = useState(false)
   const [memberEmail, setMemberEmail] = useState('')
   const [memberRole, setMemberRole] = useState('reviewer')
   const [teamError, setTeamError] = useState('')
@@ -57,6 +64,40 @@ const EmployerDashboard: React.FC = () => {
     cancelled: t('dashboard.cancelled'),
   }
 
+  const providerLabelMap: Record<string, string> = {
+    '': t('dashboard.providerDefault'),
+    local_vllm: t('dashboard.providerLocal'),
+    cloud_llm: t('dashboard.providerCloud'),
+    hybrid: t('dashboard.providerHybrid'),
+    deterministic_baseline: t('dashboard.providerDeterministic'),
+  }
+
+  const selectedProviderLabel = (selected: string | null | undefined) =>
+    selected ? providerLabelMap[selected] || selected : providerLabelMap['']
+
+  const handleSaveProvider = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setSavingProvider(true)
+    try {
+      const response = await api.users.updateOrganizationSettings({
+        evaluation_provider: providerSelection || '',
+        evaluation_model: providerModel,
+        evaluation_base_url: providerBaseUrl,
+        evaluation_api_key: providerApiKey,
+      })
+      setOrganization(response.data)
+      if (providersInfo) {
+        setProvidersInfo({ ...providersInfo, selected: response.data.evaluation_provider })
+      }
+      setProviderApiKey('')
+      toast.success(t('dashboard.providerSaved'))
+    } catch {
+      toast.error(t('dashboard.providerSaveFailed'))
+    } finally {
+      setSavingProvider(false)
+    }
+  }
+
   const getStatusBadge = (status: string) => (
     <Badge bg={STATUS_BG[status] || 'secondary'}>{statusLabelMap[status] || status.charAt(0).toUpperCase() + status.slice(1)}</Badge>
   )
@@ -67,18 +108,24 @@ const EmployerDashboard: React.FC = () => {
 
   const loadInterviews = async () => {
     try {
-      const [interviewsResponse, organizationResponse, membersResponse, evaluationHealthResponse, emailHealthResponse] = await Promise.all([
+      const organizationResponse = await api.users.getMyOrganization()
+      const org = organizationResponse.data
+      setOrganization(org)
+      setProviderModel(org.evaluation_model || '')
+      setProviderBaseUrl(org.evaluation_base_url || '')
+      const [interviewsResponse, membersResponse, evaluationHealthResponse, emailHealthResponse, providersResponse] = await Promise.all([
         api.interviews.list(),
-        api.users.getMyOrganization(),
         api.users.getOrganizationMembers(),
-        api.reports.getEvaluationHealth(),
-        api.reports.getEmailHealth()
+        api.reports.getEvaluationHealth(org?.id),
+        api.reports.getEmailHealth(),
+        api.users.getOrganizationProviders(),
       ])
       setInterviews(interviewsResponse.data)
-      setOrganization(organizationResponse.data)
       setMembers(membersResponse.data)
       setEvaluationHealth(evaluationHealthResponse.data)
       setEmailHealth(emailHealthResponse.data)
+      setProvidersInfo(providersResponse.data)
+      setProviderSelection(providersResponse.data.selected || '')
     } catch (error) {
       toast.error(t('dashboard.loadFailed'), t('dashboard.loadError'))
     } finally {
@@ -262,6 +309,85 @@ const EmployerDashboard: React.FC = () => {
                   <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">{t('dashboard.server')}</p><p className="mb-0 fw-medium">{emailHealth.mail_server}:{emailHealth.mail_port}</p></Col>
                   <Col xs={6} className="mt-3"><p className="mb-1 text-muted small">{t('dashboard.missing')}</p><p className="mb-0 fw-medium">{emailHealth.missing_settings?.length ? emailHealth.missing_settings.join(', ') : t('common.none')}</p></Col>
                 </Row>
+              ) : (
+                <p className="text-muted mb-0 small">{t('dashboard.unavailable')}</p>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row className="mb-4 g-3">
+        <Col>
+          <Card>
+            <Card.Header>
+              <h6 className="mb-0 fw-semibold d-flex align-items-center gap-2">
+                <FiCpu /> {t('dashboard.providerSettings')}
+              </h6>
+            </Card.Header>
+            <Card.Body>
+              <p className="text-muted small mb-3">{t('dashboard.providerSettingsSubtitle')}</p>
+              {providersInfo ? (
+                providersInfo.role === 'owner' || providersInfo.role === 'admin' ? (
+                  <Form onSubmit={handleSaveProvider}>
+                    <Row className="g-3 align-items-end">
+                      <Col md={6} xl={4}>
+                        <Form.Label className="small text-muted">{t('dashboard.provider')}</Form.Label>
+                        <Form.Select
+                          value={providerSelection}
+                          onChange={(e) => setProviderSelection(e.target.value)}
+                          size="sm"
+                          aria-label={t('dashboard.provider')}
+                        >
+                          <option value="">{t('dashboard.providerDefault')}</option>
+                          {providersInfo.providers.map((p: any) => (
+                            <option key={p.value} value={p.value} disabled={!p.available}>
+                              {providerLabelMap[p.value] || p.value}
+                              {!p.available ? ` (${t('dashboard.providerUnavailable')})` : ''}
+                            </option>
+                          ))}
+                        </Form.Select>
+                      </Col>
+                      <Col md={3} xl={2}>
+                        <Button type="submit" variant="primary" size="sm" className="w-100" disabled={savingProvider}>
+                          <FiSave className="me-1" /> {t('common.save')}
+                        </Button>
+                      </Col>
+                    </Row>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="p-0 mt-2 text-decoration-none"
+                      onClick={() => setShowAdvanced((s) => !s)}
+                      aria-expanded={showAdvanced}
+                    >
+                      {t('dashboard.providerAdvanced')}
+                    </Button>
+                    <Collapse in={showAdvanced}>
+                      <div>
+                        <Row className="g-3 mt-0">
+                          <Col md={4}>
+                            <Form.Label className="small text-muted">{t('dashboard.providerModel')}</Form.Label>
+                            <Form.Control size="sm" type="text" value={providerModel} onChange={(e) => setProviderModel(e.target.value)} />
+                          </Col>
+                          <Col md={4}>
+                            <Form.Label className="small text-muted">{t('dashboard.providerBaseUrl')}</Form.Label>
+                            <Form.Control size="sm" type="text" value={providerBaseUrl} onChange={(e) => setProviderBaseUrl(e.target.value)} />
+                          </Col>
+                          <Col md={4}>
+                            <Form.Label className="small text-muted">{t('dashboard.providerApiKey')}</Form.Label>
+                            <Form.Control size="sm" type="password" value={providerApiKey} onChange={(e) => setProviderApiKey(e.target.value)} autoComplete="off" />
+                          </Col>
+                        </Row>
+                      </div>
+                    </Collapse>
+                  </Form>
+                ) : (
+                  <p className="mb-0">
+                    <Badge bg="secondary" pill>{selectedProviderLabel(providersInfo.selected)}</Badge>{' '}
+                    <span className="text-muted small">{t('dashboard.providerReadOnly')}</span>
+                  </p>
+                )
               ) : (
                 <p className="text-muted mb-0 small">{t('dashboard.unavailable')}</p>
               )}

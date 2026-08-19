@@ -28,9 +28,52 @@ class OrganizationResponse(BaseModel):
     name: str
     created_at: datetime
     updated_at: Optional[datetime] = None
+    evaluation_provider: Optional[str] = None
+    evaluation_model: Optional[str] = None
+    evaluation_base_url: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+EVALUATION_PROVIDER_VALUES = {"local_vllm", "cloud_llm", "hybrid", "deterministic_baseline"}
+
+
+class OrganizationSettingsUpdate(BaseModel):
+    """Organization evaluation provider selection. Empty strings clear the
+    override so the organization follows the system default."""
+
+    evaluation_provider: Optional[str] = None
+    evaluation_model: Optional[str] = None
+    evaluation_base_url: Optional[str] = None
+    evaluation_api_key: Optional[str] = None
+
+    @field_validator("evaluation_provider")
+    @classmethod
+    def validate_provider(cls, value: Optional[str]) -> Optional[str]:
+        if value in (None, ""):
+            return None
+        if value not in EVALUATION_PROVIDER_VALUES:
+            raise ValueError(f"evaluation_provider must be one of {sorted(EVALUATION_PROVIDER_VALUES)}")
+        return value
+
+    @field_validator("evaluation_model", "evaluation_base_url", "evaluation_api_key")
+    @classmethod
+    def blank_to_none(cls, value: Optional[str]) -> Optional[str]:
+        return value if value else None
+
+
+class EvaluationProviderInfo(BaseModel):
+    value: str
+    available: bool
+
+
+class OrganizationProvidersResponse(BaseModel):
+    organization_id: int
+    selected: Optional[str] = None
+    system_default: str
+    role: str
+    providers: List[EvaluationProviderInfo]
 
 
 class TeamMembershipResponse(BaseModel):
@@ -572,6 +615,7 @@ class EvaluationHealth(BaseModel):
     config_hash: Optional[str] = None
     model_name: Optional[str] = None
     base_url: Optional[str] = None
+    organization_provider: Optional[str] = None
     healthy: bool
     status: str
     fallback_provider: Optional[str] = None

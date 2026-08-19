@@ -272,14 +272,32 @@ async def get_plagiarism_report(
 @router.get("/evaluation/health", response_model=EvaluationHealth)
 async def get_evaluation_provider_health(
     response: Response,
-    current_user: User = Depends(get_current_user)
+    organization_id: int = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """Get local evaluation provider health and fallback status."""
+    """Get evaluation provider health and fallback status.
+
+    When organization_id is provided the health reflects the organization's
+    selected provider/model; otherwise it reflects the system default.
+    """
     if current_user.role not in [UserRole.EMPLOYER, UserRole.ADMIN]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
+    if organization_id is not None and current_user.role != UserRole.ADMIN:
+        membership = (
+            db.query(TeamMembership)
+            .filter(
+                TeamMembership.organization_id == organization_id,
+                TeamMembership.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not membership:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
     response.headers["Cache-Control"] = "no-store"
-    return await get_evaluation_health()
+    return await get_evaluation_health(db=db, organization_id=organization_id)
 
 
 @router.get("/email/health", response_model=EmailHealth)
