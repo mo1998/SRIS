@@ -206,10 +206,9 @@ Key settings:
 | `REDIS_URL` | Redis connection for RQ evaluation queue |
 | `ALLOWED_ORIGINS` | CORS allowlist; no wildcard/localhost in production |
 | `FRONTEND_URL` | Frontend origin used in emails and CORS |
-| `EVALUATION_PROVIDER` | `local_vllm` (or fallback) |
 | `EVALUATION_QUEUE_BACKEND` | `rq` in production |
-| `LOCAL_LLM_BASE_URL`, `LOCAL_LLM_MODEL` | OpenAI-compatible local LLM endpoint and model |
-| `CLOUD_LLM_*` | Optional OpenAI-compatible cloud provider (hybrid evaluation) |
+| `EVALUATION_QUEUE_NAME` | RQ queue name for evaluation jobs |
+| `EVALUATION_PROMPT_VERSION` | Scoring prompt version recorded on each run |
 | `TRANSCRIPTION_PROVIDER`, `WHISPER_*` | `whisper`/`fake` transcription provider and model/device settings |
 | `EMOTION_ANALYSIS_PROVIDER` | `deepface`/`disabled`/`fake` facial emotion analysis |
 | `MAIL_*`, `EMAIL_PROVIDER` | SMTP / Mailpit / Resend email delivery |
@@ -225,9 +224,9 @@ Key settings:
 
 ## AI Evaluation
 
-Evaluation runs through a provider interface with a deterministic rubric-aware fallback, so scoring continues even when the local LLM is unavailable. Health and fallback status are exposed at `GET /api/reports/evaluation/health` and on the employer dashboard. An optional cloud LLM provider (OpenAI-compatible) can be enabled as a hybrid alternative.
+Evaluation runs through a provider interface with a deterministic rubric-aware fallback, so scoring continues even when the LLM endpoint is unreachable. Health and fallback status are exposed at `GET /api/reports/evaluation/health` and on the employer dashboard.
 
-Organizations can select which provider to use — local, cloud, hybrid, or deterministic — from the employer dashboard (`GET /api/users/me/organization/providers`, `PATCH /api/users/me/organization/settings`). The selection is stored on the organization, so switching providers does not require changing `.env` or redeploying. Each evaluation run records the effective provider and model for auditability.
+LLM endpoints are configured per organization — provider (`local_vllm`, `cloud_llm`, or `hybrid`), base URL, model, and API key — from the employer dashboard (`GET /api/users/me/organization/providers`, `PATCH /api/users/me/organization/settings`). No server configuration is required. Organizations without a configured provider hold evaluation runs (`status=pending`) until one is set and reachable; pending runs are re-dispatched automatically after the provider is configured. Each evaluation run records the effective provider and model for auditability.
 
 See [AI_PRODUCTION_ROADMAP.md](AI_PRODUCTION_ROADMAP.md) for the planned best-practice hardening of the AI stack (gateway, structured output, golden evals, guardrails, cost control, tracing).
 

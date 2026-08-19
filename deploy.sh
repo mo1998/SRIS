@@ -91,15 +91,10 @@ preflight() {
 		fi
 	done
 
-	local provider llm local_enabled cloud_enabled
-	provider=$(env_get EVALUATION_PROVIDER)
+	local llm
 	llm=$(env_get ENABLE_LOCAL_LLM)
-	local_enabled=$(env_get LOCAL_LLM_ENABLED)
-	cloud_enabled=$(env_get CLOUD_LLM_ENABLED)
-	if [ "$provider" = "local_vllm" ] && [ "$llm" != "true" ]; then
-		echo -e "${YELLOW}⚠️  EVALUATION_PROVIDER=local_vllm but ENABLE_LOCAL_LLM != true. Evaluations will use the fallback provider.${NC}"
-	elif [ "$provider" = "hybrid" ] && [ "$local_enabled" = "true" ] && [ "$cloud_enabled" != "true" ]; then
-		echo -e "${YELLOW}⚠️  EVALUATION_PROVIDER=hybrid with local enabled but cloud disabled. If local is unreachable, evaluations fall back to deterministic.${NC}"
+	if [ "$llm" = "true" ] && [ -z "$(env_get LOCAL_MODEL_PORT)" ]; then
+		echo -e "${YELLOW}⚠️  ENABLE_LOCAL_LLM=true but LOCAL_MODEL_PORT is unset; defaulting to 8100.${NC}"
 	fi
 
 	if [ "$(env_get ENABLE_OBSERVABILITY)" != "false" ] && [ -z "$(env_get GRAFANA_ADMIN_PASSWORD)" ]; then

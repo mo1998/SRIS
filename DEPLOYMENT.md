@@ -103,17 +103,18 @@ docker compose up db-migrate     # Run migrations
 docker compose exec postgres psql -U postgres sris_db
 ```
 
-### Local LLM Evaluation
+### LLM Evaluation (per-organization)
+LLM endpoints are configured per organization from the Employer Dashboard
+(Dashboard → AI Provider): provider, base URL, model, and API key. Tuning knobs only:
+
 ```bash
-export EVALUATION_PROVIDER=local_vllm
 export EVALUATION_QUEUE_BACKEND=rq
 export EVALUATION_QUEUE_NAME=evaluation
-export LOCAL_LLM_BASE_URL=http://localhost:8100/v1
-export LOCAL_LLM_MODEL=qwen3-8b-awq
 export EVALUATION_PROMPT_VERSION=rubric-v1
 ```
 
-Health and fallback status are available in the Employer Dashboard and via:
+Organizations without a configured provider hold evaluations until one is set and
+reachable. Health and fallback status are available in the Employer Dashboard and via:
 
 ```bash
 curl -H "Authorization: Bearer <token>" http://localhost:8000/api/reports/evaluation/health
@@ -136,8 +137,8 @@ docker compose -f docker-compose.prod.yml up -d --scale evaluation-worker=${EVAL
 - [ ] Confirm `DEBUG=False` only after production secrets, non-local CORS origins, and Redis/RQ evaluation queue are configured
 - [ ] Change `POSTGRES_PASSWORD` (strong password)
 - [ ] Change `REDIS_PASSWORD` (strong password)
-- [ ] Configure `LOCAL_LLM_BASE_URL`, `LOCAL_LLM_MODEL`, and `EVALUATION_PROMPT_VERSION`
-- [ ] Confirm local LLM health endpoint reports expected provider/model/fallback status
+- [ ] Configure per-org LLM provider (base URL, model, API key) in the Employer Dashboard and confirm health shows `available`
+- [ ] Confirm LLM health endpoint reports expected provider/model/status
 - [ ] Configure email SMTP settings
 - [ ] Setup SSL certificates for production
 - [ ] Update `FRONTEND_URL` and `ALLOWED_ORIGINS`
@@ -164,8 +165,8 @@ docker compose -f docker-compose.prod.yml up -d --scale evaluation-worker=${EVAL
 | Port in use | Change port in `.env` or stop conflicting service |
 | DB connection error | `docker compose restart postgres` |
 | Container won't start | `docker compose logs <service-name>` |
-| Evaluations use fallback | Check `/api/reports/evaluation/health`, vLLM process, model name, and `LOCAL_LLM_BASE_URL` |
-| Evaluation appears pending | Check candidate audit trail for queued/running/failed runs and backend logs |
+| Evaluations use fallback | Check `/api/reports/evaluation/health`, vLLM process, model name, and the org's provider base URL |
+| Evaluation appears pending | Check candidate audit trail and org provider config; pending runs are held until the LLM is configured and reachable |
 | Evaluation queue is stuck | Check `docker compose logs evaluation-worker`, Redis health, and `EVALUATION_QUEUE_BACKEND` |
 | Backend exits on startup | Check production guardrail errors for `SECRET_KEY`, `ALLOWED_ORIGINS`, and `EVALUATION_QUEUE_BACKEND` |
 

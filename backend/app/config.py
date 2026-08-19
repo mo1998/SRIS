@@ -47,20 +47,11 @@ class Settings(BaseSettings):
     MAINTENANCE_INTERVAL_SECONDS: int = int(os.getenv("MAINTENANCE_INTERVAL_SECONDS", "3600"))
     
     # Evaluation
-    EVALUATION_PROVIDER: str = os.getenv("EVALUATION_PROVIDER", "local_vllm")
     EVALUATION_QUEUE_BACKEND: str = os.getenv("EVALUATION_QUEUE_BACKEND", "background")
     EVALUATION_QUEUE_NAME: str = os.getenv("EVALUATION_QUEUE_NAME", "evaluation")
     EVALUATION_PROMPT_VERSION: str = os.getenv("EVALUATION_PROMPT_VERSION", "rubric-v1")
-    LOCAL_LLM_ENABLED: bool = os.getenv("LOCAL_LLM_ENABLED", "true").lower() == "true"
-    LOCAL_LLM_BASE_URL: str = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:8100/v1")
-    LOCAL_LLM_MODEL: str = os.getenv("LOCAL_LLM_MODEL", "qwen3-8b-awq")
-    LOCAL_LLM_TIMEOUT_SECONDS: float = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "5"))
     EVALUATION_MAX_TOKENS: int = int(os.getenv("EVALUATION_MAX_TOKENS", "512"))
-    CLOUD_LLM_ENABLED: bool = os.getenv("CLOUD_LLM_ENABLED", "false").lower() == "true"
-    CLOUD_LLM_BASE_URL: str = os.getenv("CLOUD_LLM_BASE_URL", "https://api.openai.com/v1")
-    CLOUD_LLM_MODEL: str = os.getenv("CLOUD_LLM_MODEL", "gpt-4o-mini")
-    CLOUD_LLM_API_KEY: str = os.getenv("CLOUD_LLM_API_KEY", "")
-    CLOUD_LLM_TIMEOUT_SECONDS: float = float(os.getenv("CLOUD_LLM_TIMEOUT_SECONDS", "20"))
+    # Provider endpoints are configured per organization from the UI (not env).
 
     # OpenAI (legacy; local providers are preferred)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")

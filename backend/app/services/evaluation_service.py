@@ -30,6 +30,10 @@ STOPWORDS = {
     "on", "or", "that", "the", "their", "this", "to", "up", "uses", "with", "you", "your",
 }
 
+# Provider endpoints are per-organization (UI-configured); only timeouts are fixed.
+LOCAL_LLM_TIMEOUT_SECONDS = 5.0
+CLOUD_LLM_TIMEOUT_SECONDS = 20.0
+
 
 @dataclass
 class EvaluationResult:
@@ -110,15 +114,18 @@ class LocalVLLMEvaluationProvider:
 
     @property
     def model(self) -> str:
-        return self._model or settings.LOCAL_LLM_MODEL
+        return self._model or ""
 
     @property
     def base_url(self) -> str:
-        return self._base_url or settings.LOCAL_LLM_BASE_URL
+        return self._base_url or ""
 
     async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None) -> EvaluationResult:
         if not answer_text.strip():
             return await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
+
+        if not self.base_url:
+            return await self._fallback(answer_text, expected_answer, rubric_criteria, "Local LLM endpoint is not configured")
 
         try:
             payload = {
@@ -145,7 +152,7 @@ class LocalVLLMEvaluationProvider:
                 "temperature": 0,
                 "max_tokens": settings.EVALUATION_MAX_TOKENS,
             }
-            async with httpx.AsyncClient(timeout=settings.LOCAL_LLM_TIMEOUT_SECONDS) as client:
+            async with httpx.AsyncClient(timeout=LOCAL_LLM_TIMEOUT_SECONDS) as client:
                 response = await client.post(f"{self.base_url.rstrip('/')}/chat/completions", json=payload)
                 response.raise_for_status()
             completion = response.json()["choices"][0]["message"]["content"]
@@ -179,6 +186,23 @@ class LocalVLLMEvaluationProvider:
             fallback.feedback = f"LLM evaluation unavailable; used deterministic fallback. {fallback.feedback}"
             return fallback
 
+    async def _fallback(
+        self,
+        answer_text: str,
+        expected_answer: str,
+        rubric_criteria: Optional[List[Dict[str, object]]],
+        reason: str,
+    ) -> EvaluationResult:
+        record_llm_fallback(self.name, self.fallback_provider.name)
+        fallback = await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
+        fallback.evidence.update({
+            "provider_fallback_from": self.name,
+            "provider_fallback_reason": reason,
+            "requested_model": self.model,
+        })
+        fallback.feedback = f"Local LLM evaluation unavailable; used fallback. {fallback.feedback}"
+        return fallback
+
 
 class CloudLLMEvaluationProvider:
     """OpenAI-compatible cloud LLM provider (used when local vLLM is unavailable)."""
@@ -201,22 +225,22 @@ class CloudLLMEvaluationProvider:
 
     @property
     def model(self) -> str:
-        return self._model or settings.CLOUD_LLM_MODEL
+        return self._model or ""
 
     @property
     def base_url(self) -> str:
-        return self._base_url or settings.CLOUD_LLM_BASE_URL
+        return self._base_url or ""
 
     @property
     def api_key(self) -> str:
-        return self._api_key or settings.CLOUD_LLM_API_KEY
+        return self._api_key or ""
 
     async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None) -> EvaluationResult:
         if not answer_text.strip():
             return await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
 
-        if not self.api_key:
-            return await self._fallback(answer_text, expected_answer, rubric_criteria, "CLOUD_LLM_API_KEY is not configured")
+        if not self.api_key or not self.base_url:
+            return await self._fallback(answer_text, expected_answer, rubric_criteria, "Cloud LLM endpoint or API key is not configured")
 
         try:
             payload = {
@@ -236,7 +260,7 @@ class CloudLLMEvaluationProvider:
                 "max_tokens": settings.EVALUATION_MAX_TOKENS,
             }
             headers = {"Authorization": f"Bearer {self.api_key}"}
-            async with httpx.AsyncClient(timeout=settings.CLOUD_LLM_TIMEOUT_SECONDS) as client:
+            async with httpx.AsyncClient(timeout=CLOUD_LLM_TIMEOUT_SECONDS) as client:
                 response = await client.post(
                     f"{self.base_url.rstrip('/')}/chat/completions",
                     json=payload,
@@ -314,8 +338,25 @@ def serialize_rubric_criteria(question: InterviewQuestion) -> List[Dict[str, obj
 
 
 baseline_provider = BaselineEvaluationProvider()
-cloud_provider = CloudLLMEvaluationProvider(baseline_provider)
-local_vllm_provider = LocalVLLMEvaluationProvider(baseline_provider)
+
+
+def organization_llm_configured(org_config: dict) -> bool:
+    """Whether the organization's provider settings describe a usable LLM endpoint."""
+    provider = org_config.get("evaluation_provider")
+    if not provider or provider == "deterministic_baseline":
+        return False
+    base_url = org_config.get("evaluation_base_url")
+    model = org_config.get("evaluation_model")
+    api_key = org_config.get("evaluation_api_key")
+    local_ok = bool(base_url and model)
+    cloud_ok = bool(base_url and model and api_key)
+    if provider == "local_vllm":
+        return local_ok
+    if provider == "cloud_llm":
+        return cloud_ok
+    if provider == "hybrid":
+        return local_ok or cloud_ok
+    return False
 
 
 def _build_provider(
@@ -324,41 +365,32 @@ def _build_provider(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> EvaluationProvider:
-    """Build a provider chain for an explicit preference + optional overrides.
-
-    A fully-specified custom endpoint (base_url + api_key for cloud, base_url
-    for local) is honored regardless of the system env toggles; the toggles
-    only gate the system's preconfigured defaults."""
+    """Build a provider chain for an explicit preference using org-supplied values."""
     # Provider .name is "cloud_llm"; the historical env value is "cloud".
     if preference == "cloud_llm":
         preference = "cloud"
     if preference == "deterministic_baseline":
         return baseline_provider
     if preference == "cloud":
-        custom_endpoint = bool(base_url and api_key)
-        if settings.CLOUD_LLM_ENABLED or custom_endpoint:
-            return CloudLLMEvaluationProvider(baseline_provider, model=model, base_url=base_url, api_key=api_key)
-        return baseline_provider
+        return CloudLLMEvaluationProvider(baseline_provider, model=model, base_url=base_url, api_key=api_key)
     if preference == "hybrid":
         chain: EvaluationProvider = baseline_provider
-        if settings.CLOUD_LLM_ENABLED or (base_url and api_key):
+        if base_url and api_key:
             chain = CloudLLMEvaluationProvider(chain, model=model, base_url=base_url, api_key=api_key)
-        if settings.LOCAL_LLM_ENABLED or base_url:
+        if base_url:
             chain = LocalVLLMEvaluationProvider(chain, model=model, base_url=base_url)
         return chain
     # local_vllm (default)
-    if settings.LOCAL_LLM_ENABLED or base_url:
-        return LocalVLLMEvaluationProvider(baseline_provider, model=model, base_url=base_url)
-    return baseline_provider
+    return LocalVLLMEvaluationProvider(baseline_provider, model=model, base_url=base_url)
 
 
 def _build_hybrid_provider() -> EvaluationProvider:
-    """Chain: local vLLM -> cloud -> deterministic baseline, gated by toggles."""
+    """Chain: local vLLM -> cloud -> deterministic baseline."""
     return _build_provider("hybrid")
 
 
 def get_organization_provider_config(db: Session, organization_id: Optional[int]) -> dict:
-    """Resolve the evaluation provider overrides for an organization, if any."""
+    """Resolve the evaluation provider settings for an organization, if any."""
     if db is None or organization_id is None:
         return {}
     org = db.query(Organization).filter(Organization.id == organization_id).first()
@@ -381,24 +413,16 @@ def get_evaluation_provider(db: Session = None, organization_id: Optional[int] =
             base_url=org_config.get("evaluation_base_url"),
             api_key=org_config.get("evaluation_api_key"),
         )
-    return _build_provider(settings.EVALUATION_PROVIDER)
+    return baseline_provider
 
 
-def get_available_providers(db: Session = None, organization_id: Optional[int] = None) -> List[Dict[str, object]]:
-    """Providers an organization can select.
-
-    A provider is available if the system has it enabled OR the organization
-    supplied a complete custom endpoint (base_url + api_key for cloud)."""
-    org_config = get_organization_provider_config(db, organization_id)
-    org_cloud_endpoint = bool(org_config.get("evaluation_base_url") and org_config.get("evaluation_api_key"))
-    org_local_endpoint = bool(org_config.get("evaluation_base_url"))
-    cloud = bool(settings.CLOUD_LLM_ENABLED) or org_cloud_endpoint
-    local = bool(settings.LOCAL_LLM_ENABLED) or org_local_endpoint
+def get_available_providers() -> List[Dict[str, object]]:
+    """Providers an organization can select. All OpenAI-compatible endpoints are
+    supported; availability depends only on the organization's own settings."""
     return [
-        {"value": "local_vllm", "available": local},
-        {"value": "cloud_llm", "available": cloud},
-        {"value": "hybrid", "available": cloud or local},
-        {"value": "deterministic_baseline", "available": True},
+        {"value": "local_vllm", "available": True},
+        {"value": "cloud_llm", "available": True},
+        {"value": "hybrid", "available": True},
     ]
 
 
@@ -494,6 +518,10 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
         evaluation_run.status = "running"
         evaluation_run.started_at = evaluation_run.started_at or datetime.utcnow()
     else:
+        if not organization_llm_configured(get_organization_provider_config(db, organization_id)):
+            evaluation_run = create_evaluation_run(response_id, db, status="pending")
+            db.commit()
+            return
         evaluation_run = create_evaluation_run(response_id, db, status="running")
     
     total_score = 0.0
@@ -734,16 +762,21 @@ def create_evaluation_run(response_id: int, db: Session, status: str = "queued")
         interview = db.query(Interview).filter(Interview.id == response.interview_id).first()
         organization_id = interview.organization_id if interview else None
 
+    org_config = get_organization_provider_config(db, organization_id)
+    configured = organization_llm_configured(org_config)
     provider = get_evaluation_provider(db, organization_id)
+    run_status = status if configured else "pending"
     evaluation_run = EvaluationRun(
         response_id=response_id,
         provider=provider.name,
         provider_version=getattr(provider, "version", None),
-        model_name=getattr(provider, "model", None),
-        config_hash=get_evaluation_config_hash(provider),
-        status=status,
+        model_name=getattr(provider, "model", None) if configured else None,
+        config_hash=get_evaluation_config_hash(provider) if configured else None,
+        status=run_status,
         started_at=datetime.utcnow(),
     )
+    if not configured:
+        evaluation_run.raw_summary = json.dumps({"held": True, "reason": "LLM provider not configured"})
     db.add(evaluation_run)
     db.flush()
     return evaluation_run
@@ -766,6 +799,14 @@ def run_evaluation_job(response_id: int, evaluation_run_id: int) -> None:
 
 
 def enqueue_evaluation_run(response_id: int, evaluation_run_id: int, background_tasks: BackgroundTasks) -> str:
+    db = SessionLocal()
+    try:
+        evaluation_run = db.query(EvaluationRun).filter(EvaluationRun.id == evaluation_run_id).first()
+        if not evaluation_run or evaluation_run.status != "queued":
+            return "held"
+    finally:
+        db.close()
+
     if settings.EVALUATION_QUEUE_BACKEND == "rq":
         redis_connection = redis.from_url(settings.REDIS_URL)
         queue = Queue(settings.EVALUATION_QUEUE_NAME, connection=redis_connection)
@@ -776,6 +817,48 @@ def enqueue_evaluation_run(response_id: int, evaluation_run_id: int, background_
     return "background"
 
 
+async def redispatch_pending_evaluations(db: Session, organization_id: Optional[int], background_tasks: BackgroundTasks) -> int:
+    """Re-dispatch held evaluation runs once the org's LLM is configured and reachable.
+
+    Returns the number of runs dispatched."""
+    org_config = get_organization_provider_config(db, organization_id)
+    if not organization_llm_configured(org_config):
+        return 0
+    provider = _build_provider(
+        org_config["evaluation_provider"],
+        model=org_config.get("evaluation_model"),
+        base_url=org_config.get("evaluation_base_url"),
+        api_key=org_config.get("evaluation_api_key"),
+    )
+    base_url = getattr(provider, "base_url", None)
+    if not base_url:
+        return 0
+    reachable, _ = await _probe_endpoint(
+        base_url, min(LOCAL_LLM_TIMEOUT_SECONDS if provider.name == "local_vllm" else CLOUD_LLM_TIMEOUT_SECONDS, 2.0)
+    )
+    if not reachable:
+        return 0
+
+    pending = (
+        db.query(EvaluationRun)
+        .join(CandidateResponse, EvaluationRun.response_id == CandidateResponse.id)
+        .join(Interview, CandidateResponse.interview_id == Interview.id)
+        .filter(Interview.organization_id == organization_id, EvaluationRun.status == "pending")
+        .all()
+    )
+    for run in pending:
+        run.provider = provider.name
+        run.provider_version = getattr(provider, "version", None)
+        run.model_name = getattr(provider, "model", None)
+        run.config_hash = get_evaluation_config_hash(provider)
+        run.status = "queued"
+        run.raw_summary = None
+        db.flush()
+        enqueue_evaluation_run(run.response_id, run.id, background_tasks)
+    db.commit()
+    return len(pending)
+
+
 def get_evaluation_config_hash(provider: EvaluationProvider) -> str:
     payload = {
         "provider": provider.name,
@@ -784,8 +867,6 @@ def get_evaluation_config_hash(provider: EvaluationProvider) -> str:
         "model": getattr(provider, "model", None),
         "base_url": getattr(provider, "base_url", None),
         "api_key_set": bool(getattr(provider, "api_key", None)),
-        "local_enabled": settings.LOCAL_LLM_ENABLED,
-        "cloud_enabled": settings.CLOUD_LLM_ENABLED,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
@@ -1087,6 +1168,7 @@ def generate_interview_evaluation_analytics(interview_id: int, db: Session) -> D
         "total_evaluation_runs": len(runs),
         "queued_runs": sum(1 for run in runs if run.status == "queued"),
         "running_runs": sum(1 for run in runs if run.status == "running"),
+        "pending_runs": sum(1 for run in runs if run.status == "pending"),
         "completed_runs": sum(1 for run in runs if run.status == "completed"),
         "failed_runs": sum(1 for run in runs if run.status == "failed"),
         "average_latest_score": sum(latest_scores) / len(latest_scores) if latest_scores else 0.0,
@@ -1305,64 +1387,40 @@ async def _probe_endpoint(base_url: str, timeout: float, headers: Optional[dict]
 async def get_evaluation_health(db: Session = None, organization_id: Optional[int] = None) -> Dict[str, object]:
     provider = get_evaluation_provider(db, organization_id)
     org_config = get_organization_provider_config(db, organization_id)
+    configured = organization_llm_configured(org_config)
     health = {
         "provider": provider.name,
         "provider_version": getattr(provider, "version", None),
         "prompt_version": settings.EVALUATION_PROMPT_VERSION,
-        "config_hash": get_evaluation_config_hash(provider),
-        "model_name": getattr(provider, "model", None),
-        "base_url": getattr(provider, "base_url", None),
+        "config_hash": get_evaluation_config_hash(provider) if configured else None,
+        "model_name": getattr(provider, "model", None) if configured else None,
+        "base_url": getattr(provider, "base_url", None) if configured else None,
         "organization_provider": org_config.get("evaluation_provider"),
-        "healthy": True,
-        "status": "available",
+        "configured": configured,
+        "healthy": False,
+        "status": "not_configured",
         "fallback_provider": getattr(getattr(provider, "fallback_provider", None), "name", None),
         "last_error": None,
-        "local_enabled": settings.LOCAL_LLM_ENABLED,
-        "cloud_enabled": settings.CLOUD_LLM_ENABLED,
-        "local_model": settings.LOCAL_LLM_MODEL if settings.LOCAL_LLM_ENABLED else None,
-        "local_base_url": settings.LOCAL_LLM_BASE_URL if settings.LOCAL_LLM_ENABLED else None,
-        "local_healthy": None,
-        "cloud_model": settings.CLOUD_LLM_MODEL if settings.CLOUD_LLM_ENABLED else None,
-        "cloud_base_url": settings.CLOUD_LLM_BASE_URL if settings.CLOUD_LLM_ENABLED else None,
-        "cloud_healthy": None,
         "checked_at": datetime.utcnow(),
     }
 
-    if provider.name == "deterministic_baseline":
-        health["status"] = "deterministic_available"
+    if not configured or provider.name == "deterministic_baseline":
         return health
 
-    errors = []
-    org_base_url = org_config.get("evaluation_base_url")
-    org_api_key = org_config.get("evaluation_api_key")
-    if settings.LOCAL_LLM_ENABLED or (provider.name == "local_vllm" and org_base_url):
-        local_url = org_base_url or settings.LOCAL_LLM_BASE_URL
-        headers = {"Authorization": f"Bearer {org_api_key}"} if org_api_key else None
-        reachable, error = await _probe_endpoint(
-            local_url, min(settings.LOCAL_LLM_TIMEOUT_SECONDS, 2.0), headers=headers
-        )
-        health["local_healthy"] = reachable
-        if error:
-            errors.append(f"local_vllm: {error}")
-    if settings.CLOUD_LLM_ENABLED or (provider.name == "cloud_llm" and org_base_url):
-        cloud_url = org_base_url or settings.CLOUD_LLM_BASE_URL
-        cloud_key = org_api_key or settings.CLOUD_LLM_API_KEY
-        headers = {"Authorization": f"Bearer {cloud_key}"} if cloud_key else None
-        reachable, error = await _probe_endpoint(
-            cloud_url, min(settings.CLOUD_LLM_TIMEOUT_SECONDS, 2.0), headers=headers
-        )
-        health["cloud_healthy"] = reachable
-        if error:
-            errors.append(f"cloud_llm: {error}")
-
-    any_reachable = health["local_healthy"] or health["cloud_healthy"]
-    if any_reachable:
+    headers = None
+    if provider.name == "cloud_llm":
+        headers = {"Authorization": f"Bearer {provider.api_key}"} if provider.api_key else None
+    reachable, error = await _probe_endpoint(
+        provider.base_url,
+        min(CLOUD_LLM_TIMEOUT_SECONDS if provider.name == "cloud_llm" else LOCAL_LLM_TIMEOUT_SECONDS, 2.0),
+        headers=headers,
+    )
+    if reachable:
         health["healthy"] = True
         health["status"] = "available"
     else:
-        health["healthy"] = False
         health["status"] = "llm_unavailable_using_fallback"
-        health["last_error"] = "; ".join(errors) or "LLM endpoints unreachable"
+        health["last_error"] = error or "LLM endpoint unreachable"
 
     return health
 

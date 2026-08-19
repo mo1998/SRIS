@@ -65,7 +65,7 @@ Goal: one OpenAI-compatible URL in front of local vLLM and cloud providers so fa
 
 Steps:
 1. Stand up LiteLLM as a docker service (gateway profile), pointed at the local vLLM endpoint and the configured cloud endpoint.
-2. Reconfigure `LOCAL_LLM_BASE_URL` / `CLOUD_LLM_BASE_URL` to the gateway virtual model names; keep direct endpoints as the break-glass path.
+2. Reconfigure each organization's base URL to the gateway virtual model names; keep direct endpoints as the break-glass path.
 3. **Pin the exact LiteLLM version** and install from a hash-verified lockfile. Do not auto-upgrade (the 2026 supply-chain incident in this exact package is the reason — see source repo §3).
 4. Keep the per-organization provider selection from Phase 1; map org selection to gateway model routing.
 

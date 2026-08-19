@@ -28,7 +28,7 @@ CUDA_VISIBLE_DEVICES=1 /home/ubuntu/anaconda3/envs/sris/bin/python \
 | Flag | Value | Reason |
 |---|---|---|
 | `CUDA_VISIBLE_DEVICES=1` | GPU 1 | Leave GPU 0 free for other work |
-| `--port 8100` | vLLM API | Matches `LOCAL_LLM_BASE_URL=http://localhost:8100/v1` |
+| `--port 8100` | vLLM API | Org `local_vllm` providers point their base URL at `http://localhost:8100/v1` |
 | `--max-model-len 4096` | 4K context | Balances memory vs capacity |
 | `--gpu-memory-utilization 0.60` | 60% VRAM | Leaves headroom for KV cache |
 | `--max-num-seqs 8` | 8 concurrent | Prevents OOM during batch eval |
@@ -44,12 +44,13 @@ Expected: `{"object":"list","data":[{"id":"qwen3-8b-awq",...}]}`
 
 ## Connect SRIS Backend
 
-Set these env vars when starting the backend:
+LLM endpoints are configured per organization from the Employer Dashboard
+(Dashboard → AI Provider). For local evaluation against this server, set the
+organization's provider to `local_vllm` with:
 
-```bash
-export EVALUATION_PROVIDER=local_vllm
-export LOCAL_LLM_BASE_URL=http://localhost:8100/v1
-export LOCAL_LLM_MODEL=qwen3-8b-awq
+```text
+Base URL: http://localhost:8100/v1
+Model:    qwen3-8b-awq
 ```
 
 ## Available Models

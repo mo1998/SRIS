@@ -58,8 +58,9 @@ class Organization(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Evaluation provider selection. When evaluation_provider is NULL the
-    # organization follows the system default (EVALUATION_PROVIDER env).
+    # Evaluation provider selection, configured entirely from the UI.
+    # When evaluation_provider is NULL the organization has no LLM configured
+    # and evaluation runs are held until a working provider is set.
     evaluation_provider = Column(String(50), nullable=True)
     evaluation_model = Column(String(255), nullable=True)
     evaluation_base_url = Column(String(500), nullable=True)

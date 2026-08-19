@@ -22,10 +22,10 @@ Phases 3, 5-7 pending. Read before continuing implementation.
 1. **Email dead on arrival** — `backend/app/services/email_service.py:123` POSTs to
    `MAILPIT_API_URL` (Mailpit = dev catch-all only). No real SMTP/HTTP provider, so
    candidates never receive invitations, reminders, reset links, or results.
-2. **Prod LLM cannot run** — `docker-compose.prod.yml` has no `local-model` service,
-   but `.env.production.example` sets `EVALUATION_PROVIDER=local_vllm` and
-   `LOCAL_LLM_BASE_URL=http://localhost:8100/v1`. `localhost` does not resolve inside
-   containers; provider chain silently degrades to `deterministic_baseline`.
+2. **Prod LLM must be configured per-org** — LLM endpoints (base URL, model, API key)
+   are now per-organization, configured from the employer dashboard. An organization
+   with no configured provider holds evaluations (`status=pending`) until one is set and
+   reachable; there is no env-level provider fallback anymore.
 3. **deploy.sh env bug** — `deploy.sh:22` copies `.env.example` (`DEBUG=True`, placeholder
    keys) for **every** environment including production. The guardrail at
    `backend/app/config.py:134` would then refuse to start, so the first production
@@ -49,8 +49,9 @@ Phases 3, 5-7 pending. Read before continuing implementation.
 
 - **deploy.sh**: select env correctly — `production` must use `.env.production.example`.
   Add preflight: refuse to run on `CHANGE_ME`/placeholder values; assert `DEBUG=False`.
-- **`.env.production.example`**: rewrite — drop Mailpit, add `RESEND_API_KEY`, cloud LLM
-  vars, set `LOCAL_LLM_BASE_URL=http://local-model:8100/v1`.
+- **`.env.production.example`**: rewrite — drop Mailpit, add `RESEND_API_KEY`,
+  document per-org LLM configuration; keep `ENABLE_LOCAL_LLM` to expose the local
+  model service at `http://local-model:8100/v1` for orgs to point `local_vllm` at.
 - **docker-compose.prod.yml**: add `local-model` vLLM service (GPU passthrough,
   `runtime: nvidia`), toggled by `ENABLE_LOCAL_LLM` so it can be skipped on GPU-less hosts.
   Fix worker/backend LLM base URL. Pass Resend + cloud LLM envs to backend and
@@ -69,17 +70,18 @@ Phases 3, 5-7 pending. Read before continuing implementation.
   backoff, per-send error logging.
 - Update `backend/tests/test_email_service.py` mocks for the provider abstraction.
 
-### Phase 2 — Hybrid LLM evaluation
+### Phase 2 — LLM evaluation (per-organization configuration)
 
-- New `CloudLLMEvaluationProvider` mirroring `LocalVLLMEvaluationProvider`
-  (`evaluation_service.py:101`) payload/parse, OpenAI-compatible base URL. New config:
-  `CLOUD_LLM_BASE_URL` (default `https://api.openai.com/v1`), `CLOUD_LLM_MODEL`,
-  `CLOUD_LLM_API_KEY`, `CLOUD_LLM_TIMEOUT_SECONDS`.
-- Chain at `evaluation_service.py:200-207`: `EVALUATION_PROVIDER=hybrid` ⇒
-  `local_vllm` → `cloud` → `deterministic_baseline`, reusing the existing fallback
-  pattern (fallback evidence already records reason/model at lines 161-167).
-- Toggles `LOCAL_LLM_ENABLED` / `CLOUD_LLM_ENABLED`; health reports both endpoints.
-- Worker (`docker-compose.prod.yml:91`) gets the new envs.
+- LLM endpoints are configured per organization from the employer dashboard
+  (Dashboard → AI Provider): provider (`local_vllm`/`cloud_llm`/`hybrid`), base URL,
+  model, and API key. No provider env vars remain; only tuning knobs
+  (`EVALUATION_QUEUE_BACKEND`, `EVALUATION_QUEUE_NAME`, `EVALUATION_PROMPT_VERSION`,
+  `EVALUATION_MAX_TOKENS`) stay in env.
+- Provider chain: `local_vllm` → `cloud_llm` → `deterministic_baseline`. Unconfigured
+  orgs hold runs (`status=pending`) until a provider is configured and reachable;
+  pending runs are re-dispatched after settings changes.
+- Health endpoint reports `configured`, `status` (`not_configured`/`available`/
+  `llm_unavailable_using_fallback`), and probes only the org's own endpoint.
 
 ### Phase 3 — Security hardening
 
