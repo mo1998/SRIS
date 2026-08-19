@@ -170,20 +170,24 @@ async def start_interview_response(
         invitation_id = invitation.id
         invitation.status = InvitationStatus.ACCEPTED
     
-    # Check if candidate already has a response
-    existing_response = db.query(CandidateResponse).filter(
+    # Reuse active response so refreshes or duplicate start requests cannot
+    # leave multiple abandoned attempts for the same candidate.
+    active_response = db.query(CandidateResponse).filter(
         CandidateResponse.interview_id == response_data.interview_id,
-        CandidateResponse.candidate_email == response_data.candidate_email
-    ).first()
-    
-    if existing_response and existing_response.status == "completed":
+        CandidateResponse.candidate_email == response_data.candidate_email,
+        CandidateResponse.status == "in_progress",
+    ).order_by(CandidateResponse.created_at.desc(), CandidateResponse.id.desc()).first()
+    if active_response:
+        return active_response
+
+    completed_attempts = db.query(CandidateResponse).filter(
+        CandidateResponse.interview_id == response_data.interview_id,
+        CandidateResponse.candidate_email == response_data.candidate_email,
+        CandidateResponse.status == "completed",
+    ).count()
+    if completed_attempts:
         # Check max attempts
-        if existing_response.interview.max_attempts and \
-           db.query(CandidateResponse).filter(
-               CandidateResponse.interview_id == response_data.interview_id,
-               CandidateResponse.candidate_email == response_data.candidate_email,
-               CandidateResponse.status == "completed"
-           ).count() >= existing_response.interview.max_attempts:
+        if interview.max_attempts and completed_attempts >= interview.max_attempts:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum attempts reached")
     
     # Create response

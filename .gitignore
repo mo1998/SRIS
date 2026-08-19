@@ -98,6 +98,7 @@ dump.rdb
 *.pem
 *.key
 *.crt
+scripts/load_test.py
 
 # Frontend source utilities (avoid matching the global lib/ ignore above)
 !frontend/src/lib/

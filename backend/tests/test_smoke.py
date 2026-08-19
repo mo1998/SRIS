@@ -1016,6 +1016,18 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
     candidate_response = start_response.json()
     assert candidate_response["status"] == "in_progress"
 
+    duplicate_start_response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": invitation["candidate_email"],
+            "candidate_name": invitation["candidate_name"],
+            "invitation_token": invitation["unique_token"],
+        },
+    )
+    assert duplicate_start_response.status_code == 201, duplicate_start_response.text
+    assert duplicate_start_response.json()["id"] == candidate_response["id"]
+
     accepted_invitation_response = client.get(
         f"/api/invitations/{interview['id']}",
         headers={"Authorization": f"Bearer {owner_token}"},
