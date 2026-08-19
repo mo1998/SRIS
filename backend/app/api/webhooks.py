@@ -58,6 +58,12 @@ async def create_webhook(
     if org_id is None and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="User has no organization")
 
+    from app.services.url_safety import validate_outbound_url
+
+    unsafe = validate_outbound_url(data.url, allow_http_local=False)
+    if unsafe:
+        raise HTTPException(status_code=422, detail=f"Invalid webhook URL: {unsafe}")
+
     secret = generate_secret()
     webhook = Webhook(
         organization_id=org_id if current_user.role != UserRole.ADMIN else 0,
@@ -121,6 +127,11 @@ async def update_webhook(
         raise HTTPException(status_code=403, detail="Access denied")
 
     if data.url is not None:
+        from app.services.url_safety import validate_outbound_url
+
+        unsafe = validate_outbound_url(data.url, allow_http_local=False)
+        if unsafe:
+            raise HTTPException(status_code=422, detail=f"Invalid webhook URL: {unsafe}")
         webhook.url = data.url
     if data.events is not None:
         webhook.events = ",".join(e.value for e in data.events)
