@@ -41,6 +41,7 @@ jobs:
   frontend:
     name: Frontend Tests And Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -62,8 +63,14 @@ jobs:
       - name: Build
         run: npm run build --prefix frontend
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
         working-directory: frontend
 
       - name: Run release candidate E2E smoke
