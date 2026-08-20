@@ -211,6 +211,8 @@ Key settings:
 | `EVALUATION_PROMPT_VERSION` | Scoring prompt version recorded on each run |
 | `EVALUATION_STRUCTURED_OUTPUT_ENABLED` | Send `response_format` and enforce the output schema; degrades to plain JSON on HTTP 400/422 |
 | `EVALUATION_PII_MASKING_ENABLED` | Mask candidate PII (emails/phones/name) before payload reaches any LLM; fail-closed |
+| `LANGFUSE_ENABLED`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | Self-hosted Langfuse tracing for evaluation runs; disabled by default |
+| `LANGFUSE_PUBLIC_URL` | Browser-facing Langfuse URL used for trace links in the audit UI |
 | `TRANSCRIPTION_PROVIDER`, `WHISPER_*` | `whisper`/`fake` transcription provider and model/device settings |
 | `EMOTION_ANALYSIS_PROVIDER` | `deepface`/`disabled`/`fake` facial emotion analysis |
 | `MAIL_*`, `EMAIL_PROVIDER` | SMTP / Mailpit / Resend email delivery |

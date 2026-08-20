@@ -425,6 +425,15 @@ const CandidateReport: React.FC = () => {
                           <p className="mb-1"><strong>{t('candidateReport.provider')}:</strong> {run.provider}</p>
                           <p className="mb-1"><strong>{t('candidateReport.model')}:</strong> {run.model_name || t('common.n/a')}</p>
                           <p className="mb-1"><strong>{t('candidateReport.configHash')}:</strong> {run.config_hash || t('common.n/a')}</p>
+                          {run.trace_url && (
+                            <p className="mb-1">
+                              <strong>{t('candidateReport.trace')}:</strong>{' '}
+                              <a href={run.trace_url} target="_blank" rel="noreferrer">{t('candidateReport.openTrace')}</a>
+                            </p>
+                          )}
+                          {run.data_left_host !== null && run.data_left_host !== undefined && (
+                            <p className="mb-1"><strong>{t('candidateReport.dataLeftHost')}:</strong> {String(run.data_left_host)}</p>
+                          )}
                         </Col>
                         <Col md={6}>
                           <p className="mb-1"><strong>{t('candidateReport.started')}:</strong> {formatDateTime(run.started_at)}</p>

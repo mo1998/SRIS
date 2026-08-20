@@ -123,17 +123,20 @@ Steps:
 
 Acceptance criteria: cost-per-evaluation is visible on a dashboard alongside pass-rate and judge agreement; no quality regression on the golden set.
 
-### Phase 7 — Tracing (Langfuse) for replayable evaluations
+### Phase 7 — Tracing (Langfuse) for replayable evaluations (implemented)
 
 Goal: replay any evaluation run — prompt version, model, retrieval context, decision — from a trace.
 
 Steps:
-1. Self-host Langfuse (Postgres + ClickHouse + Redis + S3, per reference stack) or start with the OSS core.
-2. Instrument `evaluate_answer` for each provider: trace spans per answer, keyed by `evaluation_run_id`, with prompt version and config hash.
-3. Wire the existing audit UI to link a trace for each `evaluation_run` row.
-4. Add a PII policy for trace payloads (mask at the SDK boundary, short retention) before enabling on live traffic.
+- [x] Self-host Langfuse (Postgres + ClickHouse + Redis + S3, per reference stack) or start with the OSS core. (OSS core + ClickHouse + MinIO added as the `observability` profile; Postgres/Redis reused.)
+- [x] Instrument `evaluate_answer` for each provider: trace spans per answer, keyed by `evaluation_run_id`, with prompt version and config hash. (`tracing.py`; trace id = `run-<evaluation_run_id>`; span per answer.)
+- [x] Wire the existing audit UI to link a trace for each `evaluation_run` row. (Audit API returns `trace_id` + `trace_url`; CandidateReport renders an "Open trace" link.)
+- [x] Add a PII policy for trace payloads (mask at the SDK boundary, short retention) before enabling on live traffic. (Spans mask candidate answers with the Phase 5 `mask_pii`; masking failure skips the span, never leaks. Retention is operator-controlled via Langfuse's TTL settings.)
 
 Acceptance criteria: any `evaluation_run` is replayable from its trace; traces carry no unmasked PII.
+
+Notes:
+- Enabled via `LANGFUSE_ENABLED=true` + `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`/`LANGFUSE_HOST`; disabled by default (no code path changes, zero overhead).
 
 ### Phase 8 — Durable execution only if agents arrive
 

@@ -26,6 +26,7 @@ from app.metrics import record_llm_fallback
 from app.models import CandidateResponse, EvaluationRun, EvaluationScore, QuestionAnswer, InterviewQuestion, Interview, TeamMembership, Organization
 from app.services.audit_service import create_audit_log
 from app.services.pii_masking import mask_pii
+from app.services import tracing as eval_tracing
 
 
 STOPWORDS = {
@@ -654,7 +655,19 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
             db.commit()
             return
         evaluation_run = create_evaluation_run(response_id, db, status="running")
-    
+
+    trace = await eval_tracing.create_run_trace(
+        evaluation_run_id=evaluation_run.id,
+        provider=provider.name,
+        model=getattr(provider, "model", None),
+        prompt_version=settings.EVALUATION_PROMPT_VERSION,
+        config_hash=get_evaluation_config_hash(provider) if organization_llm_configured(get_organization_provider_config(db, organization_id)) else None,
+        organization_id=organization_id,
+    )
+    if trace is not None:
+        evaluation_run.trace_id = getattr(trace, "id", None) or f"run-{evaluation_run.id}"
+        db.flush()
+
     total_score = 0.0
     total_weight = 0.0
 
@@ -737,6 +750,17 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
             masking_totals["phones"] += masking.get("phones", 0)
             masking_totals["names"] += masking.get("names", 0)
 
+            await eval_tracing.add_answer_span(
+                trace,
+                question_answer_id=answer.id,
+                question_text=question.question_text,
+                expected_answer=question.expected_answer,
+                answer_text=answer_text,
+                candidate_name=response.candidate_name,
+                rubric_criteria=serialize_rubric_criteria(question),
+                result=result,
+            )
+
             db.add(EvaluationScore(
                 evaluation_run_id=evaluation_run.id,
                 question_answer_id=answer.id,
@@ -767,6 +791,8 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
         evaluation_run.error = str(exc)
         evaluation_run.completed_at = datetime.utcnow()
         db.commit()
+        await eval_tracing.finalize_run_trace(trace, score=0.0, passed=False, error=str(exc))
+        await eval_tracing.flush_traces()
         raise
     
     # Calculate total score
@@ -836,11 +862,20 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
         details={
             "data_left_host": cloud_contacted,
             "provider": provider.name,
+            "trace_id": evaluation_run.trace_id,
             **masking_totals,
         },
     )
 
     db.commit()
+
+    await eval_tracing.finalize_run_trace(
+        trace,
+        score=response.total_score or 0.0,
+        passed=bool(response.passed),
+        error=None,
+    )
+    await eval_tracing.flush_traces()
     
     # Notify the interview employer + organization members that evaluation
     # finished and a score is available.
@@ -1273,6 +1308,11 @@ def generate_candidate_evaluation_audit(response_id: int, db: Session) -> List[D
             "status": run.status,
             "raw_summary": parse_evidence_json(run.raw_summary),
             "error": run.error,
+            "data_left_host": run.data_left_host,
+            "trace_id": run.trace_id,
+            "trace_url": (
+                f"{settings.LANGFUSE_PUBLIC_URL.rstrip('/')}/trace/{run.trace_id}" if run.trace_id else None
+            ),
             "started_at": run.started_at,
             "completed_at": run.completed_at,
             "scores": [
