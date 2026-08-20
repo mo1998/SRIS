@@ -8,6 +8,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 import logging
 import os
+import secrets
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,30 @@ def delete_answer_media_files(response: CandidateResponse) -> None:
             os.remove(answer.video_file_path)
 
 
+def get_candidate_response_for_token(
+    response_id: int,
+    invitation_token: str,
+    db: Session = Depends(get_db),
+) -> CandidateResponse:
+    """Resolve a candidate response and prove the caller holds its invitation token.
+
+    Prevents IDOR: response ids are sequential/enumerable, so every candidate-facing
+    endpoint must be gated on the invitation token bound to the response. Token
+    comparison uses constant-time comparison to avoid timing side channels.
+    """
+    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
+    if not candidate_response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+    if not candidate_response.invitation_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    invitation = db.query(Invitation).filter(Invitation.id == candidate_response.invitation_id).first()
+    if not invitation or not secrets.compare_digest(invitation.unique_token, invitation_token or ""):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    return candidate_response
+
+
 @router.post("/", response_model=CandidateResponseSummary, status_code=status.HTTP_201_CREATED)
 async def start_interview_response(
     response_data: CandidateResponseCreate,
@@ -147,28 +172,29 @@ async def start_interview_response(
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found or not active")
     
-    # Verify invitation if token provided
-    invitation_id = None
-    if response_data.invitation_token:
-        invitation = db.query(Invitation).filter(
-            Invitation.unique_token == response_data.invitation_token,
-            Invitation.interview_id == response_data.interview_id
-        ).first()
-        
-        if not invitation:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invitation token")
-        
-        if invitation.status == InvitationStatus.COMPLETED:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This invitation has already been used")
+    # Verify invitation token (required)
+    invitation = db.query(Invitation).filter(
+        Invitation.unique_token == response_data.invitation_token,
+        Invitation.interview_id == response_data.interview_id
+    ).first()
 
-        if invitation.status == InvitationStatus.REVOKED:
-            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Invitation has been revoked")
-        
-        if invitation.expires_at and datetime.utcnow() > invitation.expires_at:
-            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Invitation has expired")
-        
-        invitation_id = invitation.id
-        invitation.status = InvitationStatus.ACCEPTED
+    if not invitation:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invitation token")
+
+    if invitation.status == InvitationStatus.COMPLETED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This invitation has already been used")
+
+    if invitation.status == InvitationStatus.REVOKED:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Invitation has been revoked")
+
+    if invitation.expires_at and datetime.utcnow() > invitation.expires_at:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Invitation has expired")
+
+    if invitation.candidate_email.lower() != response_data.candidate_email.lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Candidate email does not match invitation")
+
+    invitation_id = invitation.id
+    invitation.status = InvitationStatus.ACCEPTED
     
     # Reuse active response so refreshes or duplicate start requests cannot
     # leave multiple abandoned attempts for the same candidate.
@@ -208,18 +234,16 @@ async def start_interview_response(
 
 
 @router.get("/{response_id}/timer", response_model=ResponseTimer)
-async def get_response_timer(response_id: int, db: Session = Depends(get_db)):
+async def get_response_timer(
+    response_id: int,
+    candidate_response: CandidateResponse = Depends(get_candidate_response_for_token),
+    db: Session = Depends(get_db),
+):
     """Get the server-authoritative interview timer for a response.
 
     The client timer is advisory; this endpoint is the source of truth so a
     tampered browser clock cannot extend the interview.
     """
-
-    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
-
-    if not candidate_response:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
-
     started_at = candidate_response.started_at or datetime.utcnow()
     interview = db.query(Interview).filter(Interview.id == candidate_response.interview_id).first()
     duration_minutes = interview.duration_minutes if interview else None
@@ -250,16 +274,12 @@ async def submit_answer(
     audio_file: Optional[UploadFile] = File(None),
     video_file: Optional[UploadFile] = File(None),
     time_taken_seconds: int = None,
+    candidate_response: CandidateResponse = Depends(get_candidate_response_for_token),
     db: Session = Depends(get_db)
 ):
     """Submit an answer to a question"""
     
-    # Verify response exists and is in progress
-    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
-    
-    if not candidate_response:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
-    
+    # Verify response is in progress
     if candidate_response.status != "in_progress":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response is not in progress")
     
@@ -326,13 +346,11 @@ async def retake_answer(
     audio_file: Optional[UploadFile] = File(None),
     video_file: Optional[UploadFile] = File(None),
     time_taken_seconds: int = None,
+    candidate_response: CandidateResponse = Depends(get_candidate_response_for_token),
     db: Session = Depends(get_db)
 ):
     """Retake/edit an answer while the response is still in progress.
     Replaces the recorded text/media so candidates can fix mistakes."""
-    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
-    if not candidate_response:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
     if candidate_response.status != "in_progress":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response is not in progress")
 
@@ -392,16 +410,13 @@ async def retake_answer(
 async def submit_integrity_events(
     response_id: int,
     events: List[dict],
+    candidate_response: CandidateResponse = Depends(get_candidate_response_for_token),
     db: Session = Depends(get_db)
 ):
     """Record client-side integrity events (tab switches, window blurs)
     for anti-cheating analysis."""
     if not settings.INTEGRITY_TRACKING_ENABLED:
         return {"recorded": 0}
-
-    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
-    if not candidate_response:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
 
     from app.models import IntegrityEvent
 
@@ -431,14 +446,10 @@ async def submit_quality_metrics(
     face_visibility: float,
     lighting: float,
     recommendations: List[str] = [],
+    candidate_response: CandidateResponse = Depends(get_candidate_response_for_token),
     db: Session = Depends(get_db)
 ):
     """Submit quality metrics from client-side analysis"""
-    
-    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
-    
-    if not candidate_response:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
     
     # Update quality metrics
     candidate_response.voice_quality_score = voice_quality
@@ -466,14 +477,10 @@ async def submit_emotion_data(
     emotion: str,
     confidence: float,
     timeline: List[dict] = None,
+    candidate_response: CandidateResponse = Depends(get_candidate_response_for_token),
     db: Session = Depends(get_db)
 ):
     """Submit emotion detection data"""
-    
-    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
-    
-    if not candidate_response:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
     
     # Update emotion data
     candidate_response.dominant_emotion = emotion
@@ -492,14 +499,10 @@ async def submit_emotion_data(
 async def complete_interview_response(
     response_id: int,
     background_tasks: BackgroundTasks,
+    candidate_response: CandidateResponse = Depends(get_candidate_response_for_token),
     db: Session = Depends(get_db)
 ):
     """Mark interview response as complete and trigger evaluation"""
-    
-    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
-    
-    if not candidate_response:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
     
     if candidate_response.status != "in_progress":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response is not in progress")

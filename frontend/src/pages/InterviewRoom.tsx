@@ -107,7 +107,7 @@ const InterviewRoom: React.FC = () => {
 
   const syncServerTimer = async (id: number) => {
     try {
-      const timerRes = await api.responses.getTimer(id)
+      const timerRes = await api.responses.getTimer(id, token)
       const timer = timerRes.data
       const serverNow = new Date(timer.server_time).getTime()
       const clientNow = Date.now()
@@ -265,7 +265,8 @@ const InterviewRoom: React.FC = () => {
             return
           }
           setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total))
-        }
+        },
+        token
       )
 
       if (draftKey) {
@@ -292,7 +293,7 @@ const InterviewRoom: React.FC = () => {
     if (!responseId) return
     
     try {
-      await api.responses.complete(responseId)
+      await api.responses.complete(responseId, token)
       setStep('complete')
     } catch (err: any) {
       setError(err.response?.data?.detail || t('interviewRoom.completeFailed'))
@@ -384,7 +385,7 @@ const InterviewRoom: React.FC = () => {
       if (events.length === 0 || !responseId) return
       const batch = events.splice(0, events.length)
       api.responses
-        .submitIntegrityEvents(responseId, batch)
+        .submitIntegrityEvents(responseId, batch, token)
         .catch(() => {})
     }
 

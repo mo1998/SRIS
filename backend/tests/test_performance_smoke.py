@@ -22,12 +22,26 @@ def test_completed_interview_flow_performance_smoke(client, monkeypatch):
     assert activate_response.status_code == 200, activate_response.text
 
     for index in range(3):
+        email = f"perf-candidate-{index}@example.com"
+        invitation_response = client.post(
+            "/api/invitations/",
+            headers={"Authorization": f"Bearer {owner_token}"},
+            json={
+                "interview_id": interview["id"],
+                "candidate_email": email,
+                "candidate_name": f"Performance Candidate {index}",
+            },
+        )
+        assert invitation_response.status_code == 201, invitation_response.text
+        invitation_token = invitation_response.json()["unique_token"]
+
         candidate_response = client.post(
             "/api/responses/",
             json={
                 "interview_id": interview["id"],
-                "candidate_email": f"perf-candidate-{index}@example.com",
+                "candidate_email": email,
                 "candidate_name": f"Performance Candidate {index}",
+                "invitation_token": invitation_token,
             },
         )
         assert candidate_response.status_code == 201, candidate_response.text
@@ -39,11 +53,15 @@ def test_completed_interview_flow_performance_smoke(client, monkeypatch):
                 "question_id": interview["questions"][0]["id"],
                 "answer_text": "I listen, empathize, clarify, take ownership, resolve, and follow up.",
                 "time_taken_seconds": 90,
+                "invitation_token": invitation_token,
             },
         )
         assert answer_response.status_code == 200, answer_response.text
 
-        complete_response = client.post(f"/api/responses/{response_body['id']}/complete")
+        complete_response = client.post(
+            f"/api/responses/{response_body['id']}/complete",
+            params={"invitation_token": invitation_token},
+        )
         assert complete_response.status_code == 200, complete_response.text
 
     responses_response = client.get(

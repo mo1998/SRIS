@@ -1356,6 +1356,7 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
             "question_id": question["id"],
             "answer_text": "I listen, empathize, clarify, take ownership, resolve, and follow up with the customer.",
             "time_taken_seconds": 120,
+            "invitation_token": invitation["unique_token"],
         },
     )
     assert answer_response.status_code == 200, answer_response.text
@@ -1367,17 +1368,21 @@ def test_employer_bulk_invites_candidate_completes_pipeline(client, monkeypatch)
             "background_quality": 88,
             "face_visibility": 91,
             "lighting": 86,
+            "invitation_token": invitation["unique_token"],
         },
     )
     assert quality_response.status_code == 200, quality_response.text
 
     emotion_response = client.post(
         f"/api/responses/{candidate_response['id']}/emotion",
-        params={"emotion": "neutral", "confidence": 90},
+        params={"emotion": "neutral", "confidence": 90, "invitation_token": invitation["unique_token"]},
     )
     assert emotion_response.status_code == 200, emotion_response.text
 
-    complete_response = client.post(f"/api/responses/{candidate_response['id']}/complete")
+    complete_response = client.post(
+        f"/api/responses/{candidate_response['id']}/complete",
+        params={"invitation_token": invitation["unique_token"]},
+    )
     assert complete_response.status_code == 200, complete_response.text
     completed_response = complete_response.json()
     assert completed_response["status"] == "completed"
@@ -1699,11 +1704,15 @@ def test_completed_invitation_can_be_deleted(client, monkeypatch):
             "question_id": interview["questions"][0]["id"],
             "answer_text": "I listen, empathize, clarify, take ownership, resolve, and follow up with the customer.",
             "time_taken_seconds": 120,
+            "invitation_token": invitation["unique_token"],
         },
     )
     assert answer_response.status_code == 200, answer_response.text
 
-    complete_response = client.post(f"/api/responses/{candidate_response['id']}/complete")
+    complete_response = client.post(
+        f"/api/responses/{candidate_response['id']}/complete",
+        params={"invitation_token": invitation["unique_token"]},
+    )
     assert complete_response.status_code == 200, complete_response.text
 
     list_response = client.get(
@@ -1810,11 +1819,15 @@ def complete_invited_response(client, interview, invitation):
             "question_id": interview["questions"][0]["id"],
             "answer_text": "I listen, empathize, clarify, take ownership, resolve, and follow up with the customer.",
             "time_taken_seconds": 120,
+            "invitation_token": invitation["unique_token"],
         },
     )
     assert answer_response.status_code == 200, answer_response.text
 
-    complete_response = client.post(f"/api/responses/{candidate_response['id']}/complete")
+    complete_response = client.post(
+        f"/api/responses/{candidate_response['id']}/complete",
+        params={"invitation_token": invitation["unique_token"]},
+    )
     assert complete_response.status_code == 200, complete_response.text
     return candidate_response
 
@@ -1945,17 +1958,32 @@ def test_cross_organization_employer_cannot_delete_invitation(client, monkeypatc
     assert delete_response.status_code == 403, delete_response.text
 
 
-def start_candidate_response(client, interview_id, email="candidate@example.com", name="Candidate One"):
-    response = client.post(
-        "/api/responses/",
+def start_candidate_response(client, interview_id, employer_token, email="candidate@example.com", name="Candidate One"):
+    invitation_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {employer_token}"},
         json={
             "interview_id": interview_id,
             "candidate_email": email,
             "candidate_name": name,
         },
     )
+    assert invitation_response.status_code == 201, invitation_response.text
+    invitation = invitation_response.json()
+
+    response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview_id,
+            "candidate_email": email,
+            "candidate_name": name,
+            "invitation_token": invitation["unique_token"],
+        },
+    )
     assert response.status_code == 201, response.text
-    return response.json()
+    result = response.json()
+    result["_invitation_token"] = invitation["unique_token"]
+    return result
 
 
 def test_answer_audio_upload_rejects_unsupported_extension(client):
@@ -1967,13 +1995,14 @@ def test_answer_audio_upload_rejects_unsupported_extension(client):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     assert activate_response.status_code == 200, activate_response.text
-    candidate_response = start_candidate_response(client, interview["id"])
+    candidate_response = start_candidate_response(client, interview["id"], owner_token)
 
     response = client.post(
         f"/api/responses/{candidate_response['id']}/answer",
         params={
             "question_id": interview["questions"][0]["id"],
             "answer_text": "Audio answer",
+            "invitation_token": candidate_response["_invitation_token"],
         },
         files={"audio_file": ("payload.exe", b"not audio", "application/octet-stream")},
     )
@@ -1994,13 +2023,14 @@ def test_answer_audio_upload_rejects_oversized_file(client, monkeypatch):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     assert activate_response.status_code == 200, activate_response.text
-    candidate_response = start_candidate_response(client, interview["id"])
+    candidate_response = start_candidate_response(client, interview["id"], owner_token)
 
     response = client.post(
         f"/api/responses/{candidate_response['id']}/answer",
         params={
             "question_id": interview["questions"][0]["id"],
             "answer_text": "Audio answer",
+            "invitation_token": candidate_response["_invitation_token"],
         },
         files={"audio_file": ("answer.wav", WAV_BYTES, "audio/wav")},
     )
@@ -2018,13 +2048,14 @@ def test_answer_audio_upload_rejects_mismatched_content(client):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     assert activate_response.status_code == 200, activate_response.text
-    candidate_response = start_candidate_response(client, interview["id"])
+    candidate_response = start_candidate_response(client, interview["id"], owner_token)
 
     response = client.post(
         f"/api/responses/{candidate_response['id']}/answer",
         params={
             "question_id": interview["questions"][0]["id"],
             "answer_text": "Audio answer",
+            "invitation_token": candidate_response["_invitation_token"],
         },
         files={"audio_file": ("answer.wav", b"not really a wav", "audio/wav")},
     )
@@ -2042,7 +2073,7 @@ def test_same_organization_member_can_list_interview_responses(client):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     assert activate_response.status_code == 200, activate_response.text
-    candidate_response = start_candidate_response(client, interview["id"])
+    candidate_response = start_candidate_response(client, interview["id"], owner_token)
 
     register_user(client, email="reviewer@example.com", role="employee")
     reviewer_token = login_user(client, email="reviewer@example.com")
@@ -2070,7 +2101,7 @@ def test_cross_organization_employer_cannot_access_responses(client):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     assert activate_response.status_code == 200, activate_response.text
-    candidate_response = start_candidate_response(client, interview["id"])
+    candidate_response = start_candidate_response(client, interview["id"], owner_token)
 
     register_user(client, email="other-employer@example.com")
     other_token = login_user(client, email="other-employer@example.com")
@@ -2097,7 +2128,7 @@ def test_candidate_can_access_own_response_details(client):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     assert activate_response.status_code == 200, activate_response.text
-    candidate_response = start_candidate_response(client, interview["id"], email="candidate@example.com")
+    candidate_response = start_candidate_response(client, interview["id"], owner_token, email="candidate@example.com")
     register_user(client, email="candidate@example.com", role="employee")
     candidate_token = login_user(client, email="candidate@example.com")
 
@@ -2118,13 +2149,14 @@ def test_response_manager_can_delete_candidate_response_and_audio(client):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     assert activate_response.status_code == 200, activate_response.text
-    candidate_response = start_candidate_response(client, interview["id"])
+    candidate_response = start_candidate_response(client, interview["id"], owner_token)
 
     answer_response = client.post(
         f"/api/responses/{candidate_response['id']}/answer",
         params={
             "question_id": interview["questions"][0]["id"],
             "answer_text": "I listen and follow up.",
+            "invitation_token": candidate_response["_invitation_token"],
         },
         files={"audio_file": ("answer.wav", WAV_BYTES, "audio/wav")},
     )
@@ -2168,7 +2200,7 @@ def test_reviewer_candidate_and_cross_org_cannot_delete_candidate_response(clien
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     assert activate_response.status_code == 200, activate_response.text
-    candidate_response = start_candidate_response(client, interview["id"], email="candidate-delete@example.com")
+    candidate_response = start_candidate_response(client, interview["id"], owner_token, email="candidate-delete@example.com")
 
     register_user(client, email="delete-reviewer@example.com", role="employee")
     reviewer_token = login_user(client, email="delete-reviewer@example.com")
@@ -2367,11 +2399,15 @@ def create_completed_response(client):
             "question_id": interview["questions"][0]["id"],
             "answer_text": "I listen carefully and empathize with the customer.",
             "time_taken_seconds": 120,
+            "invitation_token": invite["unique_token"],
         },
     )
     assert answer_response.status_code == 200, answer_response.text
 
-    complete_response = client.post(f"/api/responses/{response_id}/complete")
+    complete_response = client.post(
+        f"/api/responses/{response_id}/complete",
+        params={"invitation_token": invite["unique_token"]},
+    )
     assert complete_response.status_code == 200, complete_response.text
 
     return token, response_id
@@ -2628,13 +2664,17 @@ def test_audio_only_answer_scored_from_transcript(client, monkeypatch):
             "question_id": interview["questions"][0]["id"],
             "answer_text": "",
             "time_taken_seconds": 90,
+            "invitation_token": invite["unique_token"],
         },
         files={"audio_file": ("answer.wav", WAV_BYTES, "audio/wav")},
     )
     assert answer_response.status_code == 200, answer_response.text
     assert answer_response.json()["audio_file_path"]
 
-    complete_response = client.post(f"/api/responses/{response_id}/complete")
+    complete_response = client.post(
+        f"/api/responses/{response_id}/complete",
+        params={"invitation_token": invite["unique_token"]},
+    )
     assert complete_response.status_code == 200, complete_response.text
 
     report_response = client.get(
@@ -2716,6 +2756,7 @@ def test_video_only_answer_scored_from_transcript(client, monkeypatch):
             "question_id": interview["questions"][0]["id"],
             "answer_text": "",
             "time_taken_seconds": 90,
+            "invitation_token": invite["unique_token"],
         },
         files={"video_file": ("answer.mp4", WAV_BYTES, "video/mp4")},
     )
@@ -2723,7 +2764,10 @@ def test_video_only_answer_scored_from_transcript(client, monkeypatch):
     assert answer_response.json()["video_file_path"]
     assert not answer_response.json()["audio_file_path"]
 
-    complete_response = client.post(f"/api/responses/{response_id}/complete")
+    complete_response = client.post(
+        f"/api/responses/{response_id}/complete",
+        params={"invitation_token": invite["unique_token"]},
+    )
     assert complete_response.status_code == 200, complete_response.text
 
     report_response = client.get(
@@ -2802,9 +2846,10 @@ def test_candidate_results_portal_by_token(client, monkeypatch):
         params={
             "question_id": interview["questions"][0]["id"],
             "answer_text": "I listen and empathize with the customer.",
+            "invitation_token": invitation_token,
         },
     )
-    client.post(f"/api/responses/{response_id}/complete")
+    client.post(f"/api/responses/{response_id}/complete", params={"invitation_token": invitation_token})
 
     results_response = client.get(f"/api/invitations/{invitation_token}/results")
     assert results_response.status_code == 200, results_response.text
@@ -2829,18 +2874,27 @@ def test_answer_retake_replaces_answer_and_clears_score(client):
         f"/api/interviews/{interview_id}/activate",
         headers={"Authorization": f"Bearer {token}"},
     )
-    candidate_response = start_candidate_response(client, interview_id, email="retake@test.com")
+    candidate_response = start_candidate_response(client, interview_id, token, email="retake@test.com")
 
     qid = interview["questions"][0]["id"]
     first = client.post(
         f"/api/responses/{candidate_response['id']}/answer",
-        params={"question_id": qid, "answer_text": "wrong answer"},
+        params={
+            "question_id": qid,
+            "answer_text": "wrong answer",
+            "invitation_token": candidate_response["_invitation_token"],
+        },
     )
     assert first.status_code == 200, first.text
 
     retake = client.put(
         f"/api/responses/{candidate_response['id']}/answer/{qid}",
-        params={"question_id": qid, "answer_text": "I listen carefully and empathize with the customer.", "time_taken_seconds": 99},
+        params={
+            "question_id": qid,
+            "answer_text": "I listen carefully and empathize with the customer.",
+            "time_taken_seconds": 99,
+            "invitation_token": candidate_response["_invitation_token"],
+        },
     )
     assert retake.status_code == 200, retake.text
     data = retake.json()
@@ -2864,11 +2918,12 @@ def test_integrity_events_recorded_and_timer_flagged(client):
         f"/api/interviews/{interview_id}/activate",
         headers={"Authorization": f"Bearer {token}"},
     )
-    candidate_response = start_candidate_response(client, interview_id, email="integrity@test.com")
+    candidate_response = start_candidate_response(client, interview_id, token, email="integrity@test.com")
     response_id = candidate_response["id"]
 
     events_response = client.post(
         f"/api/responses/{response_id}/integrity-events",
+        params={"invitation_token": candidate_response["_invitation_token"]},
         json=[{"event_type": "tab_hidden", "details": "switched away"}, {"event_type": "window_blur"}],
     )
     assert events_response.status_code == 200, events_response.text
@@ -2897,11 +2952,12 @@ def test_integrity_events_accept_anti_cheat_event_types(client):
         f"/api/interviews/{interview_id}/activate",
         headers={"Authorization": f"Bearer {token}"},
     )
-    candidate_response = start_candidate_response(client, interview_id, email="antichat@test.com")
+    candidate_response = start_candidate_response(client, interview_id, token, email="antichat@test.com")
     response_id = candidate_response["id"]
 
     events_response = client.post(
         f"/api/responses/{response_id}/integrity-events",
+        params={"invitation_token": candidate_response["_invitation_token"]},
         json=[
             {"event_type": "copy", "details": "copied question"},
             {"event_type": "paste", "details": "pasted answer"},
@@ -2938,11 +2994,12 @@ def test_integrity_events_reject_unknown_event_types(client):
         f"/api/interviews/{interview_id}/activate",
         headers={"Authorization": f"Bearer {token}"},
     )
-    candidate_response = start_candidate_response(client, interview_id, email="antichat2@test.com")
+    candidate_response = start_candidate_response(client, interview_id, token, email="antichat2@test.com")
     response_id = candidate_response["id"]
 
     events_response = client.post(
         f"/api/responses/{response_id}/integrity-events",
+        params={"invitation_token": candidate_response["_invitation_token"]},
         json=[
             {"event_type": "copy", "details": "ok"},
             {"event_type": "delete_database", "details": "nope"},
@@ -2971,11 +3028,13 @@ def test_candidate_report_includes_integrity_summary(client):
         f"/api/interviews/{interview_id}/activate",
         headers={"Authorization": f"Bearer {token}"},
     )
-    candidate_response = start_candidate_response(client, interview_id, email="antichat3@test.com")
+    candidate_response = start_candidate_response(client, interview_id, token, email="antichat3@test.com")
     response_id = candidate_response["id"]
+    invitation_token = candidate_response["_invitation_token"]
 
     client.post(
         f"/api/responses/{response_id}/integrity-events",
+        params={"invitation_token": invitation_token},
         json=[
             {"event_type": "copy", "details": "copied question"},
             {"event_type": "paste", "details": "pasted answer"},
@@ -2984,9 +3043,13 @@ def test_candidate_report_includes_integrity_summary(client):
     )
     client.post(
         f"/api/responses/{candidate_response['id']}/answer",
-        params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen and empathize."},
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "I listen and empathize.",
+            "invitation_token": invitation_token,
+        },
     )
-    client.post(f"/api/responses/{candidate_response['id']}/complete")
+    client.post(f"/api/responses/{candidate_response['id']}/complete", params={"invitation_token": invitation_token})
 
     report_response = client.get(
         f"/api/reports/candidate/{response_id}",
@@ -3015,12 +3078,19 @@ def test_candidate_comparison_api(client):
 
     for i, (email, answer) in enumerate([("cand-a@test.com", "I listen and empathize with the customer."),
                                          ("cand-b@test.com", "I listen.")]):
-        candidate_response = start_candidate_response(client, interview_id, email=email)
+        candidate_response = start_candidate_response(client, interview_id, token, email=email)
         client.post(
             f"/api/responses/{candidate_response['id']}/answer",
-            params={"question_id": interview["questions"][0]["id"], "answer_text": answer},
+            params={
+                "question_id": interview["questions"][0]["id"],
+                "answer_text": answer,
+                "invitation_token": candidate_response["_invitation_token"],
+            },
         )
-        client.post(f"/api/responses/{candidate_response['id']}/complete")
+        client.post(
+            f"/api/responses/{candidate_response['id']}/complete",
+            params={"invitation_token": candidate_response["_invitation_token"]},
+        )
 
     comparison_response = client.get(
         f"/api/reports/interview/{interview_id}/comparison",
@@ -3048,12 +3118,19 @@ def test_candidate_profile_and_question_analytics(client):
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    candidate_response = start_candidate_response(client, interview_id, email="analytics@test.com")
+    candidate_response = start_candidate_response(client, interview_id, token, email="analytics@test.com")
     client.post(
         f"/api/responses/{candidate_response['id']}/answer",
-        params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen and empathize with the customer."},
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "I listen and empathize with the customer.",
+            "invitation_token": candidate_response["_invitation_token"],
+        },
     )
-    client.post(f"/api/responses/{candidate_response['id']}/complete")
+    client.post(
+        f"/api/responses/{candidate_response['id']}/complete",
+        params={"invitation_token": candidate_response["_invitation_token"]},
+    )
 
     profile_response = client.get(
         f"/api/reports/candidate/profile/analytics@test.com",
@@ -3090,12 +3167,19 @@ def test_export_interview_csv(client):
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    candidate_response = start_candidate_response(client, interview_id, email="export@test.com")
+    candidate_response = start_candidate_response(client, interview_id, token, email="export@test.com")
     client.post(
         f"/api/responses/{candidate_response['id']}/answer",
-        params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen and empathize."},
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "I listen and empathize.",
+            "invitation_token": candidate_response["_invitation_token"],
+        },
     )
-    client.post(f"/api/responses/{candidate_response['id']}/complete")
+    client.post(
+        f"/api/responses/{candidate_response['id']}/complete",
+        params={"invitation_token": candidate_response["_invitation_token"]},
+    )
 
     export_response = client.get(
         f"/api/reports/interview/{interview_id}/export.csv",
@@ -3122,12 +3206,19 @@ def test_plagiarism_detection(client):
     )
 
     for email in ("plag-a@test.com", "plag-b@test.com"):
-        candidate_response = start_candidate_response(client, interview_id, email=email)
+        candidate_response = start_candidate_response(client, interview_id, token, email=email)
         client.post(
             f"/api/responses/{candidate_response['id']}/answer",
-            params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen actively and empathize with the customer and follow up."},
+            params={
+                "question_id": interview["questions"][0]["id"],
+                "answer_text": "I listen actively and empathize with the customer and follow up.",
+                "invitation_token": candidate_response["_invitation_token"],
+            },
         )
-        client.post(f"/api/responses/{candidate_response['id']}/complete")
+        client.post(
+            f"/api/responses/{candidate_response['id']}/complete",
+            params={"invitation_token": candidate_response["_invitation_token"]},
+        )
 
     plagiarism_response = client.get(
         f"/api/reports/interview/{interview_id}/plagiarism",
@@ -3556,10 +3647,11 @@ def test_response_timer_endpoint(client):
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    candidate_response = start_candidate_response(client, interview_id, email="timer@test.com")
+    candidate_response = start_candidate_response(client, interview_id, token, email="timer@test.com")
     response_id = candidate_response["id"]
+    invitation_token = candidate_response["_invitation_token"]
 
-    response = client.get(f"/api/responses/{response_id}/timer")
+    response = client.get(f"/api/responses/{response_id}/timer", params={"invitation_token": invitation_token})
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["response_id"] == response_id
@@ -3570,7 +3662,7 @@ def test_response_timer_endpoint(client):
     assert body["deadline"] > body["started_at"]
 
     # A not-found response is rejected
-    missing = client.get("/api/responses/999999/timer")
+    missing = client.get("/api/responses/999999/timer", params={"invitation_token": invitation_token})
     assert missing.status_code == 404
 
     # An expired response reports expired True (started far in the past)
@@ -3586,7 +3678,7 @@ def test_response_timer_endpoint(client):
     finally:
         db.close()
 
-    expired = client.get(f"/api/responses/{response_id}/timer")
+    expired = client.get(f"/api/responses/{response_id}/timer", params={"invitation_token": invitation_token})
     assert expired.status_code == 200
     assert expired.json()["expired"] is True
     assert expired.json()["remaining_seconds"] == 0
@@ -3672,11 +3764,15 @@ def test_emotion_parallel_evaluation_uses_cached_results(client, monkeypatch):
         f"/api/interviews/{interview_id}/activate",
         headers={"Authorization": f"Bearer {token}"},
     )
-    candidate_response = start_candidate_response(client, interview_id, email="emopar@test.com")
+    candidate_response = start_candidate_response(client, interview_id, token, email="emopar@test.com")
     response_id = candidate_response["id"]
     client.post(
         f"/api/responses/{response_id}/answer",
-        params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen."},
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "I listen.",
+            "invitation_token": candidate_response["_invitation_token"],
+        },
     )
 
     calls = {"count": 0}
@@ -3795,12 +3891,19 @@ def test_response_completion_creates_notification(client):
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    candidate_response = start_candidate_response(client, interview_id, email="notify-cand@test.com")
+    candidate_response = start_candidate_response(client, interview_id, token, email="notify-cand@test.com")
     client.post(
         f"/api/responses/{candidate_response['id']}/answer",
-        params={"question_id": interview["questions"][0]["id"], "answer_text": "I listen."},
+        params={
+            "question_id": interview["questions"][0]["id"],
+            "answer_text": "I listen.",
+            "invitation_token": candidate_response["_invitation_token"],
+        },
     )
-    client.post(f"/api/responses/{candidate_response['id']}/complete")
+    client.post(
+        f"/api/responses/{candidate_response['id']}/complete",
+        params={"invitation_token": candidate_response["_invitation_token"]},
+    )
 
     from app.database import SessionLocal
     from app.models import Notification, User
@@ -3892,3 +3995,134 @@ def test_forgot_password_no_user_leak(client):
     response = client.post("/api/auth/forgot-password", json={"email": "nobody@nowhere.com"})
     assert response.status_code == 200, response.text
     assert "reset link has been sent" in response.json()["message"]
+
+
+def test_start_response_requires_invitation_token(client):
+    """Candidate responses can no longer be started without an invitation token."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": "candidate@example.com",
+            "candidate_name": "Candidate One",
+        },
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_start_response_rejects_mismatched_email(client):
+    """A token cannot be used to start a response under a different email."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    client.post(
+        f"/api/interviews/{interview['id']}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    invitation_response = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": "candidate@example.com",
+            "candidate_name": "Candidate One",
+        },
+    )
+    assert invitation_response.status_code == 201, invitation_response.text
+    invitation_token = invitation_response.json()["unique_token"]
+
+    response = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview["id"],
+            "candidate_email": "other@example.com",
+            "candidate_name": "Candidate One",
+            "invitation_token": invitation_token,
+        },
+    )
+    assert response.status_code == 400, response.text
+    assert "email" in response.json()["detail"].lower()
+
+
+def test_downstream_candidate_calls_reject_wrong_or_missing_token(client):
+    """Every candidate-facing response endpoint is gated on the invitation token.
+
+    Prevents IDOR: sequential response ids must not be usable by anyone who does
+    not hold the invitation token bound to the response.
+    """
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    candidate_response = start_candidate_response(client, interview_id, token, email="sec@test.com")
+    response_id = candidate_response["id"]
+    qid = interview["questions"][0]["id"]
+    wrong = "0" * 40
+
+    missing = client.post(
+        f"/api/responses/{response_id}/answer",
+        params={"question_id": qid, "answer_text": "hello"},
+    )
+    assert missing.status_code == 422, missing.text
+
+    for path, params in [
+        ("/answer", {"question_id": qid, "answer_text": "hello", "invitation_token": wrong}),
+        ("/complete", {"invitation_token": wrong}),
+        ("/quality", {"voice_quality": 90, "background_quality": 90, "face_visibility": 90, "lighting": 90, "invitation_token": wrong}),
+        ("/emotion", {"emotion": "neutral", "confidence": 90, "invitation_token": wrong}),
+    ]:
+        resp = client.post(f"/api/responses/{response_id}{path}", params=params)
+        assert resp.status_code == 403, (path, resp.text)
+
+    integrity = client.post(
+        f"/api/responses/{response_id}/integrity-events",
+        json=[{"event_type": "copy", "details": "x"}],
+        params={"invitation_token": wrong},
+    )
+    assert integrity.status_code == 403, integrity.text
+
+    timer = client.get(f"/api/responses/{response_id}/timer", params={"invitation_token": wrong})
+    assert timer.status_code == 403, timer.text
+
+    retake = client.put(
+        f"/api/responses/{response_id}/answer/{qid}",
+        params={"answer_text": "fixed", "invitation_token": wrong},
+    )
+    assert retake.status_code == 403, retake.text
+
+
+def test_response_token_cannot_cross_response(client):
+    """A token for one response must not authorize calls against another response."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    first = start_candidate_response(client, interview_id, token, email="cross-a@test.com")
+    second = start_candidate_response(client, interview_id, token, email="cross-b@test.com")
+
+    qid = interview["questions"][0]["id"]
+    resp = client.post(
+        f"/api/responses/{second['id']}/answer",
+        params={
+            "question_id": qid,
+            "answer_text": "should be denied",
+            "invitation_token": first["_invitation_token"],
+        },
+    )
+    assert resp.status_code == 403, resp.text

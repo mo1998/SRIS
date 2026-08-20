@@ -257,11 +257,11 @@ describe('InterviewRoom token verification', () => {
     await userEvent.click(screen.getByRole('button', { name: /submit & complete/i }))
 
     await waitFor(() => {
-      expect(apiMock.responses.submitAnswer).toHaveBeenCalledWith(99, 20, 'I would listen and follow up.', undefined, undefined, undefined, expect.any(Function))
+      expect(apiMock.responses.submitAnswer).toHaveBeenCalledWith(99, 20, 'I would listen and follow up.', undefined, undefined, undefined, expect.any(Function), 'valid-token')
     })
     expect(apiMock.responses.submitQuality).not.toHaveBeenCalled()
     expect(apiMock.responses.submitEmotion).not.toHaveBeenCalled()
-    expect(apiMock.responses.complete).toHaveBeenCalledWith(99)
+    expect(apiMock.responses.complete).toHaveBeenCalledWith(99, 'valid-token')
     expect(await screen.findByText(/interview completed/i)).toBeInTheDocument()
   })
 
@@ -459,7 +459,8 @@ describe('InterviewRoom token verification', () => {
           expect.objectContaining({ event_type: 'paste' }),
           expect.objectContaining({ event_type: 'copy' }),
           expect.objectContaining({ event_type: 'context_menu' }),
-        ])
+        ]),
+        'valid-token'
       )
     })
   })
