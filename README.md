@@ -42,7 +42,7 @@ SRIS transforms remote hiring by combining automated interview workflows with lo
 * **Environment Quality Scoring**: Automated feedback on audio environment, lighting, background clarity, and candidate positioning.
 
 ### 🤖 Hybrid AI Evaluation Engine
-* **Local-First & Cloud Flexibility**: Choose between fully local LLMs (vLLM/Qwen), cloud providers (OpenAI-compatible), or a hybrid blend configurable per organization.
+* **Local-First & Cloud Flexibility**: Choose between fully local LLMs (vLLM), cloud providers (OpenAI-compatible), or a hybrid blend configurable per organization.
 * **Deterministic Fallback Evaluator**: Automatic rubric-aware fallback logic guarantees candidates are scored even if the LLM endpoint is unreachable.
 * **Evidence-Linked Feedback**: Detailed score breakdowns, bilingual feedback, and direct candidate answer quote citations.
 * **Self-Hosted Tracing**: Integrated with Langfuse for full LLM trace auditability and performance analytics.
@@ -107,7 +107,7 @@ docker compose --profile worker up -d
 To host a completely private, GPU-accelerated local model (Qwen 8B) for AI evaluations:
 
 ```bash
-LOCAL_MODEL_PATH=./models/qwen3-8b-awq \
+LOCAL_MODEL_PATH=./models3-8b-awq \
 docker compose --profile model up -d local-model
 ```
 
