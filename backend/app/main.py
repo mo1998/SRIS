@@ -5,7 +5,6 @@ Smart Remote Interview System (SRIS) - Main Application
 import asyncio
 import json
 import logging
-import os
 import threading
 import time
 import uuid
@@ -15,7 +14,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import engine, Base
@@ -135,10 +133,8 @@ setup_metrics(app)
 # Include API routes
 app.include_router(api_router, prefix="/api")
 
-# Mount static files for uploads
-os.makedirs("uploads/interviews", exist_ok=True)
-os.makedirs("uploads/reports", exist_ok=True)
-app.mount("/static", StaticFiles(directory="uploads"), name="static")
+# Uploads are served only through authenticated endpoints (e.g. the answer-media
+# route); no public static mount so candidate recordings cannot be fetched by URL.
 
 @app.get("/")
 async def root():

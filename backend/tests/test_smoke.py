@@ -4126,3 +4126,103 @@ def test_response_token_cannot_cross_response(client):
         },
     )
     assert resp.status_code == 403, resp.text
+
+
+def test_answer_media_requires_auth(client):
+    """Candidate recordings are served only to authenticated users who can
+    access the response (no public /static mount)."""
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    candidate_response = start_candidate_response(client, interview_id, token, email="media@test.com")
+    response_id = candidate_response["id"]
+    qid = interview["questions"][0]["id"]
+
+    uploaded = client.post(
+        f"/api/responses/{response_id}/answer",
+        params={
+            "question_id": qid,
+            "answer_text": "with video",
+            "invitation_token": candidate_response["_invitation_token"],
+        },
+        files={"video_file": ("clip.webm", b"\x1a\x45\xdf\xa3fakevideo", "video/webm")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+
+    anon = client.get(f"/api/responses/{response_id}/answers/{qid}/video")
+    assert anon.status_code == 401, anon.text
+
+    register_user(client, email="other-org@example.com")
+    other_token = login_user(client, email="other-org@example.com")
+    cross = client.get(
+        f"/api/responses/{response_id}/answers/{qid}/video",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert cross.status_code == 403, cross.text
+
+    ok = client.get(
+        f"/api/responses/{response_id}/answers/{qid}/video",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert ok.status_code == 200, ok.text
+
+    no_recording = client.get(
+        f"/api/responses/{response_id}/answers/{qid}/audio",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert no_recording.status_code == 404, no_recording.text
+
+
+def test_start_response_is_rate_limited(client, monkeypatch):
+    """Starting responses is throttled per client IP."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "RESPONSE_START_RATE_LIMIT", 3)
+    register_user(client)
+    token = login_user(client)
+    interview = create_interview(client, token)
+    interview_id = interview["id"]
+    client.post(
+        f"/api/interviews/{interview_id}/activate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    for i in range(3):
+        inv = client.post(
+            "/api/invitations/",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"interview_id": interview_id, "candidate_email": f"rl-{i}@test.com", "candidate_name": "X"},
+        )
+        assert inv.status_code == 201, inv.text
+        started = client.post(
+            "/api/responses/",
+            json={
+                "interview_id": interview_id,
+                "candidate_email": f"rl-{i}@test.com",
+                "candidate_name": "X",
+                "invitation_token": inv.json()["unique_token"],
+            },
+        )
+        assert started.status_code == 201, started.text
+
+    inv = client.post(
+        "/api/invitations/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"interview_id": interview_id, "candidate_email": "rl-over@test.com", "candidate_name": "X"},
+    )
+    assert inv.status_code == 201, inv.text
+    blocked = client.post(
+        "/api/responses/",
+        json={
+            "interview_id": interview_id,
+            "candidate_email": "rl-over@test.com",
+            "candidate_name": "X",
+            "invitation_token": inv.json()["unique_token"],
+        },
+    )
+    assert blocked.status_code == 429, blocked.text

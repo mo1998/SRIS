@@ -26,9 +26,8 @@ export function useWebSocket() {
     }
 
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const url = `${proto}://${window.location.host}${API_URL}/ws?token=${encodeURIComponent(token)}`
-
-    const ws = new WebSocket(url)
+    const url = `${proto}://${window.location.host}${API_URL}/ws`
+    const ws = new WebSocket(url, ['sris-auth', token])
 
     ws.onopen = () => {
       setConnected(true)
