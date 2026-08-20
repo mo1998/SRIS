@@ -7,6 +7,8 @@ import LoadingSpinner from './components/ui/LoadingSpinner'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import EmployerDashboard from './pages/EmployerDashboard'
+import IntegrationSettings from './pages/IntegrationSettings'
+import OrganizationSettings from './pages/OrganizationSettings'
 import CreateInterview from './pages/CreateInterview'
 import InterviewDetail from './pages/InterviewDetail'
 import CandidateReport from './pages/CandidateReport'
@@ -101,6 +103,18 @@ const AppRoutes: React.FC = () => {
         <Route path="/employer/interviews/create" element={
           <ProtectedRoute roles={['employer']}>
             <AuthenticatedLayout><CreateInterview /></AuthenticatedLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/employer/settings/integrations" element={
+          <ProtectedRoute roles={['employer']}>
+            <AuthenticatedLayout><IntegrationSettings /></AuthenticatedLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/employer/settings/organization" element={
+          <ProtectedRoute roles={['employer']}>
+            <AuthenticatedLayout><OrganizationSettings /></AuthenticatedLayout>
           </ProtectedRoute>
         } />
 
