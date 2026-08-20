@@ -488,7 +488,7 @@ class CandidateResponseCreate(BaseModel):
     interview_id: int
     candidate_email: EmailStr
     candidate_name: str
-    invitation_token: Optional[str] = None
+    invitation_token: str
 
 
 class CandidateResponseSummary(BaseModel):

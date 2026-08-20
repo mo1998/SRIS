@@ -87,7 +87,7 @@ export const api = {
   // Responses
   responses: {
     start: (data: any) => axios.post(`${API_URL}/responses/`, data),
-    submitAnswer: (responseId: number, questionId: number, answerText: string, audioFile?: File, videoFile?: File, timeTaken?: number, onUploadProgress?: (progressEvent: any) => void) => {
+    submitAnswer: (responseId: number, questionId: number, answerText: string, audioFile?: File, videoFile?: File, timeTaken?: number, onUploadProgress?: (progressEvent: any) => void, invitationToken?: string) => {
       const hasFile = !!(audioFile || videoFile)
       const formData = new FormData()
       if (audioFile) {
@@ -101,16 +101,17 @@ export const api = {
         params: {
           question_id: questionId,
           answer_text: answerText,
-          ...(timeTaken ? { time_taken_seconds: timeTaken } : {})
+          ...(timeTaken ? { time_taken_seconds: timeTaken } : {}),
+          ...(invitationToken ? { invitation_token: invitationToken } : {})
         },
         onUploadProgress
       })
     },
-    submitQuality: (responseId: number, data: any) => axios.post(`${API_URL}/responses/${responseId}/quality`, null, { params: data }),
-    submitIntegrityEvents: (responseId: number, events: any[]) => axios.post(`${API_URL}/responses/${responseId}/integrity-events`, events),
-    submitEmotion: (responseId: number, data: any) => axios.post(`${API_URL}/responses/${responseId}/emotion`, null, { params: data }),
-    complete: (responseId: number) => axios.post(`${API_URL}/responses/${responseId}/complete`),
-    getTimer: (responseId: number) => axios.get(`${API_URL}/responses/${responseId}/timer`),
+    submitQuality: (responseId: number, data: any, invitationToken?: string) => axios.post(`${API_URL}/responses/${responseId}/quality`, null, { params: { ...data, ...(invitationToken ? { invitation_token: invitationToken } : {}) } }),
+    submitIntegrityEvents: (responseId: number, events: any[], invitationToken?: string) => axios.post(`${API_URL}/responses/${responseId}/integrity-events`, events, { params: invitationToken ? { invitation_token: invitationToken } : {} }),
+    submitEmotion: (responseId: number, data: any, invitationToken?: string) => axios.post(`${API_URL}/responses/${responseId}/emotion`, null, { params: { ...data, ...(invitationToken ? { invitation_token: invitationToken } : {}) } }),
+    complete: (responseId: number, invitationToken?: string) => axios.post(`${API_URL}/responses/${responseId}/complete`, null, { params: invitationToken ? { invitation_token: invitationToken } : {} }),
+    getTimer: (responseId: number, invitationToken?: string) => axios.get(`${API_URL}/responses/${responseId}/timer`, { params: invitationToken ? { invitation_token: invitationToken } : {} }),
     list: (interviewId: number) => axios.get(`${API_URL}/responses/interview/${interviewId}`),
     get: (responseId: number) => axios.get(`${API_URL}/responses/${responseId}`),
     delete: (responseId: number) => axios.delete(`${API_URL}/responses/${responseId}`)
