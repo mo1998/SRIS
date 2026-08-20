@@ -2,7 +2,7 @@ import React from 'react'
 import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../store/authStore'
-import { FiBriefcase, FiFileText, FiPlusCircle, FiUser, FiBarChart2, FiUsers, FiActivity } from 'react-icons/fi'
+import { FiBriefcase, FiFileText, FiPlusCircle, FiUser, FiBarChart2, FiUsers, FiActivity, FiCpu, FiSliders } from 'react-icons/fi'
 
 interface SidebarProps {
   open: boolean
@@ -49,6 +49,20 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
               <NavLink to="/employee/practice" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} onClick={onClose}>
                 <FiActivity className="link-icon" />
                 {t('sidebar.practiceArea')}
+              </NavLink>
+            </>
+          )}
+
+          {user?.role === 'employer' && (
+            <>
+              <div className="sidebar-section-label mt-3">{t('sidebar.sectionSettings')}</div>
+              <NavLink to="/employer/settings/integrations" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} onClick={onClose}>
+                <FiCpu className="link-icon" />
+                {t('sidebar.integrationsSettings')}
+              </NavLink>
+              <NavLink to="/employer/settings/organization" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} onClick={onClose}>
+                <FiSliders className="link-icon" />
+                {t('sidebar.organizationSettings')}
               </NavLink>
             </>
           )}

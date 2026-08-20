@@ -234,7 +234,9 @@ test('release candidate employer flow shows dashboard, interview detail, and aud
 
   await page.goto('/employer/dashboard')
   await expect(page.getByText('Employer Dashboard')).toBeVisible()
-  await expect(page.getByText('Evaluation Agent')).toBeVisible()
+
+  await page.goto('/employer/settings/integrations')
+  await page.getByRole('tab', { name: /evaluation agent/i }).click()
   await expect(page.getByText('available')).toBeVisible()
 
   await page.goto('/employer/interviews/10')
