@@ -25,10 +25,14 @@ from app.main import app
 
 @pytest.fixture(autouse=True)
 def reset_database():
+    from app.services.rate_limit import reset_rate_limits
+
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    reset_rate_limits()
     yield
     Base.metadata.drop_all(bind=engine)
+    reset_rate_limits()
 
 
 def wait_for_connection_count(ws_manager, expected, timeout=5.0):

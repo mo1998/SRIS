@@ -2,11 +2,13 @@
 Candidate response routes - submitting answers, quality checks
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
 import logging
+import mimetypes
 import os
 import secrets
 import uuid
@@ -20,10 +22,20 @@ from app.schemas import CandidateResponseCreate, CandidateResponseSummary, Quest
 from app.api.auth import get_current_user, require_role
 from app.services.audit_service import create_audit_log
 from app.services.events import emit_data_change
+from app.services.rate_limit import check_rate_limit
 
 router = APIRouter()
 
 RESPONSE_MANAGER_ROLES = {TeamRole.OWNER, TeamRole.ADMIN, TeamRole.RECRUITER}
+
+
+def enforce_submission_rate_limit(key: str, limit: int, window_seconds: int) -> None:
+    if not check_rate_limit(key, limit, window_seconds):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+            headers={"Retry-After": str(window_seconds)},
+        )
 
 
 def validate_audio_filename(filename: str) -> str:
@@ -124,6 +136,32 @@ def validate_video_size(content: bytes) -> None:
         )
 
 
+def safe_upload_filename(filename: str) -> str:
+    """Return a filesystem-safe basename, rejecting path traversal attempts."""
+    name = (filename or "").replace("\\", "/")
+    if "/" in name or ".." in name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid filename",
+        )
+    return os.path.basename(name) or "upload"
+
+
+async def read_upload_limited(upload_file: UploadFile, max_bytes: int) -> bytes:
+    """Read an upload in bounded chunks so a malicious client cannot stream an
+    unbounded body into memory. Callers still enforce the size limit via the
+    validate_*_size helpers, which reject anything over the cap."""
+    chunks: List[bytes] = []
+    remaining = max_bytes + 1
+    while remaining > 0:
+        chunk = await upload_file.read(min(64 * 1024, remaining))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
 def delete_answer_media_files(response: CandidateResponse) -> None:
     for answer in response.question_answers:
         if answer.audio_file_path and os.path.exists(answer.audio_file_path):
@@ -159,9 +197,17 @@ def get_candidate_response_for_token(
 @router.post("/", response_model=CandidateResponseSummary, status_code=status.HTTP_201_CREATED)
 async def start_interview_response(
     response_data: CandidateResponseCreate,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Start a new interview response (called when candidate begins interview)"""
+    
+    client_ip = request.client.host if request.client else "unknown"
+    enforce_submission_rate_limit(
+        f"start:{client_ip}",
+        settings.RESPONSE_START_RATE_LIMIT,
+        settings.RESPONSE_START_RATE_WINDOW_SECONDS,
+    )
     
     # Verify interview exists and is active
     interview = db.query(Interview).filter(
@@ -282,6 +328,12 @@ async def submit_answer(
     # Verify response is in progress
     if candidate_response.status != "in_progress":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response is not in progress")
+
+    enforce_submission_rate_limit(
+        f"answer:{response_id}",
+        settings.RESPONSE_SUBMISSION_RATE_LIMIT,
+        settings.RESPONSE_SUBMISSION_RATE_WINDOW_SECONDS,
+    )
     
     # Verify question belongs to interview
     question = db.query(InterviewQuestion).filter(
@@ -296,12 +348,12 @@ async def submit_answer(
     audio_path = None
     if audio_file:
         extension = validate_audio_filename(audio_file.filename)
-        content = await audio_file.read()
+        content = await read_upload_limited(audio_file, settings.MAX_AUDIO_SIZE)
         validate_audio_size(content)
         validate_audio_content(extension, content)
 
         os.makedirs("uploads/interviews/audio", exist_ok=True)
-        audio_filename = f"{uuid.uuid4()}_{audio_file.filename}"
+        audio_filename = f"{uuid.uuid4()}_{safe_upload_filename(audio_file.filename)}"
         audio_path = f"uploads/interviews/audio/{audio_filename}"
         
         with open(audio_path, "wb") as f:
@@ -311,11 +363,11 @@ async def submit_answer(
     video_path = None
     if video_file:
         extension = validate_video_filename(video_file.filename)
-        content = await video_file.read()
+        content = await read_upload_limited(video_file, settings.MAX_VIDEO_SIZE)
         validate_video_size(content)
 
         os.makedirs("uploads/interviews/video", exist_ok=True)
-        video_filename = f"{uuid.uuid4()}_{video_file.filename}"
+        video_filename = f"{uuid.uuid4()}_{safe_upload_filename(video_file.filename)}"
         video_path = f"uploads/interviews/video/{video_filename}"
         
         with open(video_path, "wb") as f:
@@ -354,6 +406,12 @@ async def retake_answer(
     if candidate_response.status != "in_progress":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response is not in progress")
 
+    enforce_submission_rate_limit(
+        f"retake:{response_id}",
+        settings.RESPONSE_SUBMISSION_RATE_LIMIT,
+        settings.RESPONSE_SUBMISSION_RATE_WINDOW_SECONDS,
+    )
+
     answer = db.query(QuestionAnswer).filter(
         QuestionAnswer.response_id == response_id,
         QuestionAnswer.question_id == question_id,
@@ -366,20 +424,20 @@ async def retake_answer(
     video_path = answer.video_file_path
     if audio_file:
         extension = validate_audio_filename(audio_file.filename)
-        content = await audio_file.read()
+        content = await read_upload_limited(audio_file, settings.MAX_AUDIO_SIZE)
         validate_audio_size(content)
         validate_audio_content(extension, content)
         os.makedirs("uploads/interviews/audio", exist_ok=True)
-        audio_filename = f"{uuid.uuid4()}_{audio_file.filename}"
+        audio_filename = f"{uuid.uuid4()}_{safe_upload_filename(audio_file.filename)}"
         audio_path = f"uploads/interviews/audio/{audio_filename}"
         with open(audio_path, "wb") as f:
             f.write(content)
     if video_file:
         extension = validate_video_filename(video_file.filename)
-        content = await video_file.read()
+        content = await read_upload_limited(video_file, settings.MAX_VIDEO_SIZE)
         validate_video_size(content)
         os.makedirs("uploads/interviews/video", exist_ok=True)
-        video_filename = f"{uuid.uuid4()}_{video_file.filename}"
+        video_filename = f"{uuid.uuid4()}_{safe_upload_filename(video_file.filename)}"
         video_path = f"uploads/interviews/video/{video_filename}"
         with open(video_path, "wb") as f:
             f.write(content)
@@ -673,3 +731,61 @@ async def delete_response(
     delete_answer_media_files(candidate_response)
     db.delete(candidate_response)
     db.commit()
+
+
+async def _serve_answer_media(
+    response_id: int,
+    question_id: int,
+    kind: str,
+    current_user: User,
+    db: Session,
+):
+    """Serve a candidate's recorded audio/video for a single answer.
+
+    Uploads are no longer served from a public /static mount; media is streamed
+    only to authenticated users who can access the response (org members or the
+    candidate themselves).
+    """
+    candidate_response = db.query(CandidateResponse).filter(CandidateResponse.id == response_id).first()
+    if not candidate_response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response not found")
+
+    require_response_access(candidate_response, current_user, db)
+
+    answer = (
+        db.query(QuestionAnswer)
+        .filter(
+            QuestionAnswer.response_id == response_id,
+            QuestionAnswer.question_id == question_id,
+        )
+        .first()
+    )
+    if not answer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Answer not found")
+
+    file_path = answer.video_file_path if kind == "video" else answer.audio_file_path
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No recording available")
+
+    media_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+    return FileResponse(path=file_path, media_type=media_type)
+
+
+@router.get("/{response_id}/answers/{question_id}/video")
+async def get_answer_video(
+    response_id: int,
+    question_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return await _serve_answer_media(response_id, question_id, "video", current_user, db)
+
+
+@router.get("/{response_id}/answers/{question_id}/audio")
+async def get_answer_audio(
+    response_id: int,
+    question_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return await _serve_answer_media(response_id, question_id, "audio", current_user, db)

@@ -9,6 +9,46 @@ import InterviewFeedbackCard from '../components/ui/InterviewFeedbackCard'
 import { useRealTimeRefresh } from '../hooks/useRealTimeRefresh'
 import '../styles/candidate-report.css'
 
+const FeedbackCardWithVideo: React.FC<{ responseId: string; answer: any; idx: number; t: (key: string, opts?: any) => string }> = ({ responseId, answer, idx, t }) => {
+  const [videoUrl, setVideoUrl] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (!answer.video_file_path) {
+      setVideoUrl(undefined)
+      return
+    }
+    let cancelled = false
+    let objectUrl: string | undefined
+    api.responses.getAnswerMedia(Number(responseId), answer.question_id, 'video')
+      .then((res) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(res.data)
+        setVideoUrl(objectUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setVideoUrl(undefined)
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [responseId, answer.question_id, answer.video_file_path])
+  return (
+    <InterviewFeedbackCard
+      key={idx}
+      questionNumber={idx + 1}
+      questionText={answer.question || t('interviewDetail.questionN', { n: idx + 1 })}
+      expectedAnswer={answer.expected_answer}
+      answerText={answer.answer_text}
+      score={answer.score ?? 0}
+      emotion={answer.emotion}
+      feedbackEn={answer.feedback_en || answer.feedback}
+      feedbackAr={answer.feedback_ar}
+      evidence={answer.evidence}
+      videoUrl={videoUrl}
+    />
+  )
+}
+
 const CandidateReport: React.FC = () => {
   const { t } = useTranslation()
   const { responseId } = useParams<{ responseId: string }>()
@@ -334,18 +374,12 @@ const CandidateReport: React.FC = () => {
           </Card.Header>
           <Card.Body className="px-0 pb-0">
             {report.answers.map((answer: any, idx: number) => (
-              <InterviewFeedbackCard
+              <FeedbackCardWithVideo
                 key={idx}
-                questionNumber={idx + 1}
-                questionText={answer.question || t('interviewDetail.questionN', { n: idx + 1 })}
-                expectedAnswer={answer.expected_answer}
-                answerText={answer.answer_text}
-                score={answer.score ?? 0}
-                emotion={answer.emotion}
-                feedbackEn={answer.feedback_en || answer.feedback}
-                feedbackAr={answer.feedback_ar}
-                evidence={answer.evidence}
-                videoUrl={answer.video_file_path ? answer.video_file_path.replace(/^uploads\//, '/static/') : undefined}
+                responseId={responseId!}
+                answer={answer}
+                idx={idx}
+                t={t}
               />
             ))}
           </Card.Body>

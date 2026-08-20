@@ -112,6 +112,7 @@ export const api = {
     submitEmotion: (responseId: number, data: any, invitationToken?: string) => axios.post(`${API_URL}/responses/${responseId}/emotion`, null, { params: { ...data, ...(invitationToken ? { invitation_token: invitationToken } : {}) } }),
     complete: (responseId: number, invitationToken?: string) => axios.post(`${API_URL}/responses/${responseId}/complete`, null, { params: invitationToken ? { invitation_token: invitationToken } : {} }),
     getTimer: (responseId: number, invitationToken?: string) => axios.get(`${API_URL}/responses/${responseId}/timer`, { params: invitationToken ? { invitation_token: invitationToken } : {} }),
+    getAnswerMedia: (responseId: number, questionId: number, kind: 'video' | 'audio') => axios.get(`${API_URL}/responses/${responseId}/answers/${questionId}/${kind}`, { responseType: 'blob' }),
     list: (interviewId: number) => axios.get(`${API_URL}/responses/interview/${interviewId}`),
     get: (responseId: number) => axios.get(`${API_URL}/responses/${responseId}`),
     delete: (responseId: number) => axios.delete(`${API_URL}/responses/${responseId}`)

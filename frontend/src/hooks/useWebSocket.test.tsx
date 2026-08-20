@@ -20,13 +20,15 @@ class FakeWebSocket {
   static lastInstance: FakeWebSocket | undefined
   readyState = FakeWebSocket.OPEN
   url = ''
+  protocols: string[] = []
   onopen: (() => void) | null = null
   onclose: ((e: any) => void) | null = null
   onerror: ((e: any) => void) | null = null
   onmessage: ((e: { data: string }) => void) | null = null
   sent: string[] = []
-  constructor(url: string) {
+  constructor(url: string, protocols?: string[]) {
     this.url = url
+    this.protocols = protocols || []
     FakeWebSocket.lastInstance = this
   }
   send(data: string) { this.sent.push(data) }
@@ -53,11 +55,12 @@ describe('useWebSocket', () => {
     return null
   }
 
-  it('connects to /api/ws using the auth token', () => {
+  it('connects to /api/ws using the auth token as a subprotocol', () => {
     render(<Probe />)
     const ws = FakeWebSocket.lastInstance
     expect(ws).toBeDefined()
-    expect(ws!.url).toMatch(/\/api\/ws\?token=test-token$/)
+    expect(ws!.url).toMatch(/\/api\/ws$/)
+    expect(ws!.protocols).toEqual(['sris-auth', 'test-token'])
   })
 
   it('emits received data_changed events to the realtime bus', () => {

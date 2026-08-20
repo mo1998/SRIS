@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "30"))
     PASSWORD_RESET_RATE_LIMIT_PER_HOUR: int = int(os.getenv("PASSWORD_RESET_RATE_LIMIT_PER_HOUR", "5"))
+
+    # Candidate submission rate limiting (per response / per IP)
+    RESPONSE_SUBMISSION_RATE_LIMIT: int = int(os.getenv("RESPONSE_SUBMISSION_RATE_LIMIT", "60"))
+    RESPONSE_SUBMISSION_RATE_WINDOW_SECONDS: int = int(os.getenv("RESPONSE_SUBMISSION_RATE_WINDOW_SECONDS", "60"))
+    RESPONSE_START_RATE_LIMIT: int = int(os.getenv("RESPONSE_START_RATE_LIMIT", "30"))
+    RESPONSE_START_RATE_WINDOW_SECONDS: int = int(os.getenv("RESPONSE_START_RATE_WINDOW_SECONDS", "60"))
     
     # Email
     EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "mailpit")

@@ -403,8 +403,11 @@ async def send_completion_email(
         return
 
     result_text = "passed" if passed else "did not pass"
+    safe_candidate_name = escape(candidate_name)
+    safe_interview_title = escape(interview_title)
+    safe_results_link = escape(results_link)
     results_html = (
-        f'<p><a href="{results_link}" style="display: inline-block; padding: 10px 20px; '
+        f'<p><a href="{safe_results_link}" style="display: inline-block; padding: 10px 20px; '
         f'background-color: #3498db; color: white; text-decoration: none; border-radius: 5px;">View Detailed Results</a></p>'
         if results_link else ""
     )
@@ -413,8 +416,8 @@ async def send_completion_email(
     <body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4;">
         <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
             <h1 style="color: #2c3e50;">Interview Completed!</h1>
-            <p>Dear {candidate_name},</p>
-            <p>Thank you for completing your interview for <strong>{interview_title}</strong></p>
+            <p>Dear {safe_candidate_name},</p>
+            <p>Thank you for completing your interview for <strong>{safe_interview_title}</strong></p>
 
             <div style="background-color: {'#d4edda' if passed else '#f8d7da'}; padding: 20px; border-radius: 5px; margin: 20px 0;">
                 <h3 style="color: {'#155724' if passed else '#721c24'}; margin-top: 0;">Results</h3>

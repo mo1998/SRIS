@@ -56,7 +56,7 @@ def test_action_pushes_data_changed_to_ws_client(client, monkeypatch, wait_ws_di
     # Force the in-process broadcast fallback (no Redis in the test process).
     monkeypatch.setattr(events, "publish_to_redis", lambda message: False)
 
-    with client.websocket_connect(f"/api/ws?token={token}") as ws:
+    with client.websocket_connect("/api/ws", subprotocols=["sris-auth", token]) as ws:
         assert json.loads(ws.receive_text())["event"] == "connected"
 
         resp = client.post(

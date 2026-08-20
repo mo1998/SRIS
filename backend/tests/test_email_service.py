@@ -159,3 +159,37 @@ def test_get_email_provider_unknown_value_raises(monkeypatch):
         assert False, "expected EmailProviderError"
     except EmailProviderError:
         pass
+
+
+def test_completion_email_escapes_candidate_input(monkeypatch):
+    """User-controlled names/titles must be HTML-escaped in the completion email."""
+    import asyncio
+
+    from app.services.email_service import send_completion_email
+
+    monkeypatch.setattr(settings, "EMAIL_PROVIDER", "mailpit")
+    monkeypatch.setattr(settings, "MAILPIT_API_URL", "http://localhost:8025/api/v1/send")
+    monkeypatch.setattr(settings, "MAIL_FROM", "interviews@example.com")
+    monkeypatch.setattr(settings, "MAIL_FROM_NAME", "SRIS")
+    captured = []
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured.append({"json": json})
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr("app.services.email_service.httpx.post", fake_post)
+
+    asyncio.run(send_completion_email(
+        to_email="candidate@example.com",
+        candidate_name="<img src=x onerror=alert(1)>",
+        interview_title="Support & Sales",
+        score=80.0,
+        passed=True,
+        results_link="https://example.com/results?a=1&b=2",
+    ))
+
+    html = captured[0]["json"]["HTML"]
+    assert "<img src=x onerror=alert(1)>" not in html
+    assert "&lt;img src=x onerror=alert(1)&gt;" in html
+    assert "Support &amp; Sales" in html
+    assert "&amp;b=2" in html
