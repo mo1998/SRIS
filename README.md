@@ -9,7 +9,7 @@
 
 SRIS transforms remote hiring by combining automated interview workflows with local-first AI evaluation and proctoring controls. Built for organizations that demand precision, security, and total ownership over candidate data, SRIS provides a seamless end-to-end interviewing experience.
 
-* **🛡️ Total Data Privacy & Sovereignty**: Run fully self-hosted. Keep candidate video, audio transcripts, and evaluation data completely on your infrastructure with local LLMs (vLLM / Qwen) and local AI workers.
+* **🛡️ Total Data Privacy & Sovereignty**: Run fully self-hosted. Keep candidate video, audio transcripts, and evaluation data completely on your infrastructure with local LLMs (vLLM) and local AI workers.
 * **🤖 Objective, Evidence-Linked Evaluation**: AI evaluations grade candidate answers directly against your custom rubric criteria, citing exact evidence from responses. Built-in deterministic fallbacks ensure evaluation never halts.
 * **🎙️ Automated Multilingual Transcription**: Speech-to-text powered by Whisper (99 languages) transcribes audio and video answers automatically upon candidate submission.
 * **🎭 Deep Behavioral & Environment Insights**: Gain operational insights into candidate response quality, background noise, speech clarity, and facial emotion timeline analysis.
@@ -86,11 +86,7 @@ docker compose up -d
 ```
 
 ### 3. Access SRIS
-Once services start, access the platform via your browser:
-
-* **Web Platform (Frontend)**: [http://localhost](http://localhost) (or configured `FRONTEND_PORT`)
-* **Interactive API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
-* **Email Testing Console (Mailpit)**: [http://localhost:8025](http://localhost:8025)
+Once services start, access the platform via your browser.
 
 ---
 
@@ -107,7 +103,7 @@ docker compose --profile worker up -d
 To host a completely private, GPU-accelerated local model (Qwen 8B) for AI evaluations:
 
 ```bash
-LOCAL_MODEL_PATH=./models3-8b-awq \
+LOCAL_MODEL_PATH=./models3/qwen-8b-awq \
 docker compose --profile model up -d local-model
 ```
 
@@ -138,7 +134,7 @@ For production setups with SSL termination (Let's Encrypt / Certbot), database p
 1. **Create an Organization & Interview**: Log in as an employer, set up your organization, and build an interview template with questions and rubric criteria.
 2. **Invite Candidates**: Send token-secured invitations via single or bulk email dispatch. Candidates receive direct, secure links.
 3. **Candidate Response Flow**: Candidates enter the proctored interview room, record video/audio or type answers, while integrity tracking enforces assessment rules.
-4. **Automated AI Processing**: Upon completion, SRIS automatically transcribes spoken responses (Whisper), calculates facial emotion timelines (DeepFace), and executes rubric evaluations (vLLM / OpenAI).
+4. **Automated AI Processing**: Upon completion, SRIS automatically transcribes spoken responses (Whisper), calculates facial emotion timelines (DeepFace), and executes rubric evaluations (vLLM / Cloud Models).
 5. **Review & Decision**: Hiring teams view real-time candidate scorecards, analyze cited answer evidence, record hiring decisions (Pass/Fail/Review), and download PDF reports.
 
 ---
@@ -161,6 +157,59 @@ For production setups with SSL termination (Let's Encrypt / Certbot), database p
 ---
 
 ## 🏗️ System Architecture Overview
+
+```mermaid
+flowchart TB
+    subgraph Clients["Clients & Edge"]
+        Frontend["React 18 Frontend\n(Nginx Port 80/443)"]
+        Users["Candidates & Hiring Teams"]
+        Users -->|HTTPS / WSS| Frontend
+    end
+
+    subgraph Core["Core Application Layer"]
+        API["FastAPI Backend\n(Gunicorn + Uvicorn)"]
+        Frontend -->|REST API & WebSockets| API
+    end
+
+    subgraph Data["Persistence & Messaging"]
+        Postgres[(PostgreSQL 15\nPrimary Storage)]
+        Redis[(Redis 7\nCache, RQ Queue & Pub/Sub)]
+        API -->|SQLAlchemy| Postgres
+        API -->|RQ Enqueue & Pub/Sub| Redis
+    end
+
+    subgraph Workers["Async AI & Background Workers"]
+        RQWorker["RQ Background Worker"]
+        Whisper["faster-whisper\n(Speech-to-Text)"]
+        DeepFace["DeepFace / OpenCV\n(Facial Emotion)"]
+        
+        Redis -->|Evaluation & Processing Jobs| RQWorker
+        RQWorker --> Whisper
+        RQWorker --> DeepFace
+        RQWorker -->|Persist Transcripts & Metrics| Postgres
+        RQWorker -->|Emit Real-time Events| Redis
+    end
+
+    subgraph Evaluation["AI Evaluation Engine"]
+        vLLM["Local vLLM / Qwen\n(GPU Server)"]
+        CloudLLM["Cloud LLM Provider\n(OpenAI API)"]
+        Fallback["Deterministic Rubric\nFallback Evaluator"]
+
+        RQWorker -->|Local First| vLLM
+        RQWorker -.->|Hybrid / Optional| CloudLLM
+        RQWorker -.->|Offline Guardrail| Fallback
+    end
+
+    subgraph Services["Services & Observability"]
+        Email["SMTP / Mailpit Email"]
+        Langfuse["Langfuse LLM Tracing"]
+        Metrics["Prometheus / Grafana"]
+
+        API --> Email
+        RQWorker -.-> Langfuse
+        API -.-> Metrics
+    end
+```
 
 | Component | Technology | Role |
 | :--- | :--- | :--- |
