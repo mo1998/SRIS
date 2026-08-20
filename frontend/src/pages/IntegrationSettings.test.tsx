@@ -56,7 +56,7 @@ describe('IntegrationSettings', () => {
     apiMock.reports.getEvaluationHealth.mockResolvedValue({
       data: {
         provider: 'local_vllm',
-        prompt_version: 'rubric-v1',
+        prompt_version: 'rubric-v2',
         config_hash: 'cfg123',
         model_name: 'qwen3-8b-awq',
         configured: true,
@@ -112,7 +112,7 @@ describe('IntegrationSettings', () => {
     expect(screen.getByText(/llm_unavailable_using_fallback/i)).toBeInTheDocument()
     expect(screen.getByText(/qwen3-8b-awq/i)).toBeInTheDocument()
     expect(screen.getByText(/deterministic_baseline/i)).toBeInTheDocument()
-    expect(screen.getByText(/rubric-v1/i)).toBeInTheDocument()
+    expect(screen.getByText(/rubric-v2/i)).toBeInTheDocument()
     expect(screen.getByText(/cfg123/i)).toBeInTheDocument()
     expect(screen.getByText(/connection refused/i)).toBeInTheDocument()
   })

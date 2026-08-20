@@ -11,6 +11,7 @@ import re
 import hashlib
 from typing import Dict, List, Optional, Protocol
 import httpx
+from pydantic import BaseModel, Field, field_validator
 import redis
 from fastapi import BackgroundTasks
 from rq import Queue
@@ -33,6 +34,7 @@ STOPWORDS = {
 # Provider endpoints are per-organization (UI-configured); only timeouts are fixed.
 LOCAL_LLM_TIMEOUT_SECONDS = 5.0
 CLOUD_LLM_TIMEOUT_SECONDS = 20.0
+EVALUATION_SCHEMA_VERSION = "1"
 
 
 @dataclass
@@ -128,52 +130,22 @@ class LocalVLLMEvaluationProvider:
             return await self._fallback(answer_text, expected_answer, rubric_criteria, "Local LLM endpoint is not configured")
 
         try:
-            payload = {
-                "model": self.model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "/no_think You evaluate structured interview answers. Do not show reasoning. "
-                            "Use the expected answer and rubric criteria as the scoring contract. "
-                            "Return valid compact JSON only with keys: score, feedback_en, feedback_ar, "
-                            "matched_criteria, missing_criteria, evidence. Score must be 0-100."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Expected answer: {expected_answer}\n"
-                            f"Rubric criteria JSON: {json.dumps(rubric_criteria or [], ensure_ascii=False)}\n"
-                            f"Candidate answer: {answer_text}"
-                        ),
-                    },
-                ],
-                "temperature": 0,
-                "max_tokens": settings.EVALUATION_MAX_TOKENS,
-            }
-            async with httpx.AsyncClient(timeout=LOCAL_LLM_TIMEOUT_SECONDS) as client:
-                response = await client.post(f"{self.base_url.rstrip('/')}/chat/completions", json=payload)
-                response.raise_for_status()
-            completion = response.json()["choices"][0]["message"]["content"]
-            parsed = parse_llm_json(completion)
-            score = normalize_llm_score(parsed.get("score", 0))
-            feedback_en = str(parsed.get("feedback_en") or "No English feedback returned.")
-            feedback_ar = str(parsed.get("feedback_ar") or "No Arabic feedback returned.")
-            evidence = {
-                "provider": self.name,
-                "provider_version": self.version,
-                "model": self.model,
-                "prompt_version": settings.EVALUATION_PROMPT_VERSION,
-                "matched_criteria": parsed.get("matched_criteria", []),
-                "missing_criteria": parsed.get("missing_criteria", []),
-                "evidence": parsed.get("evidence", ""),
-                "rubric_criteria": rubric_criteria or [],
-            }
-            return EvaluationResult(
-                score=score,
-                feedback=f"{self.name} {self.model}: {feedback_en} Arabic feedback: {feedback_ar}",
-                evidence=evidence,
+            return await _request_evaluation(
+                base_url=self.base_url,
+                model=self.model,
+                api_key=None,
+                system_prompt=(
+                    "/no_think You evaluate structured interview answers. Do not show reasoning. "
+                    "Use the expected answer and rubric criteria as the scoring contract. "
+                    "Return valid compact JSON only with keys: score, feedback_en, feedback_ar, "
+                    "matched_criteria, missing_criteria, evidence. Score must be 0-100."
+                ),
+                answer_text=answer_text,
+                expected_answer=expected_answer,
+                rubric_criteria=rubric_criteria,
+                timeout=LOCAL_LLM_TIMEOUT_SECONDS,
+                provider_name=self.name,
+                provider_version=self.version,
             )
         except Exception as exc:
             record_llm_fallback(self.name, self.fallback_provider.name)
@@ -243,49 +215,17 @@ class CloudLLMEvaluationProvider:
             return await self._fallback(answer_text, expected_answer, rubric_criteria, "Cloud LLM endpoint or API key is not configured")
 
         try:
-            payload = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Expected answer: {expected_answer}\n"
-                            f"Rubric criteria JSON: {json.dumps(rubric_criteria or [], ensure_ascii=False)}\n"
-                            f"Candidate answer: {answer_text}"
-                        ),
-                    },
-                ],
-                "temperature": 0,
-                "max_tokens": settings.EVALUATION_MAX_TOKENS,
-            }
-            headers = {"Authorization": f"Bearer {self.api_key}"}
-            async with httpx.AsyncClient(timeout=CLOUD_LLM_TIMEOUT_SECONDS) as client:
-                response = await client.post(
-                    f"{self.base_url.rstrip('/')}/chat/completions",
-                    json=payload,
-                    headers=headers,
-                )
-                response.raise_for_status()
-            completion = response.json()["choices"][0]["message"]["content"]
-            parsed = parse_llm_json(completion)
-            score = normalize_llm_score(parsed.get("score", 0))
-            feedback_en = str(parsed.get("feedback_en") or "No English feedback returned.")
-            feedback_ar = str(parsed.get("feedback_ar") or "No Arabic feedback returned.")
-            evidence = {
-                "provider": self.name,
-                "provider_version": self.version,
-                "model": self.model,
-                "prompt_version": settings.EVALUATION_PROMPT_VERSION,
-                "matched_criteria": parsed.get("matched_criteria", []),
-                "missing_criteria": parsed.get("missing_criteria", []),
-                "evidence": parsed.get("evidence", ""),
-                "rubric_criteria": rubric_criteria or [],
-            }
-            return EvaluationResult(
-                score=score,
-                feedback=f"{self.name} {self.model}: {feedback_en} Arabic feedback: {feedback_ar}",
-                evidence=evidence,
+            return await _request_evaluation(
+                base_url=self.base_url,
+                model=self.model,
+                api_key=self.api_key,
+                system_prompt=self.SYSTEM_PROMPT,
+                answer_text=answer_text,
+                expected_answer=expected_answer,
+                rubric_criteria=rubric_criteria,
+                timeout=CLOUD_LLM_TIMEOUT_SECONDS,
+                provider_name=self.name,
+                provider_version=self.version,
             )
         except Exception as exc:
             return await self._fallback(answer_text, expected_answer, rubric_criteria, str(exc))
@@ -443,8 +383,8 @@ def get_emotion_provider_name() -> str:
     return get_emotion_provider().name
 
 
-def parse_llm_json(content: str) -> Dict[str, object]:
-    cleaned = re.sub(r"<think>.*?</think>", "", content or "", flags=re.DOTALL).strip()
+def extract_llm_json(content: str) -> Dict[str, object]:
+    cleaned = re.sub(r" thinking.*? response", "", content or "", flags=re.DOTALL).strip()
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start == -1 or end == -1 or end <= start:
@@ -457,6 +397,170 @@ def normalize_llm_score(raw_score: object) -> float:
     if 0 <= score <= 10:
         score *= 10
     return min(100.0, max(0.0, round(score, 1)))
+
+
+class EvaluationLLMResult(BaseModel):
+    """Schema-enforced contract for the LLM evaluation output.
+
+    `score` is normalized (0-10 scale x10) and clamped to 0-100. A missing or
+    out-of-range score is invalid and triggers the repair retry path.
+    """
+
+    score: float = Field(ge=0, le=100)
+    feedback_en: str = ""
+    feedback_ar: str = ""
+    matched_criteria: List[str] = Field(default_factory=list)
+    missing_criteria: List[str] = Field(default_factory=list)
+    evidence: str = ""
+
+    @field_validator("score", mode="before")
+    @classmethod
+    def _normalize_score(cls, raw_score: object) -> float:
+        return normalize_llm_score(raw_score)
+
+
+def validate_evaluation_result(parsed: Dict[str, object]) -> EvaluationLLMResult:
+    """Coerce a parsed LLM JSON object into the schema contract.
+
+    Raises (ValueError / TypeError / pydantic.ValidationError) on malformed
+    output so the caller can issue a repair retry instead of accepting junk.
+    """
+    return EvaluationLLMResult.model_validate(parsed)
+
+
+def parse_llm_json(content: str) -> EvaluationLLMResult:
+    """Validation layer: extract the JSON object from an LLM completion and
+    validate it against the schema contract before downstream code sees it."""
+    return validate_evaluation_result(extract_llm_json(content))
+
+
+REPAIR_RETRY_INSTRUCTION = (
+    "Your previous output was not valid JSON. Return ONLY a single compact JSON object "
+    "with exactly these keys: score (number 0-100), feedback_en (string), feedback_ar (string), "
+    "matched_criteria (array of strings), missing_criteria (array of strings), evidence (string)."
+)
+
+
+async def _post_chat(url: str, payload: Dict[str, object], headers: Dict[str, str], timeout: float) -> str:
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"]
+
+
+def _build_llm_messages(
+    system_prompt: str,
+    answer_text: str,
+    expected_answer: str,
+    rubric_criteria: Optional[List[Dict[str, object]]],
+) -> List[Dict[str, str]]:
+    return [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": (
+                f"Expected answer: {expected_answer}\n"
+                f"Rubric criteria JSON: {json.dumps(rubric_criteria or [], ensure_ascii=False)}\n"
+                f"Candidate answer: {answer_text}"
+            ),
+        },
+    ]
+
+
+async def _request_evaluation(
+    *,
+    base_url: str,
+    model: str,
+    api_key: Optional[str],
+    system_prompt: str,
+    answer_text: str,
+    expected_answer: str,
+    rubric_criteria: Optional[List[Dict[str, object]]],
+    timeout: float,
+    provider_name: str,
+    provider_version: str,
+) -> EvaluationResult:
+    """Call an OpenAI-compatible endpoint with schema-enforced structured output.
+
+    Degrades gracefully: if the endpoint rejects `response_format` (HTTP
+    400/422) it retries without it; if the response fails schema validation it
+    issues one repair retry. Unrecoverable failures propagate to the caller's
+    fallback chain.
+    """
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    messages = _build_llm_messages(system_prompt, answer_text, expected_answer, rubric_criteria)
+    base_payload: Dict[str, object] = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0,
+        "max_tokens": settings.EVALUATION_MAX_TOKENS,
+    }
+
+    structured_used = False
+    if settings.EVALUATION_STRUCTURED_OUTPUT_ENABLED:
+        structured_payload = {**base_payload, "response_format": {"type": "json_object"}}
+        try:
+            completion = await _post_chat(url, structured_payload, headers, timeout)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in (400, 422):
+                raise
+            completion = await _post_chat(url, base_payload, headers, timeout)
+        else:
+            structured_used = True
+    else:
+        completion = await _post_chat(url, base_payload, headers, timeout)
+
+    try:
+        result = parse_llm_json(completion)
+    except (ValueError, TypeError):
+        repair_payload: Dict[str, object] = {
+            **base_payload,
+            "messages": messages + [{"role": "user", "content": REPAIR_RETRY_INSTRUCTION}],
+        }
+        if structured_used:
+            repair_payload["response_format"] = {"type": "json_object"}
+        completion = await _post_chat(url, repair_payload, headers, timeout)
+        result = parse_llm_json(completion)
+
+    return _evaluation_result_from_schema(
+        result,
+        provider_name=provider_name,
+        provider_version=provider_version,
+        model=model,
+        structured_used=structured_used,
+        rubric_criteria=rubric_criteria,
+    )
+
+
+def _evaluation_result_from_schema(
+    result: EvaluationLLMResult,
+    *,
+    provider_name: str,
+    provider_version: str,
+    model: str,
+    structured_used: bool,
+    rubric_criteria: Optional[List[Dict[str, object]]],
+) -> EvaluationResult:
+    feedback_en = result.feedback_en or "No English feedback returned."
+    feedback_ar = result.feedback_ar or "No Arabic feedback returned."
+    evidence = {
+        "provider": provider_name,
+        "provider_version": provider_version,
+        "model": model,
+        "prompt_version": settings.EVALUATION_PROMPT_VERSION,
+        "matched_criteria": result.matched_criteria,
+        "missing_criteria": result.missing_criteria,
+        "evidence": result.evidence,
+        "rubric_criteria": rubric_criteria or [],
+        "structured_output": structured_used,
+        "schema_version": EVALUATION_SCHEMA_VERSION,
+    }
+    return EvaluationResult(
+        score=result.score,
+        feedback=f"{provider_name} {model}: {feedback_en} Arabic feedback: {feedback_ar}",
+        evidence=evidence,
+    )
 
 
 async def evaluate_answer_similarity(answer_text: str, expected_answer: str) -> tuple[float, str]:
@@ -867,6 +971,7 @@ def get_evaluation_config_hash(provider: EvaluationProvider) -> str:
         "model": getattr(provider, "model", None),
         "base_url": getattr(provider, "base_url", None),
         "api_key_set": bool(getattr(provider, "api_key", None)),
+        "structured_output": settings.EVALUATION_STRUCTURED_OUTPUT_ENABLED,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 

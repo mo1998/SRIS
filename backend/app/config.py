@@ -55,8 +55,9 @@ class Settings(BaseSettings):
     # Evaluation
     EVALUATION_QUEUE_BACKEND: str = os.getenv("EVALUATION_QUEUE_BACKEND", "background")
     EVALUATION_QUEUE_NAME: str = os.getenv("EVALUATION_QUEUE_NAME", "evaluation")
-    EVALUATION_PROMPT_VERSION: str = os.getenv("EVALUATION_PROMPT_VERSION", "rubric-v1")
+    EVALUATION_PROMPT_VERSION: str = os.getenv("EVALUATION_PROMPT_VERSION", "rubric-v2")
     EVALUATION_MAX_TOKENS: int = int(os.getenv("EVALUATION_MAX_TOKENS", "512"))
+    EVALUATION_STRUCTURED_OUTPUT_ENABLED: bool = os.getenv("EVALUATION_STRUCTURED_OUTPUT_ENABLED", "true").lower() == "true"
     # Provider endpoints are configured per organization from the UI (not env).
 
     # OpenAI (legacy; local providers are preferred)
