@@ -357,6 +357,7 @@ class EvaluationRun(Base):
     raw_summary = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
     data_left_host = Column(Boolean, nullable=True, default=False)
+    trace_id = Column(String(100), nullable=True, index=True)
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 

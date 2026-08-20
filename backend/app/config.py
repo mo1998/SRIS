@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     EVALUATION_MAX_TOKENS: int = int(os.getenv("EVALUATION_MAX_TOKENS", "512"))
     EVALUATION_STRUCTURED_OUTPUT_ENABLED: bool = os.getenv("EVALUATION_STRUCTURED_OUTPUT_ENABLED", "true").lower() == "true"
     EVALUATION_PII_MASKING_ENABLED: bool = os.getenv("EVALUATION_PII_MASKING_ENABLED", "true").lower() == "true"
+
+    # Langfuse tracing (self-hosted OSS; disabled unless configured)
+    LANGFUSE_ENABLED: bool = os.getenv("LANGFUSE_ENABLED", "false").lower() == "true"
+    LANGFUSE_PUBLIC_KEY: str = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+    LANGFUSE_SECRET_KEY: str = os.getenv("LANGFUSE_SECRET_KEY", "")
+    LANGFUSE_HOST: str = os.getenv("LANGFUSE_HOST", "http://localhost:3000")
+    # Browser-facing URL for trace links (LANGFUSE_HOST may be an internal name)
+    LANGFUSE_PUBLIC_URL: str = os.getenv("LANGFUSE_PUBLIC_URL", "http://localhost:3000")
     # Provider endpoints are configured per organization from the UI (not env).
 
     # OpenAI (legacy; local providers are preferred)
