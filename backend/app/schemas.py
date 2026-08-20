@@ -651,6 +651,9 @@ class EvaluationRunAudit(BaseModel):
     status: str
     raw_summary: Optional[dict] = None
     error: Optional[str] = None
+    data_left_host: Optional[bool] = None
+    trace_id: Optional[str] = None
+    trace_url: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     scores: List[EvaluationScoreAudit] = []
