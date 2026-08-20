@@ -154,7 +154,7 @@ async function mockApi(page: Page, user = employerUser) {
       json: {
         provider: 'local_vllm',
         provider_version: '1.0.0',
-        prompt_version: 'rubric-v1',
+        prompt_version: 'rubric-v2',
         config_hash: 'cfg-new',
         model_name: 'qwen3-8b-awq',
         configured: true,

@@ -22,7 +22,7 @@ Principles borrowed from the source (and already mostly true of SRIS):
 | Emotion analysis | DeepFace (optional, operational metadata only) | Not evaluation evidence |
 | Orchestration | RQ worker + in-process background tasks | Fire-and-forget, stateless jobs — fine for current scope |
 | Observability | Prometheus + Alertmanager + Loki + Grafana + node-exporter (prod profile) | Metrics exist; no LLM tracing, no eval telemetry |
-| Structured output | LLM asked for "compact JSON"; parsed with `parse_llm_json` | No constrained decoding / schema enforcement |
+| Structured output | `response_format` (json_object) + Pydantic schema validation + repair retry | Server-side constrained via vLLM xgrammar; cloud degrades on HTTP 400/422 |
 | Guardrails | Upload validation, anti-cheating, request limits, production config guardrails | No PII masking on LLM payloads |
 | Caching / cost | None beyond vLLM prefix cache | No routing, no semantic cache |
 | Evals | `test_evaluation_service.py` unit tests | No golden answer set, no regression harness |
@@ -71,15 +71,15 @@ Steps:
 
 Acceptance criteria: evaluation traffic flows through the gateway; a provider failure triggers the deterministic fallback chain exactly as today; gateway latency is added to the Prometheus dashboards.
 
-### Phase 3 — Structured output for evaluation
+### Phase 3 — Structured output for evaluation (implemented)
 
 Goal: replace "prompt says return JSON" with schema-enforced output so scoring never fails to parse.
 
 Steps:
-1. On the local side, enable xgrammar-guided JSON decoding in vLLM (the model config already requests JSON; constrain it server-side).
-2. Define a Pydantic schema for the evaluation result (`score`, `feedback_en`, `feedback_ar`, `matched_criteria`, `missing_criteria`, `evidence`).
-3. For cloud providers, use native structured outputs when available; otherwise keep the current retry/parse path but validate against the schema before accepting.
-4. Keep the free-text-reasoning → constrained-final-answer pattern: do not constrain the whole generation, only the final block.
+- [x] On the local side, enable xgrammar-guided JSON decoding in vLLM (the model config already requests JSON; constrain it server-side).
+- [x] Define a Pydantic schema for the evaluation result (`score`, `feedback_en`, `feedback_ar`, `matched_criteria`, `missing_criteria`, `evidence`).
+- [x] For cloud providers, use native structured outputs when available; otherwise keep the current retry/parse path but validate against the schema before accepting.
+- [x] Keep the free-text-reasoning → constrained-final-answer pattern: do not constrain the whole generation, only the final block.
 
 Acceptance criteria: zero evaluation runs fail because of JSON parse errors; `parse_llm_json` becomes a validation layer instead of a recovery path.
 

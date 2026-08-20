@@ -1,5 +1,7 @@
 import pytest
 
+import httpx
+
 from app.database import SessionLocal
 from app.models import EvaluationRun, Organization
 from app.services.evaluation_service import (
@@ -80,8 +82,19 @@ async def test_legacy_similarity_function_uses_baseline_provider():
 def test_parse_llm_json_strips_qwen_thinking_block():
     parsed = parse_llm_json(' thinkinghidden reasoning response{"score": 8, "feedback_en": "Good", "feedback_ar": "جيد"}')
 
-    assert parsed["score"] == 8
-    assert parsed["feedback_ar"] == "جيد"
+    assert parsed.score == 80.0
+    assert parsed.feedback_ar == "جيد"
+
+
+def test_parse_llm_json_validates_against_schema():
+    with pytest.raises((ValueError, TypeError)):
+        parse_llm_json("not json at all")
+    with pytest.raises((ValueError, TypeError)):
+        parse_llm_json('{"feedback_en": "missing score"}')
+    with pytest.raises((ValueError, TypeError)):
+        parse_llm_json('{"score": "high", "feedback_en": "Good"}')
+    with pytest.raises((ValueError, TypeError)):
+        parse_llm_json('{"score": 8, "matched_criteria": "listen"}')
 
 
 def test_normalize_llm_score_accepts_ten_or_hundred_point_scales():
@@ -115,9 +128,10 @@ async def test_local_vllm_provider_uses_openai_compatible_json(monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        async def post(self, url, json):
+        async def post(self, url, json, headers=None):
             assert url == "http://local-vllm.test/v1/chat/completions"
             assert json["model"] == "qwen3-test"
+            assert json["response_format"] == {"type": "json_object"}
             assert "Rubric criteria JSON" in json["messages"][1]["content"]
             assert "Ownership" in json["messages"][1]["content"]
             return FakeResponse()
@@ -134,7 +148,9 @@ async def test_local_vllm_provider_uses_openai_compatible_json(monkeypatch):
     assert result.score == 90.0
     assert result.evidence["provider"] == "local_vllm"
     assert result.evidence["model"] == "qwen3-test"
-    assert result.evidence["prompt_version"] == "rubric-v1"
+    assert result.evidence["prompt_version"] == "rubric-v2"
+    assert result.evidence["structured_output"] is True
+    assert result.evidence["schema_version"] == "1"
     assert result.evidence["rubric_criteria"][0]["name"] == "Ownership"
     assert "Strong answer" in result.feedback
     assert "إجابة قوية" in result.feedback
@@ -152,7 +168,7 @@ async def test_local_vllm_provider_falls_back_when_endpoint_fails(monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        async def post(self, url, json):
+        async def post(self, url, json, headers=None):
             raise RuntimeError("vllm offline")
 
     monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", FailingClient)
@@ -299,6 +315,7 @@ async def test_cloud_provider_sends_openai_compatible_payload(monkeypatch):
     assert captured["url"] == "https://api.cloud.test/v1/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer sk-cloud-test"
     assert captured["json"]["model"] == "gpt-test-mini"
+    assert captured["json"]["response_format"] == {"type": "json_object"}
     assert "/no_think" not in captured["json"]["messages"][0]["content"]
     assert result.score == 80.0
     assert result.evidence["provider"] == "cloud_llm"
@@ -526,3 +543,148 @@ async def test_evaluation_health_reports_llm_unavailable(monkeypatch):
         assert "offline" in health["last_error"]
     finally:
         db.close()
+
+
+class FakeLLMResponse:
+    def __init__(self, content):
+        self._content = content
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {"choices": [{"message": {"content": self._content}}]}
+
+
+@pytest.mark.asyncio
+async def test_local_provider_repairs_invalid_json_once(monkeypatch):
+    calls = []
+
+    class RepairClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers=None):
+            calls.append(json)
+            if len(calls) == 1:
+                return FakeLLMResponse('{"score": 9, "feedback_en": "broken json"')
+            return FakeLLMResponse(
+                '{"score": 9, "feedback_en": "Fixed", "feedback_ar": "جيد", '
+                '"matched_criteria": ["listen"], "missing_criteria": [], "evidence": "ok"}'
+            )
+
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", RepairClient)
+
+    provider = LocalVLLMEvaluationProvider(baseline_provider, model="qwen3-test", base_url="http://local-vllm.test/v1")
+    result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
+
+    assert len(calls) == 2
+    assert "Return ONLY a single compact JSON object" in calls[1]["messages"][-1]["content"]
+    assert calls[1]["response_format"] == {"type": "json_object"}
+    assert result.score == 90.0
+    assert result.evidence["provider"] == "local_vllm"
+
+
+@pytest.mark.asyncio
+async def test_cloud_provider_degrades_when_response_format_rejected(monkeypatch):
+    calls = []
+
+    class DegradeClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers=None):
+            calls.append(json)
+            if len(calls) == 1:
+                response = httpx.Response(
+                    400,
+                    json={"error": "unsupported parameter: response_format"},
+                    request=httpx.Request("POST", url),
+                )
+                response.raise_for_status()
+            return FakeLLMResponse(
+                '{"score": 7, "feedback_en": "ok", "feedback_ar": "حسن", '
+                '"matched_criteria": ["x"], "missing_criteria": [], "evidence": "e"}'
+            )
+
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", DegradeClient)
+
+    provider = CloudLLMEvaluationProvider(
+        baseline_provider, model="gpt-test-mini", base_url="https://api.cloud.test/v1", api_key="sk-cloud-test"
+    )
+    result = await provider.evaluate_answer("I structure my answer.", "Structure the answer.")
+
+    assert len(calls) == 2
+    assert "response_format" not in calls[1]
+    assert result.score == 70.0
+    assert result.evidence["structured_output"] is False
+    assert result.evidence["provider"] == "cloud_llm"
+
+
+@pytest.mark.asyncio
+async def test_local_provider_skips_response_format_when_disabled(monkeypatch):
+    captured = {}
+
+    class PlainClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers=None):
+            captured["json"] = json
+            return FakeLLMResponse(
+                '{"score": 8, "feedback_en": "ok", "feedback_ar": "جيد", '
+                '"matched_criteria": [], "missing_criteria": [], "evidence": "e"}'
+            )
+
+    monkeypatch.setattr("app.services.evaluation_service.settings.EVALUATION_STRUCTURED_OUTPUT_ENABLED", False)
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", PlainClient)
+
+    provider = LocalVLLMEvaluationProvider(baseline_provider, model="qwen3-test", base_url="http://local-vllm.test/v1")
+    result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
+
+    assert "response_format" not in captured["json"]
+    assert result.score == 80.0
+    assert result.evidence["structured_output"] is False
+
+
+@pytest.mark.asyncio
+async def test_repair_retry_exhausted_falls_back(monkeypatch):
+    class AlwaysBrokenClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers=None):
+            return FakeLLMResponse("garbage no braces")
+
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", AlwaysBrokenClient)
+
+    provider = LocalVLLMEvaluationProvider(baseline_provider, model="qwen3-test", base_url="http://local-vllm.test/v1")
+    result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
+
+    assert result.evidence["provider"] == "deterministic_baseline"
+    assert result.evidence["provider_fallback_from"] == "local_vllm"
+    assert "did not contain a JSON object" in result.evidence["provider_fallback_reason"]

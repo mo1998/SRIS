@@ -110,7 +110,7 @@ LLM endpoints are configured per organization from the Employer Dashboard
 ```bash
 export EVALUATION_QUEUE_BACKEND=rq
 export EVALUATION_QUEUE_NAME=evaluation
-export EVALUATION_PROMPT_VERSION=rubric-v1
+export EVALUATION_PROMPT_VERSION=rubric-v2
 ```
 
 Organizations without a configured provider hold evaluations until one is set and
