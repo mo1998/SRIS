@@ -286,9 +286,9 @@ describe('CandidateReport', () => {
     renderPage()
 
     expect(await screen.findByText(/anti-cheating integrity events/i)).toBeInTheDocument()
-    expect(screen.getByText('copy')).toBeInTheDocument()
-    expect(screen.getByText('paste')).toBeInTheDocument()
-    expect(screen.getByText('tab_hidden')).toBeInTheDocument()
+    expect(screen.getByText('Copied text')).toBeInTheDocument()
+    expect(screen.getByText('Pasted text')).toBeInTheDocument()
+    expect(screen.getByText('Tab hidden')).toBeInTheDocument()
   })
 
   it('hides the integrity section when no events were recorded', async () => {

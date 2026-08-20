@@ -279,12 +279,19 @@ const CandidateReport: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(report.integrity.breakdown).map(([type, count]) => (
-                  <tr key={type}>
-                    <td><span className="event-dot" aria-hidden="true" />{type}</td>
-                    <td><span className="event-count">{count as number}</span></td>
-                  </tr>
-                ))}
+                {Object.entries(report.integrity.breakdown).map(([type, count]) => {
+                  const key = `candidateReport.eventTypes.${type}`
+                  const translated = t(key)
+                  const label = translated !== key
+                    ? translated
+                    : type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+                  return (
+                    <tr key={type}>
+                      <td><span className="event-dot" aria-hidden="true" />{label}</td>
+                      <td><span className="event-count">{count as number}</span></td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </Table>
           </Card.Body>
