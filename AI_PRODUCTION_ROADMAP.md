@@ -23,7 +23,7 @@ Principles borrowed from the source (and already mostly true of SRIS):
 | Orchestration | RQ worker + in-process background tasks | Fire-and-forget, stateless jobs — fine for current scope |
 | Observability | Prometheus + Alertmanager + Loki + Grafana + node-exporter (prod profile) | Metrics exist; no LLM tracing, no eval telemetry |
 | Structured output | `response_format` (json_object) + Pydantic schema validation + repair retry | Server-side constrained via vLLM xgrammar; cloud degrades on HTTP 400/422 |
-| Guardrails | Upload validation, anti-cheating, request limits, production config guardrails | No PII masking on LLM payloads |
+| Guardrails | Upload validation, anti-cheating, request limits, production config guardrails | PII masking on LLM payloads (emails/phones/candidate name), fail-closed |
 | Caching / cost | None beyond vLLM prefix cache | No routing, no semantic cache |
 | Evals | `test_evaluation_service.py` unit tests | No golden answer set, no regression harness |
 
@@ -36,7 +36,7 @@ Principles borrowed from the source (and already mostly true of SRIS):
 | Gateway and routing | No single URL in front of providers; org override is static, not routed | High |
 | Structured output | JSON contract is prompt-enforced, not schema-enforced | Medium |
 | Observability and evals | No Langfuse-style tracing; no golden set; fallback not measured | High |
-| Guardrails and security | PII (candidate answers) sent to cloud provider unmasked | High |
+| Guardrails and security | ~~PII sent to cloud unmasked~~ — resolved in Phase 5 (masking + data_left_host + audit) | High |
 | Caching and cost control | No routing of cheap/easy answers to small model | Medium |
 | Retrieval and storage | N/A for current feature set (no RAG) — ignore pgvector until a knowledge base exists | Skip |
 | Document ingestion / chunking | N/A | Skip |
@@ -95,17 +95,21 @@ Steps:
 
 Acceptance criteria: a prompt change cannot merge without a golden-set delta; regressions on Arabic answers are visible in CI before release.
 
-### Phase 5 — PII and guardrails on LLM payloads
+### Phase 5 — PII and guardrails on LLM payloads (implemented)
 
 Goal: candidate data sent to any LLM (especially cloud) is minimized and auditable.
 
 Steps:
-1. Add a masking step before payload construction in `evaluation_service` / `transcription_service`: strip emails, phone-like patterns, and names from the candidate answer before it reaches the provider (keep the reference copy in the DB).
-2. Log masking decisions to the audit trail per `evaluation_run`.
-3. Record whether the payload left the host (cloud vs local) in the evaluation run metadata so compliance questions can be answered from data.
-4. Decide and document fail-open vs fail-closed behavior for masking; test the failure path.
+- [x] Add a masking step before payload construction in `evaluation_service` / `transcription_service`: strip emails, phone-like patterns, and names from the candidate answer before it reaches the provider (keep the reference copy in the DB). (`mask_pii` in `pii_masking.py`; transcription uses local whisper — no LLM payload to mask.)
+- [x] Log masking decisions to the audit trail per `evaluation_run`. (AuditLog `evaluation.masked` per completed run with masking counts + `data_left_host`.)
+- [x] Record whether the payload left the host (cloud vs local) in the evaluation run metadata so compliance questions can be answered from data. (`evaluation_runs.data_left_host`; also in per-answer evidence.)
+- [x] Decide and document fail-open vs fail-closed behavior for masking; test the failure path. (Fail-closed: masking errors propagate → deterministic fallback, no payload sent. Tested in `test_masking_failure_fails_closed_without_http`.)
 
 Acceptance criteria: candidate PII is never sent to a cloud endpoint unmasked; compliance review can list every cloud-touched evaluation.
+
+Notes:
+- Name redaction is conservative: only the candidate's own name (from the response record) is masked. Third-party names are not heuristically detected.
+- Escape hatch: `EVALUATION_PII_MASKING_ENABLED=false` disables masking (debugging only); the audit trail still records that masking was disabled.
 
 ### Phase 6 — Cost control and model routing
 
