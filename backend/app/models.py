@@ -356,6 +356,7 @@ class EvaluationRun(Base):
     status = Column(String(50), default="running", nullable=False)
     raw_summary = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
+    data_left_host = Column(Boolean, nullable=True, default=False)
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 

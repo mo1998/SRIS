@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     EVALUATION_PROMPT_VERSION: str = os.getenv("EVALUATION_PROMPT_VERSION", "rubric-v2")
     EVALUATION_MAX_TOKENS: int = int(os.getenv("EVALUATION_MAX_TOKENS", "512"))
     EVALUATION_STRUCTURED_OUTPUT_ENABLED: bool = os.getenv("EVALUATION_STRUCTURED_OUTPUT_ENABLED", "true").lower() == "true"
+    EVALUATION_PII_MASKING_ENABLED: bool = os.getenv("EVALUATION_PII_MASKING_ENABLED", "true").lower() == "true"
     # Provider endpoints are configured per organization from the UI (not env).
 
     # OpenAI (legacy; local providers are preferred)

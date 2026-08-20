@@ -24,6 +24,8 @@ from app.config import settings
 from app.database import SessionLocal
 from app.metrics import record_llm_fallback
 from app.models import CandidateResponse, EvaluationRun, EvaluationScore, QuestionAnswer, InterviewQuestion, Interview, TeamMembership, Organization
+from app.services.audit_service import create_audit_log
+from app.services.pii_masking import mask_pii
 
 
 STOPWORDS = {
@@ -48,7 +50,13 @@ class EvaluationProvider(Protocol):
     name: str
     version: str
 
-    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None) -> EvaluationResult:
+    async def evaluate_answer(
+        self,
+        answer_text: str,
+        expected_answer: str,
+        rubric_criteria: Optional[List[Dict[str, object]]] = None,
+        candidate_name: Optional[str] = None,
+    ) -> EvaluationResult:
         ...
 
 
@@ -56,7 +64,7 @@ class BaselineEvaluationProvider:
     name = "deterministic_baseline"
     version = "1.0.0"
 
-    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None) -> EvaluationResult:
+    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None, candidate_name: Optional[str] = None) -> EvaluationResult:
         answer_tokens = normalize_tokens(answer_text)
         rubric_text = build_rubric_text(rubric_criteria or [])
         expected_tokens = normalize_tokens(" ".join([expected_answer or "", rubric_text]))
@@ -122,9 +130,9 @@ class LocalVLLMEvaluationProvider:
     def base_url(self) -> str:
         return self._base_url or ""
 
-    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None) -> EvaluationResult:
+    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None, candidate_name: Optional[str] = None) -> EvaluationResult:
         if not answer_text.strip():
-            return await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
+            return await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria, candidate_name)
 
         if not self.base_url:
             return await self._fallback(answer_text, expected_answer, rubric_criteria, "Local LLM endpoint is not configured")
@@ -143,6 +151,7 @@ class LocalVLLMEvaluationProvider:
                 answer_text=answer_text,
                 expected_answer=expected_answer,
                 rubric_criteria=rubric_criteria,
+                candidate_name=candidate_name,
                 timeout=LOCAL_LLM_TIMEOUT_SECONDS,
                 provider_name=self.name,
                 provider_version=self.version,
@@ -207,9 +216,9 @@ class CloudLLMEvaluationProvider:
     def api_key(self) -> str:
         return self._api_key or ""
 
-    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None) -> EvaluationResult:
+    async def evaluate_answer(self, answer_text: str, expected_answer: str, rubric_criteria: Optional[List[Dict[str, object]]] = None, candidate_name: Optional[str] = None) -> EvaluationResult:
         if not answer_text.strip():
-            return await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria)
+            return await self.fallback_provider.evaluate_answer(answer_text, expected_answer, rubric_criteria, candidate_name)
 
         if not self.api_key or not self.base_url:
             return await self._fallback(answer_text, expected_answer, rubric_criteria, "Cloud LLM endpoint or API key is not configured")
@@ -223,6 +232,7 @@ class CloudLLMEvaluationProvider:
                 answer_text=answer_text,
                 expected_answer=expected_answer,
                 rubric_criteria=rubric_criteria,
+                candidate_name=candidate_name,
                 timeout=CLOUD_LLM_TIMEOUT_SECONDS,
                 provider_name=self.name,
                 provider_version=self.version,
@@ -479,9 +489,12 @@ async def _request_evaluation(
     timeout: float,
     provider_name: str,
     provider_version: str,
+    candidate_name: Optional[str] = None,
 ) -> EvaluationResult:
     """Call an OpenAI-compatible endpoint with schema-enforced structured output.
 
+    Candidate PII is masked before payload construction (fail-closed: a masking
+    error propagates so the caller falls back instead of sending unmasked PII).
     Degrades gracefully: if the endpoint rejects `response_format` (HTTP
     400/422) it retries without it; if the response fails schema validation it
     issues one repair retry. Unrecoverable failures propagate to the caller's
@@ -489,6 +502,12 @@ async def _request_evaluation(
     """
     url = f"{base_url.rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
+    masking_enabled = bool(settings.EVALUATION_PII_MASKING_ENABLED)
+    masking_summary = None
+    if masking_enabled:
+        answer_text, masking_summary = mask_pii(answer_text, candidate_name)
+
     messages = _build_llm_messages(system_prompt, answer_text, expected_answer, rubric_criteria)
     base_payload: Dict[str, object] = {
         "model": model,
@@ -530,6 +549,8 @@ async def _request_evaluation(
         model=model,
         structured_used=structured_used,
         rubric_criteria=rubric_criteria,
+        masking_enabled=masking_enabled,
+        masking_summary=masking_summary,
     )
 
 
@@ -541,9 +562,13 @@ def _evaluation_result_from_schema(
     model: str,
     structured_used: bool,
     rubric_criteria: Optional[List[Dict[str, object]]],
+    masking_enabled: bool,
+    masking_summary=None,
 ) -> EvaluationResult:
     feedback_en = result.feedback_en or "No English feedback returned."
     feedback_ar = result.feedback_ar or "No Arabic feedback returned."
+    masking = masking_summary.to_dict() if masking_summary else {"masked": False, "emails": 0, "phones": 0, "names": 0}
+    masking["enabled"] = masking_enabled
     evidence = {
         "provider": provider_name,
         "provider_version": provider_version,
@@ -555,6 +580,8 @@ def _evaluation_result_from_schema(
         "rubric_criteria": rubric_criteria or [],
         "structured_output": structured_used,
         "schema_version": EVALUATION_SCHEMA_VERSION,
+        "pii_masking": masking,
+        "data_left_host": provider_name == "cloud_llm",
     }
     return EvaluationResult(
         score=result.score,
@@ -654,6 +681,8 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
             await asyncio.gather(*(_analyze(a) for a in video_answers))
 
         # Evaluate each answer
+        cloud_contacted = False
+        masking_totals = {"emails": 0, "phones": 0, "names": 0, "masked_answers": 0}
         for answer in answers:
             question = db.query(InterviewQuestion).filter(InterviewQuestion.id == answer.question_id).first()
             if not question:
@@ -681,7 +710,12 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
 
             # Score the answer
             if answer_text and question.expected_answer:
-                result = await provider.evaluate_answer(answer_text, question.expected_answer, serialize_rubric_criteria(question))
+                result = await provider.evaluate_answer(
+                    answer_text,
+                    question.expected_answer,
+                    serialize_rubric_criteria(question),
+                    candidate_name=response.candidate_name,
+                )
                 answer.score = result.score
                 answer.feedback = result.feedback
             else:
@@ -692,6 +726,16 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
                 )
                 answer.score = 0.0
                 answer.feedback = result.feedback
+
+            evidence = result.evidence
+            if evidence.get("provider") == "cloud_llm" or evidence.get("provider_fallback_from") == "cloud_llm":
+                cloud_contacted = True
+            masking = evidence.get("pii_masking") or {}
+            if masking.get("masked"):
+                masking_totals["masked_answers"] += 1
+            masking_totals["emails"] += masking.get("emails", 0)
+            masking_totals["phones"] += masking.get("phones", 0)
+            masking_totals["names"] += masking.get("names", 0)
 
             db.add(EvaluationScore(
                 evaluation_run_id=evaluation_run.id,
@@ -772,13 +816,30 @@ async def evaluate_candidate_response(response_id: int, db: Session, evaluation_
     pass_score = interview.pass_score if interview else 70.0
     response.passed = response.total_score >= pass_score if response.total_score else False
     evaluation_run.status = "completed"
+    evaluation_run.data_left_host = cloud_contacted
     evaluation_run.raw_summary = json.dumps({
         "total_score": response.total_score,
         "passed": response.passed,
         "answer_count": len(answers),
     }, ensure_ascii=False)
     evaluation_run.completed_at = datetime.utcnow()
-    
+
+    # Audit trail: every completed run records PII masking + whether any payload
+    # left the host, so compliance review can list every cloud-touched run.
+    create_audit_log(
+        db,
+        actor=None,
+        action="evaluation.masked",
+        target_type="evaluation_run",
+        target_id=evaluation_run.id,
+        organization_id=organization_id,
+        details={
+            "data_left_host": cloud_contacted,
+            "provider": provider.name,
+            **masking_totals,
+        },
+    )
+
     db.commit()
     
     # Notify the interview employer + organization members that evaluation
@@ -972,6 +1033,7 @@ def get_evaluation_config_hash(provider: EvaluationProvider) -> str:
         "base_url": getattr(provider, "base_url", None),
         "api_key_set": bool(getattr(provider, "api_key", None)),
         "structured_output": settings.EVALUATION_STRUCTURED_OUTPUT_ENABLED,
+        "pii_masking": settings.EVALUATION_PII_MASKING_ENABLED,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 

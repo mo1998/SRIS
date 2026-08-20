@@ -688,3 +688,157 @@ async def test_repair_retry_exhausted_falls_back(monkeypatch):
     assert result.evidence["provider"] == "deterministic_baseline"
     assert result.evidence["provider_fallback_from"] == "local_vllm"
     assert "did not contain a JSON object" in result.evidence["provider_fallback_reason"]
+
+
+@pytest.mark.asyncio
+async def test_cloud_provider_masks_candidate_pii_before_send(monkeypatch):
+    captured = {}
+
+    class CaptureClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers=None):
+            captured["content"] = json["messages"][1]["content"]
+            return FakeLLMResponse(
+                '{"score": 8, "feedback_en": "ok", "feedback_ar": "جيد", '
+                '"matched_criteria": [], "missing_criteria": [], "evidence": "e"}'
+            )
+
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", CaptureClient)
+
+    provider = CloudLLMEvaluationProvider(
+        baseline_provider, model="gpt-test-mini", base_url="https://api.cloud.test/v1", api_key="sk-cloud-test"
+    )
+    result = await provider.evaluate_answer(
+        "Contact john.doe@corp.com or 555-123-4567 to reach me. I am Jane Doe.",
+        "Answer well.",
+        candidate_name="Jane Doe",
+    )
+
+    assert "john.doe@corp.com" not in captured["content"]
+    assert "[EMAIL]" in captured["content"]
+    assert "555-123-4567" not in captured["content"]
+    assert "[PHONE]" in captured["content"]
+    assert "Jane Doe" not in captured["content"]
+    assert "[NAME]" in captured["content"]
+    assert result.evidence["pii_masking"]["masked"] is True
+    assert result.evidence["pii_masking"]["emails"] == 1
+    assert result.evidence["pii_masking"]["phones"] == 1
+    assert result.evidence["pii_masking"]["names"] >= 1
+    assert result.evidence["data_left_host"] is True
+
+
+@pytest.mark.asyncio
+async def test_local_provider_records_data_stays_on_host(monkeypatch):
+    captured = {}
+
+    class CaptureClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers=None):
+            captured["content"] = json["messages"][1]["content"]
+            return FakeLLMResponse(
+                '{"score": 8, "feedback_en": "ok", "feedback_ar": "جيد", '
+                '"matched_criteria": [], "missing_criteria": [], "evidence": "e"}'
+            )
+
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", CaptureClient)
+
+    provider = LocalVLLMEvaluationProvider(baseline_provider, model="qwen3-test", base_url="http://local-vllm.test/v1")
+    result = await provider.evaluate_answer(
+        "My email is alice@example.com.",
+        "Introduce yourself.",
+        candidate_name="Alice Wonder",
+    )
+
+    assert "[EMAIL]" in captured["content"]
+    assert "alice@example.com" not in captured["content"]
+    assert result.evidence["data_left_host"] is False
+
+
+@pytest.mark.asyncio
+async def test_masking_disabled_sends_original_answer(monkeypatch):
+    captured = {}
+
+    class CaptureClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers=None):
+            captured["content"] = json["messages"][1]["content"]
+            return FakeLLMResponse(
+                '{"score": 8, "feedback_en": "ok", "feedback_ar": "جيد", '
+                '"matched_criteria": [], "missing_criteria": [], "evidence": "e"}'
+            )
+
+    monkeypatch.setattr("app.services.evaluation_service.settings.EVALUATION_PII_MASKING_ENABLED", False)
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", CaptureClient)
+
+    provider = CloudLLMEvaluationProvider(
+        baseline_provider, model="gpt-test-mini", base_url="https://api.cloud.test/v1", api_key="sk-cloud-test"
+    )
+    result = await provider.evaluate_answer(
+        "Reach me at bob@example.com",
+        "Answer well.",
+        candidate_name="Bob Builder",
+    )
+
+    assert "bob@example.com" in captured["content"]
+    assert result.evidence["pii_masking"]["enabled"] is False
+    assert result.evidence["pii_masking"]["masked"] is False
+
+
+@pytest.mark.asyncio
+async def test_masking_failure_fails_closed_without_http(monkeypatch):
+    calls = []
+
+    class NoCallClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers=None):
+            calls.append(url)
+            return FakeLLMResponse(
+                '{"score": 8, "feedback_en": "ok", "feedback_ar": "جيد", '
+                '"matched_criteria": [], "missing_criteria": [], "evidence": "e"}'
+            )
+
+    def broken_mask_pii(text, candidate_name=None):
+        raise RuntimeError("masking subsystem broken")
+
+    monkeypatch.setattr("app.services.evaluation_service.httpx.AsyncClient", NoCallClient)
+    monkeypatch.setattr("app.services.evaluation_service.mask_pii", broken_mask_pii)
+
+    provider = LocalVLLMEvaluationProvider(baseline_provider, model="qwen3-test", base_url="http://local-vllm.test/v1")
+    result = await provider.evaluate_answer("I listen and follow up.", "Listen and follow up.")
+
+    assert calls == []
+    assert result.evidence["provider"] == "deterministic_baseline"
+    assert result.evidence["provider_fallback_from"] == "local_vllm"
+    assert "masking subsystem broken" in result.evidence["provider_fallback_reason"]

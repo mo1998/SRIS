@@ -210,6 +210,7 @@ Key settings:
 | `EVALUATION_QUEUE_NAME` | RQ queue name for evaluation jobs |
 | `EVALUATION_PROMPT_VERSION` | Scoring prompt version recorded on each run |
 | `EVALUATION_STRUCTURED_OUTPUT_ENABLED` | Send `response_format` and enforce the output schema; degrades to plain JSON on HTTP 400/422 |
+| `EVALUATION_PII_MASKING_ENABLED` | Mask candidate PII (emails/phones/name) before payload reaches any LLM; fail-closed |
 | `TRANSCRIPTION_PROVIDER`, `WHISPER_*` | `whisper`/`fake` transcription provider and model/device settings |
 | `EMOTION_ANALYSIS_PROVIDER` | `deepface`/`disabled`/`fake` facial emotion analysis |
 | `MAIL_*`, `EMAIL_PROVIDER` | SMTP / Mailpit / Resend email delivery |
